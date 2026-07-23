@@ -1,0 +1,18 @@
+{
+  "appId": "cn.xuanjue.app",
+  "appName": "玄决",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#1a1410"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "backgroundColor": "#1a1410",
+      "showSpinner": false
+    }
+  }
+}

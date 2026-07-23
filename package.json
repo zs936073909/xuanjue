@@ -1,0 +1,25 @@
+{
+  "name": "xuanjue",
+  "version": "0.1.0",
+  "description": "玄决 · 大六壬决策台（个人时课助手）",
+  "private": true,
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8765",
+    "build:www": "rm -rf www && mkdir -p www && cp index.html www/ && cp -r css js www/",
+    "test:core": "node test_core.js",
+    "test:dom": "node test_dom.mjs",
+    "test": "node test_core.js && node test_dom.mjs",
+    "cap:sync": "npm run build:www && cap sync",
+    "cap:open": "cap open android",
+    "android:build": "npm run build:www && cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "jsdom": "^24.1.3"
+  }
+}

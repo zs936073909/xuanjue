@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1410">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="玄决">
+<link rel="manifest" href="manifest.json">
+<title>玄决 · 大六壬决策台</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- 启动/免责声明 -->
+  <div id="screen-disclaimer" class="screen">
+    <div class="splash">
+      <div class="splash-title">玄决</div>
+      <div class="splash-sub">大六壬决策台 · 个人时课助手</div>
+    </div>
+    <div class="card disclaimer-card">
+      <h3>使用须知与免责声明</h3>
+      <div class="disclaimer-text">
+        <p>本应用仅供个人文化研究、娱乐参考与自我探索，不构成医疗、法律、投资、婚姻、职业等重大决策依据。</p>
+        <p>术数为参考工具，非确定性预测。应用不做必然性预测、不做恐吓式结论、不做改命消灾化解类营销、不诱导消费。</p>
+        <p>所有数据默认保存在本机，可一键导出与清除，不上传服务器。</p>
+      </div>
+      <label class="check-line"><input type="checkbox" id="agreeCheck"> 我已阅读并同意上述声明</label>
+      <button class="btn primary block" id="btnEnter" disabled>进入应用</button>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="main" class="hidden">
+    <div id="page-container"></div>
+    <nav class="tabbar">
+      <div class="tab" data-tab="home"><div class="tab-ico">⌂</div><div class="tab-txt">首页</div></div>
+      <div class="tab" data-tab="ask"><div class="tab-ico">？</div><div class="tab-txt">问事</div></div>
+      <div class="tab" data-tab="board"><div class="tab-ico">◈</div><div class="tab-txt">盘面</div></div>
+      <div class="tab" data-tab="case"><div class="tab-ico">☰</div><div class="tab-txt">案例</div></div>
+      <div class="tab" data-tab="me"><div class="tab-ico">◐</div><div class="tab-txt">我的</div></div>
+    </nav>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+
+<script src="js/lunar.js"></script>
+<script src="js/huangli.js"></script>
+<script src="js/daliuren.js"></script>
+<script src="js/shushu.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

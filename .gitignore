@@ -1,0 +1,15 @@
+node_modules/
+*.log
+.DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/*.iml
+.idea/
+
+# 备份
+*.backup.json
