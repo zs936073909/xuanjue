@@ -347,6 +347,22 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .btn.gold{background:linear-gradient(180deg,#3a2d20,#2a1f17);border-color:var(--gold);color:var(--gold)}
 .ai-output-card{border-color:var(--gold)}
 .ai-badge{font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(201,168,106,.15);color:var(--gold);margin-left:6px;font-family:var(--sans)}
+
+/* ===== 古籍知识库 / 典籍 Tab ===== */
+.classic-search input{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--ink);font-size:14px}
+.classic-search input:focus{border-color:var(--gold);outline:none;box-shadow:0 0 0 2px rgba(201,168,106,.12)}
+.classic-cats,.classic-books{display:flex;flex-wrap:wrap;gap:8px}
+.classic-books{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+.classic-books::-webkit-scrollbar{display:none}
+.classic-card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;animation:cardIn .35s ease}
+.classic-text{font-family:var(--serif);font-size:15px;color:var(--ink);line-height:1.7;margin-top:8px;white-space:pre-wrap}
+.classic-comment{font-size:13px;color:var(--ink2);line-height:1.65;margin-top:10px;padding:10px;background:var(--card);border-radius:0 8px 8px 0;border-left:3px solid var(--gold)}
+.classic-comment .pc-t{font-size:11px;color:var(--gold);display:block;margin-bottom:4px;letter-spacing:1px}
+.classic-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag-pill{font-size:11px;background:rgba(201,168,106,.12);color:var(--gold2);padding:3px 8px;border-radius:4px}
+.citation-box{font-size:12px;color:var(--gold);font-family:var(--serif);letter-spacing:1px;padding:6px 8px;background:rgba(201,168,106,.08);border-radius:6px;border-left:3px solid var(--gold)}
+.classic-actions{margin-top:10px;display:flex;justify-content:flex-end}
+.btn-fav.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1410;border-color:var(--gold);font-weight:500}
 .ai-output{font-size:14px;line-height:1.7;color:var(--ink)}
 .ai-output h3{color:var(--gold);font-family:var(--serif);font-size:15px;margin:12px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .ai-output h4{color:var(--gold2);font-size:13px;margin:10px 0 4px}
@@ -357,4 +373,17 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ai-pending{color:var(--ink2);font-size:13px;padding:14px 0;text-align:center;animation:fadeIn .8s ease infinite alternate}
 .ai-error{color:var(--red);font-size:13px;line-height:1.6;padding:8px;border:1px solid var(--red);border-radius:6px;background:rgba(196,90,74,.08)}
 .ai-warn{margin-top:10px;padding:6px 10px;font-size:12px;color:var(--red);background:rgba(196,90,74,.08);border-radius:6px;border-left:3px solid var(--red)}
+
+/* ===== 信息补充与依据来源 ===== */
+.yao-roll{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.yao-roll-item{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card);border-radius:6px;font-family:var(--serif)}
+.yao-roll-item .yl-idx{font-size:11px;color:var(--muted);width:52px}
+.yao-roll-item .yl-sym{font-size:18px;color:var(--ink);letter-spacing:2px;min-width:42px;text-align:center}
+.yao-roll-item .yl-name{font-size:13px;color:var(--ink2)}
+.yao-roll-item .yl-name.dong{color:var(--red);font-weight:600}
+.source-sec{margin-bottom:12px}
+.source-sec-title{font-size:12px;color:var(--gold);margin-bottom:6px;letter-spacing:1px}
+.source-item{font-size:13px;color:var(--ink);line-height:1.6;padding:6px 0;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:8px}
+.source-item:last-child{border-bottom:none}
+.classics-placeholder{color:var(--muted);font-size:12px;font-style:italic}
 

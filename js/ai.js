@@ -427,6 +427,27 @@
     };
   }
 
+  /**
+   * 将检索到的古籍段落追加到用户 prompt 末尾（RAG 注入）
+   * @param {string} prompt 原 prompt
+   * @param {Array<Object>} passages ClassicLibrary.search 返回的段落数组
+   * @returns {string} 追加后的 prompt
+   */
+  function appendClassicsToPrompt(prompt,passages){
+    if(!passages||!passages.length)return prompt||'';
+    const L=['\n\n# 参考古籍段落（RAG 检索结果，供解读时参考，非盘面事实）'];
+    passages.forEach((p,idx)=>{
+      L.push(`## 参考 ${idx+1}`);
+      L.push(`[${p.book||''}·${p.chapter||''}] ${(p.text||'').replace(/\s+/g,' ')}`);
+      if(p.comment)L.push(`白话注解：${p.comment.replace(/\s+/g,' ')}`);
+      if(p.scenario)L.push(`适用场景：${p.scenario}`);
+      if(Array.isArray(p.tags)&&p.tags.length)L.push(`标签：${p.tags.join('、')}`);
+      L.push('');
+    });
+    L.push('要求：若古籍段落与盘面数据相关，可引用并标注古籍来源；若不相关则忽略，不得虚构。');
+    return (prompt||'')+L.join('\n');
+  }
+
   // 简易 Markdown 渲染（粗体、列表、段落），用于展示 LLM 返回
   function renderMarkdown(md){
     if(!md)return'';
@@ -453,7 +474,7 @@
   global.AI={
     FORBIDDEN,SENSITIVE,DISCLAIMER,TONES,PROVIDERS,
     detectSensitive,hasForbidden,sanitize,
-    buildSystemPrompt,buildUserPrompt,buildPrompt,buildMultiShuUserPrompt,
+    buildSystemPrompt,buildUserPrompt,buildPrompt,buildMultiShuUserPrompt,appendClassicsToPrompt,
     generateAI,
     callLLM,testConnection,applyProvider,
     normBaseUrl,buildRequestUrl,buildHeaders,buildBody,friendlyError,

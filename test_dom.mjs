@@ -86,10 +86,8 @@ d.getElementById('fTitle').value='这段关系要不要继续';
 d.getElementById('fTitle').dispatchEvent(new w.Event('input'));
 d.getElementById('nextStep').click();
 await sleep(30);
-ok('问事步骤3起课方式', pc.textContent.includes('当前时间自动起课'));
-d.getElementById('nextStep').click();
-await sleep(30);
-ok('问事步骤4术数选择', pc.textContent.includes('大六壬'));
+ok('问事步骤3术数选择', pc.textContent.includes('选择术数')||pc.textContent.includes('大六壬'));
+// 默认仅大六壬，无需信息补充，直接进入结果
 d.getElementById('nextStep').click();
 await sleep(60);
 ok('问事步骤5结果生成', pc.textContent.includes('大六壬盘面'));
@@ -153,8 +151,8 @@ d.getElementById('fTitle').value='投资能不能赚大钱';
 d.getElementById('fTitle').dispatchEvent(new w.Event('input'));
 d.getElementById('fDesc').value='能赚多少';
 d.getElementById('fDesc').dispatchEvent(new w.Event('input'));
-d.getElementById('nextStep').click();await sleep(30);
-d.getElementById('nextStep').click();await sleep(30);
+d.getElementById('nextStep').click();await sleep(30); // step2 -> step3
+// 默认仅大六壬，step3 直接生成结果
 d.getElementById('nextStep').click();await sleep(60);
 ok('敏感问题含提示', pc.textContent.includes('敏感')||pc.textContent.includes('投资有风险'));
 const aiText=pc.textContent;

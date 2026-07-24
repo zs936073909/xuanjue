@@ -34,6 +34,20 @@
     ke.dateStr=fmtDateTime(date);
     ke.scStr=sc.name+'（'+sc.range+'）';
     const plain=DaLiuRen.plainLang(ke,questionType);
+    // 依据来源：盘面规则
+    const sources=[];
+    const san=ke.sanChuan;
+    const TJ_JI=DaLiuRen.TJ_JI;
+    if(TJ_JI[san.chu.tj]>0)sources.push({type:'rule',text:'初传乘'+san.chu.tj+'，为吉将'});
+    if(TJ_JI[san.mo.tj]>0)sources.push({type:'rule',text:'末传乘'+san.mo.tj+'，结局向好'});
+    if(ke.kongWang.includes(san.chu.idx))sources.push({type:'rule',text:'初传落空亡，所谋恐虚'});
+    if(ke.isFanYin)sources.push({type:'rule',text:'返吟课，事多反复动摇'});
+    if(ke.isFuYin)sources.push({type:'rule',text:'伏吟课，事多伏匿不动'});
+    if(san.chu.tj==='玄武')sources.push({type:'rule',text:'初传乘玄武，防欺瞒失窃'});
+    if(san.chu.tj==='白虎')sources.push({type:'rule',text:'初传乘白虎，防病灾口舌'});
+    if(san.chu.tj==='贵人')sources.push({type:'rule',text:'贵人临传，可得助力'});
+    if(san.chu.tj==='青龙')sources.push({type:'rule',text:'青龙临传，有财喜文书之喜'});
+    plain.sources=sources;
     return{ke,plain,baZi,yj,sc};
   }
 
@@ -64,6 +78,7 @@
     if(state.tab==='home')c.innerHTML=pageHome();
     else if(state.tab==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
     else if(state.tab==='board')c.innerHTML=pageBoardCenter();
+    else if(state.tab==='classics')c.innerHTML=pageClassics();
     else if(state.tab==='case')c.innerHTML=pageCaseList();
     else if(state.tab==='me')c.innerHTML=pageMe();
     bindTab();
@@ -72,6 +87,7 @@
     if(state.tab==='home')bindHome();
     else if(state.tab==='ask')bindAsk();
     else if(state.tab==='board')bindBoardCenter();
+    else if(state.tab==='classics')bindClassics();
     else if(state.tab==='case')bindCaseList();
     else if(state.tab==='me')bindMe();
   }
@@ -145,16 +161,22 @@
   }
 
   // ================= 问事向导 =================
-  function newAsk(){return{step:1,bg:{questionType:'',title:'',desc:'',mood:'',urgent:'',hasOption:false,optA:'',optB:'',persons:'',other:'',adviceType:[]},method:'auto',methodTime:'',methodInput:'',shushu:['大六壬'],computed:null};}
+  function newAsk(){return{step:1,bg:{questionType:'',title:'',desc:'',mood:'',urgent:'',hasOption:false,optA:'',optB:'',persons:'',other:'',adviceType:[]},method:'auto',methodTime:'',methodInput:'',shushu:['大六壬'],extra:{birth:{gender:'',calendar:'solar',date:'',hour:'',unknownHour:false,place:'',zhenTaiyang:false},liuyao:{mode:'manual',yaos:[],manualStr:''},meihua:{mode:'time',input:''},tarot:{spread:'three'},xiaoliuren:{topic:''}},computed:null};}
   const TYPES=['感情关系','事业合作','学习考试','出行移动','签约交易','人际沟通','财务决策','健康倾向','失物寻找','二选一决策','其他'];
-  const METHODS=[['auto','当前时间自动起课'],['manual','手动选择时间'],['random','随机起卦'],['number','数字起卦'],['hanzi','汉字起卦'],['coin','硬币起卦'],['baoshu','报数起卦'],['recommend','自动推荐术数']];
+  const QIKE_METHODS=[['auto','当前时间自动起课'],['manual','手动选择时间'],['random','随机起卦'],['number','数字起卦'],['hanzi','汉字起卦'],['coin','硬币起卦'],['baoshu','报数起卦']];
+  const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数','奇门遁甲','星盘','黄历'];
+  const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字'];
+  const LIUYAO_MODES=[['manual','手动六次摇卦'],['auto','一键摇六爻'],['time','时间起卦'],['input','手动输入爻象']];
+  const MEIHUA_MODES=[['time','时间起卦'],['number','报数起卦'],['hanzi','汉字起卦'],['random','随机起卦']];
+  const TAROT_SPREADS=[['single','单张'],['three','三张'],['relation','关系'],['choice','二选一']];
+  const XLR_TOPICS=['求财','谋事','感情','出行','失物','等待消息','疾病倾向','人际沟通','其他'];
   const MOODS=['平静','焦虑','急切','犹豫','愤怒','期待','低落','迷茫'];
   const URGENT=['立即','今日','本周','不急'];
 
   function pageAsk(){
     const a=state.ask;const s=a.step;
     let steps='';
-    for(let i=1;i<=5;i++){const cls=i<s?'done':(i===s?'cur':'');steps+=`<div class="step-wrap ${i===s?'cur':''}"><div class="step-dot ${cls}">${i<s?'✓':i}</div><div class="stt">${['类型','背景','起课','术数','结果'][i-1]}</div></div>`;}
+    for(let i=1;i<=5;i++){const cls=i<s?'done':(i===s?'cur':'');steps+=`<div class="step-wrap ${i===s?'cur':''}"><div class="step-dot ${cls}">${i<s?'✓':i}</div><div class="stt">${['类型','背景','术数','信息','结果'][i-1]}</div></div>`;}
     let body='';
     if(s===1)body=askStep1(a);
     else if(s===2)body=askStep2(a);
@@ -186,33 +208,111 @@
     return h;
   }
   function askStep3(a){
-    let h='<div class="field"><label>选择起课方式</label><div class="chips">';
-    h+=METHODS.map(m=>`<span class="chip ${a.method===m[0]?'on':''}" data-method="${m[0]}">${m[1]}</span>`).join('');
+    let h='<div class="field"><label>选择术数（可多选）</label><div class="chips">';
+    h+=SHU_PRESET.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
     h+='</div></div>';
-    if(a.method==='manual')h+=`<div class="field"><label>起课时间</label><input type="datetime-local" id="fTime" value="${a.methodTime||fmtLocalDT(new Date())}"></div>`;
-    if(['number','baoshu'].includes(a.method))h+=`<div class="field"><label>输入数字（多个用逗号）</label><input type="text" id="fNum" value="${a.methodInput}" placeholder="如 3,8"></div>`;
-    if(a.method==='hanzi')h+=`<div class="field"><label>输入汉字</label><input type="text" id="fHan" value="${a.methodInput}" placeholder="如 玄"></div>`;
-    h+=`<div class="section-note">说明：大六壬以时间起课，数字/汉字/硬币方式将折算为占时。</div>`;
-    h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">下一步</button></div>`;
+    const isDl=a.shushu.includes('大六壬');
+    if(isDl){
+      h+=`<div class="field"><label>大六壬起课方式</label><div class="chips">`;
+      h+=QIKE_METHODS.map(m=>`<span class="chip ${a.method===m[0]?'on':''}" data-qike-method="${m[0]}">${m[1]}</span>`).join('');
+      h+=`</div></div>`;
+      if(a.method==='manual')h+=`<div class="field"><label>起课时间</label><input type="datetime-local" id="fTime" value="${a.methodTime||fmtLocalDT(new Date())}"></div>`;
+      if(['number','baoshu'].includes(a.method))h+=`<div class="field"><label>输入数字（多个用逗号）</label><input type="text" id="fNum" value="${a.methodInput}" placeholder="如 3,8"></div>`;
+      if(a.method==='hanzi')h+=`<div class="field"><label>输入汉字</label><input type="text" id="fHan" value="${a.methodInput}" placeholder="如 玄"></div>`;
+      h+=`<div class="section-note">说明：大六壬以时间起课，数字/汉字/硬币方式将折算为占时。</div>`;
+    }else{
+      h+=`<div class="section-note">提示：选择大六壬时可额外选择起课方式；其他术数将在下一步补充所需信息。</div>`;
+    }
+    h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">${a.shushu.some(s=>INFO_SHU.includes(s))?'下一步':'生成结果'}</button></div>`;
     return h;
   }
   function askStep4(a){
-    const PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数','奇门遁甲','星盘','黄历'];
-    let h='<div class="field"><label>选择使用术数（可多选）</label><div class="chips">';
-    h+=PRESET.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
-    h+='</div></div>';
-    h+=`<button class="btn block" id="presetDefault">应用默认推荐组合（大六壬主盘）</button>`;
-    h+=`<div class="section-note">注：V0.1 仅大六壬完整排盘可用，其余术数为简化参考。多选将生成主盘+辅盘交叉摘要。</div>`;
+    const selected=a.shushu;
+    let h='';
+    if(selected.includes('八字'))h+=renderBirthForm(a.extra.birth);
+    if(selected.includes('六爻'))h+=renderLiuYaoForm(a.extra.liuyao);
+    if(selected.includes('小六壬'))h+=renderXiaoLiuRenForm(a.extra.xiaoliuren);
+    if(selected.includes('梅花易数'))h+=renderMeiHuaForm(a.extra.meihua);
+    if(selected.includes('塔罗'))h+=renderTarotForm(a.extra.tarot);
+    if(!h)h='<div class="section-note">所选术数无需补充信息，可直接生成结果。</div>';
     h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">生成结果</button></div>`;
     return h;
   }
   function askStep5(a){return renderResult(a);}
+  // ---------- step4 各术数信息补充表单 ----------
+  function renderBirthForm(b){
+    let h=`<div class="card"><h3>八字 · 出生信息</h3>`;
+    h+=`<div class="field"><label>性别</label><div class="chips">${['男','女'].map(g=>`<span class="chip ${b.gender===g?'on':''}" data-birth-gender="${g}">${g}</span>`).join('')}</div></div>`;
+    h+=`<div class="field"><label>历法</label><div class="chips">${[['solar','公历'],['lunar','农历']].map(m=>`<span class="chip ${b.calendar===m[0]?'on':''}" data-birth-calendar="${m[0]}">${m[1]}</span>`).join('')}</div></div>`;
+    h+=`<div class="field"><label>出生日期</label><input type="date" id="fBirthDate" value="${b.date||''}"></div>`;
+    h+=`<div class="field"><label>出生时辰</label><input type="time" id="fBirthHour" value="${b.hour||''}" ${b.unknownHour?'disabled':''}></div>`;
+    h+=`<div class="switch"><span>时辰未知</span><input type="checkbox" id="fBirthUnknownHour" ${b.unknownHour?'checked':''}></div>`;
+    h+=`<div class="field"><label>出生地点</label><input type="text" id="fBirthPlace" value="${b.place||''}" placeholder="如 北京市"></div>`;
+    h+=`<div class="switch"><span>使用真太阳时</span><input type="checkbox" id="fBirthZhenTaiyang" ${b.zhenTaiyang?'checked':''}></div>`;
+    h+=`</div>`;
+    return h;
+  }
+  function yaoName(v){return {6:'老阴',7:'少阳',8:'少阴',9:'老阳'}[v]||'?';}
+  function yaoSymStr(y){return y.yang?'▬▬▬':'▬ ▬';}
+  function randomYao(){const v=Math.floor(Math.random()*4)+6;return {val:v,yang:v%2===1,dong:v===6||v===9};}
+  function parseYaoInput(str){const nums=str.split(/[,，\s]/).filter(x=>x!=='').map(x=>parseInt(x)).filter(x=>!isNaN(x)&&x>=6&&x<=9);if(nums.length!==6)return null;return nums.map(v=>({val:v,yang:v%2===1,dong:v===6||v===9}));}
+  function renderLiuYaoForm(l){
+    let h=`<div class="card"><h3>六爻 · 摇卦</h3>`;
+    h+=`<div class="field"><label>摇卦方式</label><div class="chips">${LIUYAO_MODES.map(m=>`<span class="chip ${l.mode===m[0]?'on':''}" data-liuyao-mode="${m[0]}">${m[1]}</span>`).join('')}</div></div>`;
+    if(l.mode==='manual'){
+      h+=`<div class="yao-roll">`;
+      for(let i=0;i<6;i++){
+        const y=l.yaos[i];
+        if(y)h+=`<div class="yao-roll-item"><span class="yl-idx">第${i+1}摇</span><span class="yl-sym">${yaoSymStr(y)}</span><span class="yl-name ${y.dong?'dong':''}">${yaoName(y.val)}</span></div>`;
+        else{h+=`<button class="btn primary sm" id="fYaoBtn_${i}">摇第${i+1}爻</button>`;break;}
+      }
+      if(l.yaos.length===6)h+=`<button class="btn primary block mt8" id="fLiuYaoDone">完成摇卦</button>`;
+      h+=`</div>`;
+    }else if(l.mode==='auto'){
+      h+=`<div class="section-note">一键随机生成六个爻象。</div>`;
+      h+=`<button class="btn primary block mt8" id="fLiuYaoAuto">一键摇六爻</button>`;
+      if(l.yaos.length===6)h+=`<div class="yao-roll mt8">${l.yaos.map((y,i)=>`<div class="yao-roll-item"><span class="yl-idx">第${i+1}摇</span><span class="yl-sym">${yaoSymStr(y)}</span><span class="yl-name ${y.dong?'dong':''}">${yaoName(y.val)}</span></div>`).join('')}</div>`;
+    }else if(l.mode==='time'){
+      h+=`<div class="section-note">将使用当前/选定的起课时间生成六爻。</div>`;
+      h+=`<button class="btn primary block mt8" id="fLiuYaoTime">按时间起卦</button>`;
+      if(l.yaos.length===6)h+=`<div class="yao-roll mt8">${l.yaos.map((y,i)=>`<div class="yao-roll-item"><span class="yl-idx">第${i+1}摇</span><span class="yl-sym">${yaoSymStr(y)}</span><span class="yl-name ${y.dong?'dong':''}">${yaoName(y.val)}</span></div>`).join('')}</div>`;
+    }else if(l.mode==='input'){
+      h+=`<div class="field"><label>输入六个爻象（6-9，用逗号分隔）</label><input type="text" id="fLiuYaoInput" value="${l.manualStr||''}" placeholder="如 7,8,6,9,8,7"></div>`;
+      if(l.yaos.length===6)h+=`<div class="yao-roll mt8">${l.yaos.map((y,i)=>`<div class="yao-roll-item"><span class="yl-idx">第${i+1}摇</span><span class="yl-sym">${yaoSymStr(y)}</span><span class="yl-name ${y.dong?'dong':''}">${yaoName(y.val)}</span></div>`).join('')}</div>`;
+    }
+    h+=`</div>`;
+    return h;
+  }
+  function renderMeiHuaForm(m){
+    let h=`<div class="card"><h3>梅花易数 · 起卦</h3>`;
+    h+=`<div class="field"><label>起卦方式</label><div class="chips">${MEIHUA_MODES.map(x=>`<span class="chip ${m.mode===x[0]?'on':''}" data-meihua-mode="${x[0]}">${x[1]}</span>`).join('')}</div></div>`;
+    if(m.mode==='number')h+=`<div class="field"><label>报数（多个用逗号）</label><input type="text" id="fMeiHuaInput" value="${m.input||''}" placeholder="如 3,8"></div>`;
+    if(m.mode==='hanzi')h+=`<div class="field"><label>汉字</label><input type="text" id="fMeiHuaInput" value="${m.input||''}" placeholder="如 玄"></div>`;
+    if(m.mode==='random')h+=`<div class="section-note">将由系统随机取数起卦。</div>`;
+    if(m.mode==='time')h+=`<div class="section-note">以当前/选定时间起卦。</div>`;
+    h+=`</div>`;
+    return h;
+  }
+  function renderTarotForm(t){
+    let h=`<div class="card"><h3>塔罗 · 牌阵</h3>`;
+    h+=`<div class="field"><label>选择牌阵</label><div class="chips">${TAROT_SPREADS.map(x=>`<span class="chip ${t.spread===x[0]?'on':''}" data-tarot-spread="${x[0]}">${x[1]}</span>`).join('')}</div></div>`;
+    h+=`</div>`;
+    return h;
+  }
+  function renderXiaoLiuRenForm(x){
+    let h=`<div class="card"><h3>小六壬 · 问事主题</h3>`;
+    h+=`<div class="field"><label>选择主题（可选，用于细化解读）</label><div class="chips">${XLR_TOPICS.map(t=>`<span class="chip ${x.topic===t?'on':''}" data-xlr-topic="${t}">${t}</span>`).join('')}</div></div>`;
+    h+=`</div>`;
+    return h;
+  }
   function fmtLocalDT(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
 
   function bindAsk(){
     const a=state.ask;
     // step1
-    document.querySelectorAll('[data-type]').forEach(e=>{if(state.ask.step===1)e.onclick=()=>{a.bg.questionType=e.dataset.type;renderTab();};});
+    if(a.step===1){
+      document.querySelectorAll('[data-type]').forEach(e=>e.onclick=()=>{a.bg.questionType=e.dataset.type;renderTab();});
+    }
     // step2 chips
     if(a.step===2){
       document.querySelectorAll('[data-mood]').forEach(e=>e.onclick=()=>{a.bg.mood=a.bg.mood===e.dataset.mood?'':e.dataset.mood;renderTab();});
@@ -226,22 +326,73 @@
       $('#fPersons').oninput=ev=>a.bg.persons=ev.target.value;
       $('#fOther').oninput=ev=>a.bg.other=ev.target.value;
     }
-    // step3
+    // step3：术数选择 + 大六壬起课方式
     if(a.step===3){
-      document.querySelectorAll('[data-method]').forEach(e=>e.onclick=()=>{a.method=e.dataset.method;renderTab();});
-      if(a.method==='manual')a.methodTime=$('#fTime')?$('#fTime').value:a.methodTime;
-      if(['number','baoshu'].includes(a.method)&&$('#fNum'))a.methodInput=$('#fNum').value;
-      if(a.method==='hanzi'&&$('#fHan'))a.methodInput=$('#fHan').value;
-    }
-    // step4
-    if(a.step===4){
       document.querySelectorAll('[data-shu]').forEach(e=>e.onclick=()=>{const s=e.dataset.shu;const i=a.shushu.indexOf(s);if(i>=0)a.shushu.splice(i,1);else a.shushu.push(s);renderTab();});
-      const pd=$('#presetDefault');if(pd)pd.onclick=()=>{a.shushu=['大六壬'];renderTab();};
+      document.querySelectorAll('[data-qike-method]').forEach(e=>e.onclick=()=>{a.method=e.dataset.qikeMethod;renderTab();});
+      const fTime=$('#fTime');if(fTime)fTime.onchange=ev=>a.methodTime=ev.target.value;
+      const fNum=$('#fNum');if(fNum)fNum.oninput=ev=>a.methodInput=ev.target.value;
+      const fHan=$('#fHan');if(fHan)fHan.oninput=ev=>a.methodInput=ev.target.value;
+    }
+    // step4：按术数补充信息
+    if(a.step===4){
+      bindStep4(a);
     }
     // nav
     const next=$('#nextStep'),prev=$('#prevStep');
     if(next)next.onclick=()=>goNext();
     if(prev)prev.onclick=()=>{state.ask.step--;renderTab();};
+  }
+  function bindStep4(a){
+    // 八字
+    document.querySelectorAll('[data-birth-gender]').forEach(e=>e.onclick=()=>{a.extra.birth.gender=e.dataset.birthGender;renderTab();});
+    document.querySelectorAll('[data-birth-calendar]').forEach(e=>e.onclick=()=>{a.extra.birth.calendar=e.dataset.birthCalendar;renderTab();});
+    const fBirthDate=$('#fBirthDate');if(fBirthDate)fBirthDate.onchange=ev=>a.extra.birth.date=ev.target.value;
+    const fBirthHour=$('#fBirthHour');if(fBirthHour)fBirthHour.onchange=ev=>a.extra.birth.hour=ev.target.value;
+    const fBirthUnknown=$('#fBirthUnknownHour');if(fBirthUnknown)fBirthUnknown.onchange=ev=>{a.extra.birth.unknownHour=ev.target.checked;renderTab();};
+    const fBirthPlace=$('#fBirthPlace');if(fBirthPlace)fBirthPlace.oninput=ev=>a.extra.birth.place=ev.target.value;
+    const fBirthZhen=$('#fBirthZhenTaiyang');if(fBirthZhen)fBirthZhen.onchange=ev=>a.extra.birth.zhenTaiyang=ev.target.checked;
+    // 六爻
+    document.querySelectorAll('[data-liuyao-mode]').forEach(e=>e.onclick=()=>{a.extra.liuyao.mode=e.dataset.liuyaoMode;a.extra.liuyao.yaos=[];a.extra.liuyao.manualStr='';renderTab();});
+    for(let i=0;i<6;i++){
+      const btn=$('#fYaoBtn_'+i);
+      if(btn)btn.onclick=()=>{a.extra.liuyao.yaos.push(randomYao());renderTab();};
+    }
+    const doneBtn=$('#fLiuYaoDone');if(doneBtn)doneBtn.onclick=()=>{/* 完成摇卦为视觉确认 */};
+    const autoBtn=$('#fLiuYaoAuto');if(autoBtn)autoBtn.onclick=()=>{a.extra.liuyao.yaos=Array.from({length:6},randomYao);renderTab();};
+    const timeBtn=$('#fLiuYaoTime');if(timeBtn)timeBtn.onclick=()=>{
+      const date=resolveZhanTime(a);
+      const r=ShuShu.compute('六爻',date);
+      if(r&&r.result&&r.result.yaos){a.extra.liuyao.yaos=r.result.yaos;}
+      else{a.extra.liuyao.yaos=Array.from({length:6},randomYao);}
+      renderTab();
+    };
+    const lyInput=$('#fLiuYaoInput');if(lyInput)lyInput.oninput=ev=>{
+      a.extra.liuyao.manualStr=ev.target.value;
+      const yaos=parseYaoInput(ev.target.value);
+      a.extra.liuyao.yaos=yaos||[];
+    };
+    // 梅花
+    document.querySelectorAll('[data-meihua-mode]').forEach(e=>e.onclick=()=>{a.extra.meihua.mode=e.dataset.meihuaMode;a.extra.meihua.input='';renderTab();});
+    const mhInput=$('#fMeiHuaInput');if(mhInput)mhInput.oninput=ev=>a.extra.meihua.input=ev.target.value;
+    // 塔罗
+    document.querySelectorAll('[data-tarot-spread]').forEach(e=>e.onclick=()=>{a.extra.tarot.spread=e.dataset.tarotSpread;renderTab();});
+    // 小六壬
+    document.querySelectorAll('[data-xlr-topic]').forEach(e=>e.onclick=()=>{a.extra.xiaoliuren.topic=e.dataset.xlrTopic;renderTab();});
+  }
+  function collectStep4(a){
+    const b=a.extra.birth;
+    const fDate=$('#fBirthDate');if(fDate)b.date=fDate.value;
+    const fHour=$('#fBirthHour');if(fHour)b.hour=fHour.value;
+    const fUnknown=$('#fBirthUnknownHour');if(fUnknown)b.unknownHour=fUnknown.checked;
+    const fPlace=$('#fBirthPlace');if(fPlace)b.place=fPlace.value;
+    const fZhen=$('#fBirthZhenTaiyang');if(fZhen)b.zhenTaiyang=fZhen.checked;
+    const lyInput=$('#fLiuYaoInput');if(lyInput){
+      a.extra.liuyao.manualStr=lyInput.value;
+      const yaos=parseYaoInput(lyInput.value);
+      if(yaos)a.extra.liuyao.yaos=yaos;
+    }
+    const mhInput=$('#fMeiHuaInput');if(mhInput)a.extra.meihua.input=mhInput.value;
   }
   function goNext(){
     const a=state.ask;
@@ -251,17 +402,22 @@
       a.step=3;renderTab();return;
     }
     if(a.step===3){
-      // 收集 step3 输入
-      if(a.method==='manual'&&$('#fTime'))a.methodTime=$('#fTime').value;
-      if(['number','baoshu'].includes(a.method)&&$('#fNum'))a.methodInput=$('#fNum').value;
-      if(a.method==='hanzi'&&$('#fHan'))a.methodInput=$('#fHan').value;
-      a.step=4;renderTab();return;
+      // 收集大六壬起课输入
+      if(a.shushu.includes('大六壬')){
+        if(a.method==='manual'&&$('#fTime'))a.methodTime=$('#fTime').value;
+        if(['number','baoshu'].includes(a.method)&&$('#fNum'))a.methodInput=$('#fNum').value;
+        if(a.method==='hanzi'&&$('#fHan'))a.methodInput=$('#fHan').value;
+      }
+      if(!a.shushu.length){toast('请至少选择一种术数');return;}
+      const needInfo=a.shushu.some(s=>INFO_SHU.includes(s));
+      if(needInfo){a.step=4;renderTab();return;}
+      a.computed=computeAskResult(a);a.step=5;renderTab();return;
     }
     if(a.step===4){
-      if(!a.shushu.length){toast('请至少选择一种术数');return;}
-      // 计算
-      a.computed=computeAskResult(a);
-      a.step=5;renderTab();return;
+      collectStep4(a);
+      if(a.shushu.includes('六爻')&&a.extra.liuyao.yaos.length!==6){toast('请完成六爻摇卦');return;}
+      if(a.shushu.includes('八字')&&!a.extra.birth.date){toast('请填写八字出生日期');return;}
+      a.computed=computeAskResult(a);a.step=5;renderTab();return;
     }
   }
   function resolveZhanTime(a){
@@ -283,14 +439,41 @@
   }
   function computeAskResult(a){
     const date=resolveZhanTime(a);
-    const comp=computeDaliuren(date,a.bg.questionType);
-    state.currentKe=comp;
-    // 同时计算所选其它术数
+    // 大六壬
+    const comp=a.shushu.includes('大六壬')?computeDaliuren(date,a.bg.questionType):null;
+    if(comp)state.currentKe=comp;
+    // 其它术数
     const shushuResults={};
     a.shushu.forEach(s=>{
-      if(s!=='大六壬'){const r=ShuShu.compute(s,date);if(r)shushuResults[s]=r;}
+      if(s==='大六壬')return;
+      let r=null;
+      if(s==='八字'){
+        const b=a.extra.birth;
+        if(b.date){
+          const d=new Date(b.date+(b.hour?'T'+b.hour:''));
+          r=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):ShuShu.compute('八字',d);
+        }
+      }else if(s==='六爻'){
+        const ly=a.extra.liuyao;
+        if(ly.yaos.length===6){
+          r=ShuShu.liuYaoByYaos?ShuShu.liuYaoByYaos(ly.yaos,a.bg.questionType,a.extra):ShuShu.compute('六爻',date);
+          if(r&&r.result){r.result.yaos=ly.yaos;}
+        }else{r=ShuShu.compute('六爻',date);}
+      }else if(s==='梅花易数'){
+        const mh=a.extra.meihua;
+        r=ShuShu.meiHuaByInput?ShuShu.meiHuaByInput(mh.mode,mh.input,a.bg.questionType,date):ShuShu.compute('梅花易数',date);
+      }else if(s==='小六壬'){
+        r=ShuShu.compute('小六壬',date);
+        if(r&&r.plain&&a.extra.xiaoliuren.topic){r.plain.state+='（问事主题：'+a.extra.xiaoliuren.topic+'）';}
+      }else if(s==='塔罗'){
+        r=ShuShu.compute('塔罗',date);
+        if(r&&r.result){r.result.spread=a.extra.tarot.spread;}
+      }else{
+        r=ShuShu.compute(s,date);
+      }
+      if(r){shushuResults[s]=r;}
     });
-    return{date,comp,shushu:a.shushu,shushuResults};
+    return{date,comp,shushu:a.shushu,shushuResults,extra:a.extra};
   }
   function renderResult(a){
     const c=a.computed;
@@ -299,8 +482,8 @@
     if(sensitive){
       h+=`<div class="card"><div class="warn-text">检测到敏感关键词「${sensitive.keyword}」。</div><div class="section-note">${sensitiveHint(sensitive.cat)}</div></div>`;
     }
-    // 纯术数盘面（盘面中心入口）
-    if(c.shushu&&!c.comp){
+    // 盘面中心入口：单一术数结果对象（兼容旧数据结构）
+    if(c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name && !c.comp){
       h+=renderShuShuResult(c.shushu);
       h+=`<div class="card"><h3>操作</h3>`;
       h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
@@ -309,31 +492,59 @@
       setTimeout(()=>bindResult(a),20);
       return h;
     }
-    const p=c.comp.plain;
-    h+=renderDaliurenResult(c.comp);
-    // 其它术数辅盘
-    const others=a.shushu.filter(s=>s!=='大六壬');
-    if(others.length){
-      h+=`<div class="card"><h3>其它术数辅盘</h3>`;
-      others.forEach(s=>{
-        const r=c.shushuResults&&c.shushuResults[s];
-        if(r){h+=renderShuShuResult(r);}
-        else{h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">${crossHint(s,p)}</div></div>`;}
-      });
-      h+=`</div>`;
+    let mainPlain=null;
+    if(c.comp){
+      mainPlain=c.comp.plain;
+      h+=renderDaliurenResult(c.comp);
+      // 其它术数辅盘
+      const others=a.shushu.filter(s=>s!=='大六壬');
+      if(others.length && c.shushuResults){
+        h+=`<div class="card"><h3>其它术数辅盘</h3>`;
+        others.forEach(s=>{
+          const r=c.shushuResults[s];
+          if(r){h+=renderShuShuResult(r);}
+          else{h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">${crossHint(s,mainPlain)}</div></div>`;}
+        });
+        h+=`</div>`;
+      }
+    }else if(c.shushuResults){
+      // 无主盘，取第一个有结果的术数做主盘
+      const mainName=a.shushu.find(s=>c.shushuResults[s]);
+      if(mainName){
+        mainPlain=c.shushuResults[mainName].plain;
+        h+=renderShuShuResult(c.shushuResults[mainName]);
+        const others=a.shushu.filter(s=>s!==mainName);
+        if(others.length){
+          h+=`<div class="card"><h3>其它术数辅盘</h3>`;
+          others.forEach(s=>{
+            const r=c.shushuResults[s];
+            if(r)h+=renderShuShuResult(r);
+            else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">参考占位</div></div>`;
+          });
+          h+=`</div>`;
+        }
+      }else{
+        h+=`<div class="card"><div class="warn-text">未能生成术数结果</div></div>`;
+      }
+    }else{
+      h+=`<div class="card"><div class="warn-text">暂无计算结果</div></div>`;
     }
     // 多盘交叉
-    if(others.length){
+    if(c.comp && c.shushuResults && Object.keys(c.shushuResults).length>0){
       h+=`<div class="card"><h3>多盘交叉摘要</h3>`;
       h+=renderCross(a);
       h+=`</div>`;
     }
     h+=`<div class="card"><h3>操作</h3>`;
     h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
-    h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 深度解读</button>`;
-    h+=`<button class="btn block mt8" id="btnCopyPrompt">复制 AI 提示词</button>`;
+    if(c.comp){
+      h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 深度解读</button>`;
+      h+=`<button class="btn block mt8" id="btnCopyPrompt">复制 AI 提示词</button>`;
+    }
     h+=`<button class="btn block mt8" id="btnExportBoard">导出盘面（文本）</button>`;
-    h+=`<div class="section-note">复盘提醒：约 ${p.reviewDays} 日后（系统将出现在首页与案例库）</div>`;
+    if(mainPlain){
+      h+=`<div class="section-note">复盘提醒：约 ${mainPlain.reviewDays} 日后（系统将出现在首页与案例库）</div>`;
+    }
     h+=`</div>`;
     // AI 深度解读输出区（按需展开）
     h+=`<div class="card ai-output-card hidden" id="aiOutputCard"><h3>AI 深度解读 <span class="ai-badge" id="aiModelBadge">${a.computed&&a.computed.comp?'':'模型'}</span></h3><div id="aiOutput" class="ai-output"></div></div>`;
@@ -360,6 +571,21 @@
     h+=`<div class="plain-card"><div class="pc-t">建议行动</div><div class="pc-c">${p.doAct.join('；')}</div></div>`;
     h+=`<div class="plain-card"><div class="pc-t">不建议行动</div><div class="pc-c">${p.dontAct.join('；')}</div></div>`;
     h+=`<div class="plain-card"><div class="pc-t">观察信号</div><div class="pc-c">${p.signals.join('；')}</div></div>`;
+    h+=`</div>`;
+    h+=renderSourcesPanel(p);
+    return h;
+  }
+  function renderSourcesPanel(plain){
+    const sources=(plain&&plain.sources)||[];
+    const rules=sources.filter(s=>s.type==='rule');
+    let h=`<div class="card"><h3>依据来源</h3>`;
+    if(rules.length){
+      h+=`<div class="source-sec"><div class="source-sec-title">盘面规则</div>`;
+      rules.forEach(r=>{h+=`<div class="source-item"><span class="source-tag rule">规则</span><span>${r.text||r.content||r.name||''}</span></div>`;});
+      h+=`</div>`;
+    }
+    h+=`<div class="source-sec"><div class="source-sec-title">AI 推断说明</div><div class="source-item"><span class="source-tag ai">AI</span>本解读由离线规则引擎结合问题背景生成，未调用远程模型时仅作参考，不构成确定性预测。</div></div>`;
+    h+=`<div class="source-sec"><div class="source-sec-title">古籍引用</div><div class="source-item classics-placeholder">后续由 classics.js 注入《六壬大全》《梅花易数》《渊海子平》等古籍原文。</div></div>`;
     h+=`</div>`;
     return h;
   }
@@ -493,7 +719,13 @@
     const btnCopy=$('#btnCopyPrompt');
     if(btnCopy&&comp)btnCopy.onclick=()=>{const txt=AI.buildPrompt(comp.ke,comp.plain,a.bg,Store.getSettings());copyText(txt);toast('AI 提示词已复制到剪贴板');};
     const btnExp=$('#btnExportBoard');
-    if(btnExp)btnExp.onclick=()=>{if(comp)exportBoardText(comp);else exportShuShuText(c.shushu);};
+    if(btnExp)btnExp.onclick=()=>{
+      if(comp)exportBoardText(comp);
+      else if(c.shushuResults){
+        const firstName=a.shushu.find(s=>c.shushuResults[s]);
+        if(firstName)exportShuShuText(c.shushuResults[firstName]);
+      }
+    };
     // AI 深度解读
     const btnAI=$('#btnAIDeep');
     if(btnAI)btnAI.onclick=()=>runAIDeepRead(a);
@@ -520,9 +752,21 @@
     if(badge)badge.textContent=cfg.aiModel||'模型';
     out.innerHTML='<div class="ai-pending">正在调用 AI（'+cfg.aiProvider+' · '+cfg.aiModel+'）…</div>';
     try{
+      // RAG：从古籍知识库检索相关段落并注入用户 prompt
+      let userPrompt=AI.buildMultiShuUserPrompt(c.comp,c.shushuResults,a.bg,cfg);
+      try{
+        ClassicLibrary.loadIndex();
+        const shuNames=Object.keys(c.shushuResults||{});
+        if(a.shushu&&a.shushu.length){
+          a.shushu.forEach(s=>{if(!shuNames.includes(s))shuNames.push(s);});
+        }
+        const q=[a.bg.questionType,a.bg.title,a.bg.desc].filter(Boolean).join(' ');
+        const ragPassages=ClassicLibrary.search({shushu:shuNames,query:q,limit:5});
+        userPrompt=AI.appendClassicsToPrompt(userPrompt,ragPassages);
+      }catch(e){/* 古籍检索失败不阻塞主流程 */}
       const messages=[
         {role:'system',content:AI.buildSystemPrompt(cfg)},
-        {role:'user',content:AI.buildMultiShuUserPrompt(c.comp,c.shushuResults,a.bg,cfg)}
+        {role:'user',content:userPrompt}
       ];
       const opts={stream:cfg.aiStream!==false,signal:_aiAbort.signal};
       if(opts.stream){
@@ -596,6 +840,7 @@
       h+=renderPlainBoard(p);
     }
     h+=renderAIBlock(comp,a_state_bg());
+    h+=renderSourcesPanel(p);
     return h;
   }
   function a_state_bg(){return state.ask?state.ask.bg:{questionType:'其他'};}
@@ -652,17 +897,25 @@
   // ---------- 保存案例 ----------
   function saveCurrentAsCase(a){
     const c=a.computed;
-    const isShuOnly=!!(c.shushu&&!c.comp);
-    const plain=isShuOnly?c.shushu.plain:c.comp.plain;
-    const title=(a.bg.title&&a.bg.title.trim())||((isShuOnly?c.shushu.name:'大六壬')+'盘 · '+fmtDateTime(c.date||new Date()));
+    // 兼容盘面中心旧数据结构：computed.shushu 为单一术数结果对象
+    const isLegacyShu=c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name;
+    const hasResults=c.shushuResults && Object.keys(c.shushuResults).length>0;
+    const isShuOnly=isLegacyShu || (!c.comp && hasResults);
+    let plain=null,mainName=null;
+    if(c.comp){plain=c.comp.plain;}
+    else if(isLegacyShu){plain=c.shushu.plain;mainName=c.shushu.name;}
+    else if(hasResults){mainName=a.shushu.find(s=>c.shushuResults[s]);plain=mainName?c.shushuResults[mainName].plain:null;}
+    if(!plain)plain={state:'',tendency:'—',doAct:[],dontAct:[],risks:[],signals:[],env:'',reviewDays:7};
+    const title=(a.bg.title&&a.bg.title.trim())||((isShuOnly?(mainName||c.shushu.name||'术数'):'大六壬')+'盘 · '+fmtDateTime(c.date||new Date()));
     const obj={
       id:Store.genId(),createdAt:Date.now(),
       title,questionType:a.bg.questionType||'其他',desc:a.bg.desc||'',mood:a.bg.mood||'',urgent:a.bg.urgent||'',
       hasOption:a.bg.hasOption||false,optA:a.bg.optA||'',optB:a.bg.optB||'',persons:a.bg.persons||'',other:a.bg.other||'',adviceType:a.bg.adviceType||[],
       shushu:a.shushu.join('、'),method:a.method||'auto',
       qikeTime:(c.date||new Date()).toISOString(),qikePlace:'',
-      board:isShuOnly?null:serializeKe(c.comp),
-      shushuBoard:isShuOnly?serializeShu(c.shushu):(c.shushuResults?serializeShuResults(c.shushuResults):null),
+      extra:a.extra||null,
+      board:c.comp?serializeKe(c.comp):null,
+      shushuBoard:isLegacyShu?serializeShu(c.shushu):(c.shushuResults?serializeShuResults(c.shushuResults):null),
       plain,
       myJudge:'',actions:[],signals:plain.signals,
       reviewDue:Date.now()+plain.reviewDays*86400000,
@@ -784,7 +1037,7 @@
   }
   // P1 术数盘面展示（复用 ask 渠道）
   function showShuShuBoard(res){
-    state.ask={bg:{questionType:'其他'},computed:{shushu:res},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true};
+    state.ask={bg:{questionType:'其他'},computed:{shushuResults:{[res.name]:res},shushu:[res.name]},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true};
     state.tab='ask';renderTab();
     setTimeout(()=>bindResult(state.ask),30);
   }
@@ -1100,6 +1353,81 @@
       r.readAsText(f);
     };
     inp.click();
+  }
+
+  // ================= 典籍 / 古籍知识库 =================
+  const CLASSIC_FAV_KEY='xuanjue_classics_fav';
+  function getClassicFavs(){try{return JSON.parse(localStorage.getItem(CLASSIC_FAV_KEY)||'[]');}catch(e){return [];}}
+  function saveClassicFavs(arr){localStorage.setItem(CLASSIC_FAV_KEY,JSON.stringify(arr||[]));}
+  function _passageMatches(p,q){
+    if(!q)return true;
+    const s=((p.text||'')+' '+(p.comment||'')+' '+(p.scenario||'')+' '+(p.tags||[]).join(' ')).toLowerCase();
+    return q.toLowerCase().split(/\s+/).filter(Boolean).every(t=>s.includes(t));
+  }
+
+  function pageClassics(){
+    if(!state.classics) state.classics={cat:'',book:'',q:'',favOnly:false};
+    const f=state.classics;
+    const idx=ClassicLibrary.loadIndex();
+    // 若索引异步返回 Promise，加载完成后再渲染一次
+    if(idx&&typeof idx.then==='function'){idx.then(()=>{if(state.tab==='classics')renderTab();});}
+    const books=(idx&&idx.books)||[];
+    const cats=['六爻','八字','梅花','大六壬','小六壬','塔罗'];
+    const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const favs=getClassicFavs();
+
+    let passages=[];
+    if(f.book){
+      const bd=ClassicLibrary.loadBook(f.book);
+      passages=(bd&&bd.passages)||[];
+    }else{
+      passages=ClassicLibrary.search({shushu:f.cat||undefined,query:f.q||undefined,limit:40});
+    }
+    if(f.q)passages=passages.filter(p=>_passageMatches(p,f.q));
+    if(f.favOnly)passages=passages.filter(p=>favs.includes(p.id));
+
+    let h='';
+    h+=`<div class="phead"><div><div class="ptitle">典籍</div><div class="psub">古籍知识库 · RAG 检索</div></div><div class="psub">已收录 ${books.length} 本</div></div>`;
+    h+=`<div class="card classic-search"><input type="text" id="classicQuery" placeholder="搜索关键词，如「求财」「青龙」「用神」..." value="${esc(f.q)}"></div>`;
+    h+=`<div class="card"><h3>按术数</h3><div class="classic-cats">${cats.map(c=>`<span class="chip ${f.cat===c?'on':''}" data-cat="${c}">${c}</span>`).join('')}</div></div>`;
+    const showBooks=f.cat?books.filter(b=>b.shushu===f.cat):books;
+    h+=`<div class="card"><h3>按书名</h3><div class="classic-books filter-bar">${showBooks.map(b=>`<span class="chip ${f.book===b.id?'on':''}" data-book="${b.id}">${esc(b.title)}</span>`).join('')}</div></div>`;
+    h+=`<div class="card"><h3>检索结果 <span style="font-size:11px;color:var(--muted)">(${passages.length})</span></h3>`;
+    if(!passages.length){
+      h+=`<div class="empty">未找到相关段落，请尝试其他关键词或分类</div>`;
+    }else{
+      passages.forEach(p=>{
+        const isFav=favs.includes(p.id);
+        h+=`<div class="classic-card" data-pid="${esc(p.id)}">`;
+        h+=`<div class="citation-box">${esc(ClassicLibrary.formatCitation(p))}</div>`;
+        h+=`<div class="classic-text">${esc(p.text)}</div>`;
+        if(p.comment)h+=`<div class="classic-comment"><span class="pc-t">白话注解</span>${esc(p.comment)}</div>`;
+        h+=`<div class="classic-tags">${(p.tags||[]).map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`;
+        h+=`<div class="classic-actions"><button class="btn sm btn-fav ${isFav?'on':''}" data-fav="${esc(p.id)}">${isFav?'已收藏':'收藏'}</button></div>`;
+        h+=`</div>`;
+      });
+    }
+    h+=`</div>`;
+    return h;
+  }
+
+  function bindClassics(){
+    const q=$('#classicQuery');
+    if(q){
+      let timer=null;
+      q.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{state.classics.q=q.value.trim();renderTab();},250);};
+      q.onkeydown=e=>{if(e.key==='Enter'){clearTimeout(timer);state.classics.q=q.value.trim();renderTab();}};
+    }
+    document.querySelectorAll('.classic-cats .chip[data-cat]').forEach(el=>el.onclick=()=>{state.classics.cat=el.dataset.cat;state.classics.book='';renderTab();});
+    document.querySelectorAll('.classic-books .chip[data-book]').forEach(el=>el.onclick=()=>{state.classics.book=el.dataset.book;renderTab();});
+    document.querySelectorAll('.btn-fav[data-fav]').forEach(el=>el.onclick=()=>{
+      const id=el.dataset.fav;
+      const favs=getClassicFavs();
+      const i=favs.indexOf(id);
+      if(i>=0)favs.splice(i,1);else favs.push(id);
+      saveClassicFavs(favs);
+      renderTab();
+    });
   }
 
   // boot
