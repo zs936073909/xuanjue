@@ -117,11 +117,12 @@ d.querySelector('.tab[data-tab="case"]').click();
 await sleep(40);
 ok('案例列表显示案例', pc.textContent.includes('这段关系要不要继续'));
 ok('案例列表含已复盘统计', pc.textContent.includes('已复盘'));
-// 复盘统计
+// 复盘统计（T1 改为独立页面）
 d.getElementById('btnStat').click();
 await sleep(40);
-ok('统计弹窗显示准确率', d.querySelector('.modal').textContent.includes('准确率'));
-d.querySelector('.modal .btn.ghost').click(); // 关闭
+ok('统计页显示应验率', pc.textContent.includes('应验率')||pc.textContent.includes('准确率'));
+// 返回案例列表
+d.querySelector('.tab[data-tab="case"]').click();
 await sleep(30);
 
 // 8. 我的 / 设置
@@ -131,7 +132,7 @@ ok('我的页含术数设置', pc.textContent.includes('术数设置'));
 ok('我的页含AI设置', pc.textContent.includes('AI 设置'));
 ok('我的页含隐私', pc.textContent.includes('隐私与安全'));
 ok('我的页含备份', pc.textContent.includes('备份与恢复'));
-ok('我的页含版本', pc.textContent.includes('V0.1'));
+ok('我的页含版本', pc.textContent.includes('V0.3'));
 // 关于
 d.getElementById('btnAbout').click();
 await sleep(40);
@@ -163,6 +164,50 @@ ok('AI 解读不含"必然"', !aiText.includes('必然'));
 d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
 ok('导出备份按钮存在', !!d.getElementById('btnExport'));
 ok('清除按钮存在', !!d.getElementById('btnClear'));
+ok('导入备份按钮存在', !!d.getElementById('btnImport'));
+// T5：存储信息显示
+ok('备份卡显示存储信息', !!d.querySelector('.storage-info'));
+ok('版本号显示 V0.3', pc.textContent.includes('V0.3'));
+ok('我的页含术数模块列表', pc.textContent.includes('大六壬')&&pc.textContent.includes('塔罗'));
+ok('我的页含古籍库统计', pc.textContent.includes('古籍库'));
+ok('我的页含不上传声明', pc.textContent.includes('不上传'));
+
+// 11. T5：首页待复盘提醒（构造到期案例）
+// 通过 localStorage 注入到期未复盘案例
+const pastDue=Date.now()-86400000*3; // 3天前到期
+const injectCase={
+  id:'DOMDUE1',title:'DOM到期测试案例',questionType:'感情关系',shushu:'大六壬',
+  reviewDue:pastDue,reviewed:false,createdAt:Date.now(),qikeTime:Date.now()
+};
+w.localStorage.setItem('xuanjue_cases',JSON.stringify([injectCase]));
+// 回到首页触发重新渲染
+d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
+ok('首页显示待复盘提醒', pc.textContent.includes('待复盘提醒'));
+ok('首页显示到期条数', pc.textContent.includes('已到复盘时间')||pc.textContent.includes('1 条案例'));
+ok('首页显示到期案例标题', pc.textContent.includes('DOM到期测试案例'));
+
+// 12. T5：案例列表到期标记
+d.querySelector('.tab[data-tab="case"]').click();await sleep(60);
+ok('案例列表显示到期标记', pc.textContent.includes('到期'));
+ok('案例列表含红色小圆点', !!d.querySelector('.due-dot'));
+ok('筛选栏含到期待复盘选项', [...d.querySelectorAll('#fResult option')].some(o=>o.value==='到期待复盘'));
+
+// 13. T5：案例详情页到期橙色提示条
+const caseItem=[...d.querySelectorAll('[data-case]')].find(e=>e.dataset.case==='DOMDUE1');
+if(caseItem){caseItem.click();await sleep(60);}
+ok('案例详情显示到期提示条', pc.textContent.includes('已到复盘时间'));
+ok('案例详情含橙色提示条样式', !!d.querySelector('.due-banner'));
+ok('案例详情含立即复盘按钮', !!d.getElementById('btnReview'));
+
+// 14. T5：关于弹窗含 v0.3 和术数模块
+d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
+d.getElementById('btnAbout').click();await sleep(40);
+ok('关于弹窗含 V0.3', d.querySelector('.modal').textContent.includes('V0.3'));
+ok('关于弹窗含术数模块', d.querySelector('.modal').textContent.includes('术数模块'));
+d.querySelector('.modal .btn.ghost').click();await sleep(30);
+
+// 清理注入的测试案例
+w.localStorage.removeItem('xuanjue_cases');
 
 console.log('\n=========================');
 console.log('DOM 测试 通过:',pass,'失败:',fail);

@@ -1,0 +1,95 @@
+{
+  "version": "0.2",
+  "books": [
+    {
+      "id": "zengshan-buyi",
+      "shushu": "六爻",
+      "title": "增删卜易",
+      "dynasty": "清",
+      "chapters": ["卷一·用神", "卷二·求财", "卷三·婚姻", "卷四·疾病"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "huozhulin",
+      "shushu": "六爻",
+      "title": "火珠林",
+      "dynasty": "唐",
+      "chapters": ["卦序", "用神", "六亲", "动静"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "meihua-yishu",
+      "shushu": "梅花",
+      "title": "梅花易数",
+      "dynasty": "宋",
+      "chapters": ["象数起卦", "体用生克", "断卦总则", "万物类象"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "ditiansui",
+      "shushu": "八字",
+      "title": "滴天髓",
+      "dynasty": "清",
+      "chapters": ["天道", "地道", "人道", "知命"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "qiongtong-baojian",
+      "shushu": "八字",
+      "title": "穷通宝鉴",
+      "dynasty": "清",
+      "chapters": ["论木", "论火", "论土", "论金", "论水"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "sanming-tonghui",
+      "shushu": "八字",
+      "title": "三命通会节选",
+      "dynasty": "明",
+      "chapters": ["论天干", "论地支", "十神", "格局"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "daliuren-zhinan",
+      "shushu": "大六壬",
+      "title": "大六壬指南",
+      "dynasty": "明",
+      "chapters": ["起课", "四课", "三传", "类神"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "bifa-fu",
+      "shushu": "大六壬",
+      "title": "毕法赋",
+      "dynasty": "宋",
+      "chapters": ["课体", "神将", "吉凶", "事类"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "xiaoliuren-koujue",
+      "shushu": "小六壬",
+      "title": "小六壬口诀",
+      "dynasty": "民间传承",
+      "chapters": ["六宫总诀", "大安", "留连", "速喜", "赤口", "小吉", "空亡"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    },
+    {
+      "id": "taluo-keywords",
+      "shushu": "塔罗",
+      "title": "塔罗关键词",
+      "dynasty": "现代整理",
+      "chapters": ["大阿卡纳", "正位", "逆位", "三牌阵"],
+      "source": "公版整理",
+      "review_status": "已校对"
+    }
+  ]
+}
