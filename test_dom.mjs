@@ -130,9 +130,9 @@ d.querySelector('.tab[data-tab="me"]').click();
 await sleep(40);
 ok('我的页含术数设置', pc.textContent.includes('术数设置'));
 ok('我的页含AI设置', pc.textContent.includes('AI 设置'));
-ok('我的页含隐私', pc.textContent.includes('隐私与安全'));
 ok('我的页含备份', pc.textContent.includes('备份与恢复'));
-ok('我的页含版本', pc.textContent.includes('V0.3'));
+ok('我的页不含未实现隐私开关', !pc.textContent.includes('应用锁'));
+ok('我的页含版本', pc.textContent.includes('V1.0'));
 // 关于
 d.getElementById('btnAbout').click();
 await sleep(40);
@@ -167,7 +167,7 @@ ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
 // T5：存储信息显示
 ok('备份卡显示存储信息', !!d.querySelector('.storage-info'));
-ok('版本号显示 V0.3', pc.textContent.includes('V0.3'));
+ok('版本号显示 V1.0', pc.textContent.includes('V1.0'));
 ok('我的页含术数模块列表', pc.textContent.includes('大六壬')&&pc.textContent.includes('塔罗'));
 ok('我的页含古籍库统计', pc.textContent.includes('古籍库'));
 ok('我的页含不上传声明', pc.textContent.includes('不上传'));
@@ -202,7 +202,7 @@ ok('案例详情含立即复盘按钮', !!d.getElementById('btnReview'));
 // 14. T5：关于弹窗含 v0.3 和术数模块
 d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
 d.getElementById('btnAbout').click();await sleep(40);
-ok('关于弹窗含 V0.3', d.querySelector('.modal').textContent.includes('V0.3'));
+ok('关于弹窗含 V1.0', d.querySelector('.modal').textContent.includes('V1.0'));
 ok('关于弹窗含术数模块', d.querySelector('.modal').textContent.includes('术数模块'));
 d.querySelector('.modal .btn.ghost').click();await sleep(30);
 

@@ -13,6 +13,7 @@
   --gold2:#d4b87a;
   --red:#c45a4a;
   --green:#6a9a6a;
+  --warn:#e65100;
   --blue:#6a8aaa;
   --primary:#c9a86a;
   --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong","SimSun",Georgia,serif;
@@ -168,6 +169,10 @@ body{
 .due-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 2px rgba(229,57,53,.15)}
 .due-badge{display:inline-block;font-size:10px;color:#fff;background:#e53935;padding:1px 6px;border-radius:8px;margin-right:6px;vertical-align:middle;letter-spacing:.5px}
 .due-banner{background:rgba(255,152,0,.12);border:1px solid rgba(255,152,0,.5);color:#e65100;padding:10px 14px;border-radius:9px;font-size:13px;margin:6px 0 10px;text-align:center}
+.home-guide-card{background:linear-gradient(180deg,rgba(201,168,106,.08),var(--card));border-color:var(--gold)}
+.home-guide-card h3{color:var(--gold);font-family:var(--serif);letter-spacing:1px;margin-bottom:10px}
+.guide-step{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink2);margin-bottom:8px;line-height:1.5}
+.guide-num{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#1a1410;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600}
 .home-due-card{cursor:default}
 .due-count{font-size:13px;color:#e65100;margin:4px 0 8px}
 .due-more{font-size:12px;color:var(--gold);text-align:center;padding:8px 0;cursor:pointer}
@@ -340,6 +345,15 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7) sepia(.5
 .yao-line .yl-sym{font-size:18px;color:var(--ink);letter-spacing:2px}
 .yao-line.dong{border:1px solid var(--red);background:rgba(196,90,74,.08)}
 .yao-line.dong .yl-sym{color:var(--red)}
+.yao-roll{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.yao-roll-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;animation:yaoIn .35s ease}
+.yao-roll-item .yl-idx{font-size:11px;color:var(--muted);width:44px}
+.yao-roll-item .yl-sym{font-size:18px;color:var(--ink);letter-spacing:2px;flex:1}
+.yao-roll-item .yl-name{font-size:12px;color:var(--ink2);min-width:40px;text-align:right}
+.yao-roll-item .yl-name.dong{color:var(--red);font-weight:600}
+@keyframes yaoIn{from{opacity:0;transform:translateY(-8px) scale(.96)}to{opacity:1;transform:none}}
+.yao-shake{animation:shake .35s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 
 .tarot-spread{display:flex;flex-direction:column;gap:10px;margin:10px 0}
 .tarot-card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line2);border-radius:10px;padding:12px;display:flex;align-items:center;gap:12px}
@@ -451,6 +465,12 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .dayun-item.cur{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,106,.18);background:rgba(201,168,106,.08)}
 .dayun-item.cur .dy-gz{color:var(--gold2);font-weight:600}
 .dayun-item .dy-mark{position:absolute;top:-6px;left:50%;transform:translateX(-50%);font-size:9px;background:var(--gold);color:#1a1410;padding:1px 5px;border-radius:3px;white-space:nowrap}
+
+/* 紫微斗数实验版 */
+.zw-palaces{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.zw-palace{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center}
+.zw-palace .zwp-name{font-size:10px;color:var(--muted);margin-bottom:3px}
+.zw-palace .zwp-stars{font-size:12px;color:var(--gold);font-family:var(--serif);line-height:1.3;word-break:break-all}
 
 /* ===== T3 多盘交叉摘要 ===== */
 .cross-sec{margin-bottom:12px}

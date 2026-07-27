@@ -1,6 +1,6 @@
 {
   "name": "xuanjue",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "玄决 · 大六壬决策台（个人时课助手）",
   "private": true,
   "main": "index.html",
@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",
-    "@capacitor/core": "^6.1.2"
+    "@capacitor/core": "^6.1.2",
+    "iztro": "^2.5.8"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",

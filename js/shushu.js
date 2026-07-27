@@ -449,9 +449,10 @@
     {n:'审判',k:'20',up:'觉醒·重生·决断',rev:'犹豫·自责·错失良机',el:'冥王'},
     {n:'世界',k:'21',up:'圆满·完成·整合',rev:'未完成·停滞·残缺',el:'土星'}
   ];
-  function tarot(date,spread){
+  function tarot(date,spread,reverseMode){
     // 兼容旧调用 tarot(date)：默认三牌阵
     spread=spread||'three';
+    reverseMode=reverseMode||'随机正逆位';
     const seed=date.getTime();
     let rng=seed;
     function r(){rng=(rng*9301+49297)%233280;return rng/233280;}
@@ -468,10 +469,16 @@
     };
     const cfg=SPREAD_CFG[spread]||SPREAD_CFG['three'];
     const pos=cfg.pos;
+    // 正逆位：仅正位/仅逆位/随机
+    function isReverse(){
+      if(reverseMode==='仅正位')return false;
+      if(reverseMode==='仅逆位')return true;
+      return r()<0.5;
+    }
     // 所有牌阵均用 22 大阿卡纳，同阵不重复抽牌
     const cards=pos.map(p=>{
       const idx=pick();
-      const reverse=r()<0.5;
+      const reverse=isReverse();
       const card=TAROT[idx];
       return{pos:p,name:card.n,key:card.k,reverse,meaning:reverse?card.rev:card.up,element:card.el,up:!reverse};
     });
@@ -523,10 +530,46 @@
     '壬':{'甲':'食神','乙':'伤官','丙':'偏财','丁':'正财','戊':'七杀','己':'正官','庚':'偏印','辛':'正印','壬':'比肩','癸':'劫财'},
     '癸':{'甲':'伤官','乙':'食神','丙':'正财','丁':'偏财','戊':'正官','己':'七杀','庚':'正印','辛':'偏印','壬':'劫财','癸':'比肩'}
   };
+  // 真太阳时简化实现：根据出生地经度粗略修正平太阳时
+  // 中国标准时间为 120°E（UTC+8），每偏东 1° 早 4 分钟
+  function parseLongitude(place){
+    if(!place)return null;
+    const cityMap={
+      '北京':116.4,'上海':121.5,'广州':113.3,'深圳':114.1,'成都':104.1,'杭州':120.2,
+      '南京':118.8,'武汉':114.3,'西安':108.9,'重庆':106.5,'天津':117.2,'苏州':120.6,
+      '郑州':113.6,'长沙':112.9,'福州':119.3,'沈阳':123.4,'哈尔滨':126.6,'长春':125.3,
+      '石家庄':114.5,'太原':112.5,'济南':117.0,'青岛':120.4,'合肥':117.3,'南昌':115.9,
+      '昆明':102.7,'贵阳':106.6,'南宁':108.3,'海口':110.3,'兰州':103.8,'银川':106.2,
+      '西宁':101.8,'乌鲁木齐':87.6,'拉萨':91.1,'呼和浩特':111.7,'台北':121.5,'香港':114.2,
+      '澳门':113.5
+    };
+    for(const k in cityMap){if(place.includes(k))return cityMap[k];}
+    const m1=place.match(/东经\s*(\d+(\.\d+)?)/);if(m1)return parseFloat(m1[1]);
+    const m2=place.match(/(\d+(\.\d+)?)\s*[°度]?\s*[Ee东]/);if(m2)return parseFloat(m2[1]);
+    const m3=place.match(/[Ee]\s*(\d+(\.\d+)?)/);if(m3)return parseFloat(m3[1]);
+    const dms=place.match(/(\d+)[°度](\d+)[′'分](\d+(\.\d+)?)[″"秒]?\s*[Ee东]?/);
+    if(dms){const d=parseInt(dms[1],10),m=parseInt(dms[2],10),s=parseFloat(dms[3]);return d+m/60+s/3600;}
+    return null;
+  }
+  function applyZhenTaiyang(date,place){
+    const lng=parseLongitude(place);
+    if(lng==null)return{date,offsetMin:0,note:'未能从地点解析经度，按平太阳时计算'};
+    const offsetMin=(lng-120)*4; // 每度 4 分钟
+    const adjusted=new Date(date.getTime()+offsetMin*60000);
+    return{date:adjusted,offsetMin,note:`已按真太阳时校正：经度 ${lng.toFixed(1)}°E，${offsetMin>=0?'+'+offsetMin:offsetMin} 分钟`};
+  }
+
   function baZiByBirth(birthInfo){
     const gender=birthInfo.gender||'男';
-    const date=birthInfo.date||new Date();
+    let rawDate=birthInfo.date||new Date();
     const unknownHour=!!birthInfo.unknownHour;
+    let zhenNote='';
+    if(birthInfo.zhenTaiyang){
+      const zt=applyZhenTaiyang(rawDate,birthInfo.place);
+      rawDate=zt.date;
+      zhenNote=zt.note;
+    }
+    const date=rawDate;
     const bz=Lunar.getBaZi(date);
     const dayGan=bz.day.gan;
     const dayWx=GAN_WX[dayGan];
@@ -574,7 +617,8 @@
     const now=new Date();
     const liuNian=Lunar.getBaZi(now).year;
     const liuYue=Lunar.getBaZi(now).month;
-    const note=unknownHour?'时辰未知，本盘时柱仅供参考，子女宫、晚年运势等涉及时柱的判断从略。':'此盘基于真实生辰';
+    let note=unknownHour?'时辰未知，本盘时柱仅供参考，子女宫、晚年运势等涉及时柱的判断从略。':'此盘基于真实生辰';
+    if(zhenNote)note+='；'+zhenNote;
     const plain={
       state:`八字四柱：${pillars.map(p=>p.name+p.gz).join(' ')}。日主${dayGan}(${dayWx})${dayStrong?'偏强':'偏弱'}，五行${wxStr}。${note}。`,
       tendency:dayStrong?'宜主动':(dayStrong===false?'宜谨慎':'宜等待'),
@@ -595,7 +639,7 @@
         {type:'rule',desc:note}
       ]
     };
-    return{name:'八字',result:{pillars,dayGan,dayWx,wxCount,wxCountAll,dayStrong,yongShen,wxStr,daYun,daYunStartAge,daYunForward,liuNian,liuYue,unknownHour,note,birthDate:date},plain};
+    return{name:'八字',result:{pillars,dayGan,dayWx,wxCount,wxCountAll,dayStrong,yongShen,wxStr,daYun,daYunStartAge,daYunForward,liuNian,liuYue,unknownHour,note,birthDate:date,zhenTaiyang:!!birthInfo.zhenTaiyang,zhenTaiyangNote:zhenNote||undefined},plain};
   }
   function computeDaYun(birthDate,gender,yearGan,monthGzIdx){
     // 阳年：甲丙戊庚壬；阴年：乙丁己辛癸
@@ -653,6 +697,47 @@
     if(a==='火'&&b==='金')return true;return false;
   }
 
+  // ============ 紫微斗数（实验版，iztro 离线排盘）============
+  function ziWeiDouShu(birthInfo){
+    if(!window.iztro || !window.iztro.astro || !window.iztro.astro.bySolar)return null;
+    const info=birthInfo||{};
+    let d=info.date;
+    if(!d)return null;
+    if(!(d instanceof Date))d=new Date(d);
+    if(isNaN(d.getTime()))return null;
+    const solarDate=`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    const sc=Lunar.getShiChen(d);
+    const timeIndex=(sc&&typeof sc.index==='number')?sc.index+1:1;
+    const gender=info.gender==='女'?'女':'男';
+    try{
+      const astrolabe=window.iztro.astro.bySolar(solarDate,timeIndex,gender,true,'zh-CN');
+      const soulPalace=astrolabe.palace('命宫');
+      const bodyPalace=astrolabe.palace('身宫');
+      const majorNames=soulPalace&&soulPalace.majorStars?soulPalace.majorStars.map(s=>s.name).filter(Boolean):[];
+      const palaceName=soulPalace?soulPalace.name:'命宫';
+      const bodyName=bodyPalace?bodyPalace.name:'身宫';
+      const plain={
+        state:`紫微斗数实验版排盘：命宫在${palaceName}，主星 ${majorNames.join('、')||'无'}；身宫在${bodyName}。五行局 ${astrolabe.fiveElementsClass||'未知'}。`,
+        tendency:'实验版，仅供参考',
+        opps:['查看十二宫星曜分布','结合大限流年观察趋势'],
+        risks:['实验功能，算法与解释未经充分校验','不作为决策依据'],
+        doAct:['用于自我觉察与文化研习','重大决定请结合现实信息'],
+        dontAct:['不用于医疗、法律、投资等决策','不迷信单一星曜论断'],
+        signals:[`命宫：${palaceName}`,`命主：${astrolabe.soul||'未知'}`,`身主：${astrolabe.body||'未知'}`,`主星：${majorNames.join('、')||'无'}`],
+        env:`出生时间 ${solarDate} ${astrolabe.time||''}，${info.zhenTaiyang?'已启用真太阳时校正':''}`,
+        reviewDays:60,
+        sources:[
+          {type:'rule',desc:'紫微斗数以出生年月日时排布十二宫'},
+          {type:'rule',desc:'命宫所在地支决定命主，身宫反映后天发展'},
+          {type:'rule',desc:'实验版仅展示排盘与基础关键词，不做深度断盘'}
+        ]
+      };
+      return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex},plain};
+    }catch(e){
+      return{name:'紫微斗数',result:null,error:String(e.message||e),plain:{state:'紫微斗数排盘失败（实验版）',tendency:'不可用',opps:[],risks:['排盘异常'],doAct:['请检查出生时间'],dontAct:[],signals:[String(e.message||e)],env:'',reviewDays:0,sources:[]}};
+    }
+  }
+
   // 统一入口
   function compute(name,data){
     // data 可为 Date（旧兼容）或对象 {date, questionType, askInfo, methodInput}
@@ -677,14 +762,18 @@
         if(askInfo && Array.isArray(askInfo.yaos))return liuYaoByYaos(askInfo.yaos,questionType,askInfo);
         return liuYao(date);
       }
-      case '塔罗':return tarot(date,isObj?data.spread:undefined);
+      case '塔罗':return tarot(date,isObj?data.spread:undefined,isObj?data.tarotReverse:undefined);
       case '八字':{
         if(askInfo && askInfo.birthInfo)return baZiByBirth(askInfo.birthInfo);
         return baZi(date);
+      }
+      case '紫微斗数':{
+        if(askInfo && askInfo.birthInfo)return ziWeiDouShu(askInfo.birthInfo);
+        return null;
       }
       default:return null;
     }
   }
 
-  global.ShuShu={compute,xiaoLiuRen,meiHua,meiHuaByInput,liuYao,liuYaoByYaos,tarot,baZi,baZiByBirth,XLR_POS,BAGUA,TAROT};
+  global.ShuShu={compute,xiaoLiuRen,meiHua,meiHuaByInput,liuYao,liuYaoByYaos,tarot,baZi,baZiByBirth,ziWeiDouShu,XLR_POS,BAGUA,TAROT};
 })(window);

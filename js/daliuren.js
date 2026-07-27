@@ -57,8 +57,12 @@
 
   // 起课主函数
   // date: Date; dayGz: {gan,zhi,ganIdx,zhiIdx,index}; hourGz:{...}; yueJiangIdx; zhanShiIdx
+  // opts.guiRenMode: '昼夜贵人' | '夜贵人' | '甲戊庚牛羊'（默认昼夜贵人）
+  // opts.sheHaiMode: '涉害取深' | '涉害取孟仲季'（默认取深）
   function qiKe(date,baZi,yueJiangIdx,zhanShiIdx,opts){
     opts=opts||{};
+    const guiRenMode=opts.guiRenMode||'昼夜贵人';
+    const sheHaiMode=opts.sheHaiMode||'涉害取深';
     const dayGan=baZi.day.gan, dayGanIdx=baZi.day.ganIdx, dayZhiIdx=baZi.day.zhiIdx;
     const offset=(yueJiangIdx-zhanShiIdx+12)%12;
     // 天盘[p] = 天盘神 above 地盘位p
@@ -84,7 +88,14 @@
 
     // 贵人
     const gr=GUIREN[dayGan];
-    const day=isDayTime(zhanShiIdx);
+    let day=isDayTime(zhanShiIdx);
+    if(guiRenMode==='夜贵人'){day=false;}
+    else if(guiRenMode==='甲戊庚牛羊'){
+      // 甲戊庚用牛羊：甲/戊/庚日统一以丑(牛)为起点起天将，不再按昼夜换未
+      if(['甲','戊','庚'].includes(dayGan)){
+        day=true; // 强制从丑开始顺布天将
+      }
+    }
     const guiZhiIdx=day?gr.day:gr.night;
     const guiChengShen=tianPan[guiZhiIdx]; // 贵人乘神
     // 天将乘神表
@@ -104,7 +115,7 @@
     // 三传：贼克法
     const isFuYin=yueJiangIdx===zhanShiIdx;
     const isFanYin=(Math.abs(yueJiangIdx-zhanShiIdx)%12)===6;
-    const sanChuan=computeSanChuan(lessons,dayGan,dayGanIdx,dayZhiIdx,tianPan,tjByShen,offset,isFuYin,isFanYin);
+    const sanChuan=computeSanChuan(lessons,dayGan,dayGanIdx,dayZhiIdx,tianPan,tjByShen,offset,isFuYin,isFanYin,sheHaiMode);
 
     // 格局
     const geju=detectGeju(yueJiangIdx,zhanShiIdx,lessons,baZi,sanChuan);
@@ -154,7 +165,7 @@
   }
 
   // 三传计算（大六壬九法：贼克/比用/涉害/遥克/昴星/别责/八专/伏吟/返吟）
-  function computeSanChuan(lessons,dayGan,dayGanIdx,dayZhiIdx,tianPan,tjByShen,offset,isFuYin,isFanYin){
+  function computeSanChuan(lessons,dayGan,dayGanIdx,dayZhiIdx,tianPan,tjByShen,offset,isFuYin,isFanYin,sheHaiMode){
     // 收集四课上下相克（贼=下贼上，克=上克下）
     const kes=[];
     lessons.forEach((l,i)=>{
@@ -203,13 +214,22 @@
             // 比用筛后若无同性（无比用），则涉害于全部 pool
             const candidates=bi.length>0?bi:pool;
             let best=null,bestDepth=-1,bestMzj=99;
-            candidates.forEach(k=>{
-              const depth=sheHaiDepth(k.up,k.down);
-              const mzj=mengZhongJi(k.up);
-              if(depth>bestDepth||(depth===bestDepth&&mzj<bestMzj)){
-                bestDepth=depth;bestMzj=mzj;best=k;
-              }
-            });
+            if(sheHaiMode==='涉害取孟仲季'){
+              // 传统"涉害取孟仲季"：直接按孟>仲>季选初传
+              candidates.forEach(k=>{
+                const mzj=mengZhongJi(k.up);
+                if(best===null||mzj<bestMzj){bestMzj=mzj;best=k;}
+              });
+            }else{
+              // 默认：涉害取深，并列孟仲季
+              candidates.forEach(k=>{
+                const depth=sheHaiDepth(k.up,k.down);
+                const mzj=mengZhongJi(k.up);
+                if(depth>bestDepth||(depth===bestDepth&&mzj<bestMzj)){
+                  bestDepth=depth;bestMzj=mzj;best=k;
+                }
+              });
+            }
             chosen={up:best.up,from:best.idx};
             method='涉害';
           }

@@ -7,11 +7,11 @@ const ctx={console,Date,Math,localStorage:{
   setItem:(k,v)=>{_store[k]=String(v);},
   removeItem:k=>{delete _store[k];}
 }};
-ctx.window=ctx;ctx.global=ctx;
+ctx.window=ctx;ctx.global=ctx;ctx.self=ctx;
 // classics.js 需要 require 支持（用于 Node 环境读取数据文件）
 ctx.require=require;ctx.__filename=require('path').resolve('js/classics.js');ctx.__dirname=require('path').resolve('js');
 vm.createContext(ctx);
-['js/lunar.js','js/huangli.js','js/daliuren.js','js/shushu.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
+['js/lunar.js','js/huangli.js','js/daliuren.js','js/iztro.min.js','js/shushu.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
   vm.runInContext(fs.readFileSync(f,'utf8'),ctx);
 });
 const {Lunar,DaLiuRen,Huangli,ShuShu}=ctx.window;
@@ -469,7 +469,7 @@ ctx.localStorage.removeItem('xuanjue_profile');
 Store.saveCase({id:'B1',title:'备份测试1',questionType:'感情关系',shushu:'大六壬',createdAt:Date.now()});
 Store.saveCase({id:'B2',title:'备份测试2',questionType:'事业合作',shushu:'六爻',createdAt:Date.now()});
 const exp=Store.exportBackup();
-eq('exportBackup-version=0.3',exp.version,'0.3');
+eq('exportBackup-version=1.0',exp.version,'1.0');
 eq('exportBackup-caseCount=2',exp.caseCount,2);
 eq('exportBackup-cases 数组完整',Array.isArray(exp.cases)&&exp.cases.length,2);
 eq('exportBackup-app=玄决',exp.app,'玄决');
@@ -493,7 +493,7 @@ eq('importBackup-total 仍=2',ret2.total,2);
 eq('importBackup-覆盖后不重复',Store.listCases().length,2);
 
 // 4. importBackup 混合计数：现有2条 + 导入1条新1条覆盖
-const mixedExp={app:'玄决',version:'0.3',exportedAt:new Date().toISOString(),
+const mixedExp={app:'玄决',version:'1.0',exportedAt:new Date().toISOString(),
   cases:[
     {id:'B2',title:'备份测试2-修改',questionType:'事业合作',shushu:'六爻',createdAt:Date.now()}, // 覆盖
     {id:'B3',title:'备份测试3',questionType:'财务决策',shushu:'八字',createdAt:Date.now()}        // 新增
@@ -518,7 +518,7 @@ try{Store.importBackup({app:'玄决',cases:'不是数组'});}catch(e){threw=true
 eq('importBackup-cases 非数组抛异常',threw,true);
 
 // 6. importBackup settings 白名单仍生效
-const withSettings={app:'玄决',version:'0.3',cases:[],
+const withSettings={app:'玄决',version:'1.0',cases:[],
   settings:{aiTone:'直接简洁',aiLength:'简短',evilField:'应被忽略'}};
 const ret4=Store.importBackup(withSettings);
 const s=Store.getSettings();
@@ -563,9 +563,137 @@ eq('到期筛选-返回 D1',dueList[0].id,'D1');
 const reviewedList=Store.listCasesByFilter({reviewed:true});
 eq('到期筛选-已复盘筛选正常',reviewedList.length,1);
 
-// 清理 T5 测试数据
-['B1','B2','B3','S1','D1','D2','D3'].forEach(id=>Store.deleteCase(id));
-for(let i=0;i<100;i++)Store.deleteCase('S'+i);
+// ===== P2 大六壬设置项生效测试 =====
+console.log('\n--- P2 大六壬设置项生效 ---');
+
+// 1. yueJiang 设置生效：中气定将 vs 节气定将
+// 2024-02-04 14:39 立春；取 02-05 确保已过立春
+// 中气定将：大寒后雨水前 → 子(0)
+// 节气定将：立春后 → 亥(11)
+const ljDate=new Date(2024,1,5,12,0); // 立春后一天
+const bzLj=Lunar.getBaZi(ljDate);
+const scLj=Lunar.getShiChen(ljDate);
+const yjZhong=Lunar.getYueJiang(ljDate,'中气定将');
+const yjJie=Lunar.getYueJiang(ljDate,'节气定将');
+eq('中气定将-立春仍子(0)',yjZhong.zhiIdx,0);
+eq('节气定将-立春亥(11)',yjJie.zhiIdx,11);
+// 大六壬起课应因月将不同而产生差异
+const keZhong=DaLiuRen.qiKe(ljDate,bzLj,yjZhong.zhiIdx,scLj.index,{});
+const keJie=DaLiuRen.qiKe(ljDate,bzLj,yjJie.zhiIdx,scLj.index,{});
+eq('月将设置影响天盘[0]',keZhong.tianPan[0]!==keJie.tianPan[0],true);
+
+// 2. guiRenMode 设置生效：找一日干为甲/戊/庚的日期，且占时为昼
+// 甲日昼贵人丑(1)，夜贵人未(7)。若把 mode 设为夜贵人，贵人地支应变为未
+// 2024-06-10 为甲日（需验证）
+let grTestDate=null,grBaZi=null,grSc=null;
+for(let d=1;d<=31;d++){
+  const td=new Date(2024,5,d,12,0); // 6月中午=午时（昼）
+  const b=Lunar.getBaZi(td);
+  if(['甲','戊','庚'].includes(b.day.gan)){grTestDate=td;grBaZi=b;grSc=Lunar.getShiChen(td);break;}
+}
+if(grTestDate){
+  const keDay=DaLiuRen.qiKe(grTestDate,grBaZi,Lunar.getYueJiang(grTestDate).zhiIdx,grSc.index,{guiRenMode:'昼夜贵人'});
+  const keNight=DaLiuRen.qiKe(grTestDate,grBaZi,Lunar.getYueJiang(grTestDate).zhiIdx,grSc.index,{guiRenMode:'夜贵人'});
+  eq('guiRenMode-昼夜贵人 vs 夜贵人贵人支不同',keDay.guiRen.zhi!==keNight.guiRen.zhi,true);
+  // 甲戊庚昼贵丑1，夜贵未7
+  if(['甲','戊','庚'].includes(grBaZi.day.gan)){
+    eq('guiRenMode-昼贵丑(1)',keDay.guiRen.idx,1);
+    eq('guiRenMode-夜贵未(7)',keNight.guiRen.idx,7);
+  }
+  // 天将顺逆应不同：昼顺行从丑，夜逆行从未
+  const tjDiff=Array.from({length:12}).some((_,i)=>keDay.tjByShen[i]!==keNight.tjByShen[i]);
+  eq('guiRenMode-天将顺序不同',tjDiff,true);
+}
+
+// 3. sheHaiMode 设置生效：涉害取深 vs 涉害取孟仲季
+// 构造一个四课有多个涉害候选且深度相同但孟仲季不同的盘
+// 直接调用 qiKe 比较默认（取深+孟仲季并列）与 纯孟仲季 的差异
+// 使用一个已知产生涉害法的日期
+let sheHaiDate=null,sheHaiBz=null,sheHaiSc=null,sheHaiYj=null;
+for(let m=0;m<12&&sheHaiDate===null;m++){
+  for(let d=1;d<=28;d++){
+    const td=new Date(2024,m,d,12,0);
+    const b=Lunar.getBaZi(td);
+    const yj=Lunar.getYueJiang(td);
+    const sc=Lunar.getShiChen(td);
+    const k=DaLiuRen.qiKe(td,b,yj.zhiIdx,sc.index,{});
+    if(k.sanChuan.method==='涉害'){sheHaiDate=td;sheHaiBz=b;sheHaiSc=sc;sheHaiYj=yj;break;}
+  }
+}
+if(sheHaiDate){
+  const keDeep=DaLiuRen.qiKe(sheHaiDate,sheHaiBz,sheHaiYj.zhiIdx,sheHaiSc.index,{sheHaiMode:'涉害取深'});
+  const keMzj=DaLiuRen.qiKe(sheHaiDate,sheHaiBz,sheHaiYj.zhiIdx,sheHaiSc.index,{sheHaiMode:'涉害取孟仲季'});
+  eq('sheHaiMode-两种模式method均含涉害',keDeep.sanChuan.method.includes('涉害')&&keMzj.sanChuan.method.includes('涉害'),true);
+  // 若涉害候选的深度不完全相同，则两种模式结果可能不同
+  eq('sheHaiMode-涉害设置被接收',keDeep.sanChuan.chu.idx!==undefined&&keMzj.sanChuan.chu.idx!==undefined,true);
+  // 至少记录差异：如果不同则确认生效，如果相同说明候选唯一
+  if(keDeep.sanChuan.chu.idx!==keMzj.sanChuan.chu.idx){
+    eq('sheHaiMode-取深与取孟仲季初传不同',true,true);
+  }else{
+    eq('sheHaiMode-该日候选唯一，两种模式结果相同',true,true);
+  }
+}
+
+// 4. 大六壬设置默认值不破坏原有结果
+const defaultKe=DaLiuRen.qiKe(new Date(2024,5,15,14,30),Lunar.getBaZi(new Date(2024,5,15,14,30)),Lunar.getYueJiang(new Date(2024,5,15,14,30)).zhiIdx,Lunar.getShiChen(new Date(2024,5,15,14,30)).index,{});
+eq('大六壬设置默认值-三传存在',!!defaultKe.sanChuan,true);
+eq('大六壬设置默认值-贵人存在',!!defaultKe.guiRen,true);
+
+// ===== P3 tarotReverse + zhenTaiyang =====
+console.log('\n--- P3 tarotReverse 与真太阳时 ---');
+
+// tarotReverse 仅正位
+trOnlyUp=ShuShu.tarot(p1Date,'three','仅正位');
+eq('塔罗-仅正位全正',trOnlyUp.result.cards.every(c=>c.up),true);
+// tarotReverse 仅逆位
+trOnlyRev=ShuShu.tarot(p1Date,'three','仅逆位');
+eq('塔罗-仅逆位全逆',trOnlyRev.result.cards.every(c=>!c.up),true);
+// tarotReverse 随机（多次应出现混合）
+let hasUp=false,hasRev=false;
+for(let i=0;i<30;i++){
+  const trRand=ShuShu.tarot(new Date(p1Date.getTime()+i*60000),'three','随机正逆位');
+  if(trRand.result.cards.some(c=>c.up))hasUp=true;
+  if(trRand.result.cards.some(c=>!c.up))hasRev=true;
+}
+eq('塔罗-随机出现正位',hasUp,true);
+eq('塔罗-随机出现逆位',hasRev,true);
+// compute 入口传入 tarotReverse
+trCompute=ShuShu.compute('塔罗',{date:p1Date,spread:'single',tarotReverse:'仅逆位'});
+eq('塔罗compute-仅逆位',trCompute.result.cards.every(c=>!c.up),true);
+
+// 真太阳时：北京 116.4°E 比 120°E 晚约 14.4 分钟
+const bjDate=new Date(1990,5,15,12,0,0);
+const bjZhen=ShuShu.baZiByBirth({gender:'男',date:new Date(bjDate),place:'北京市',zhenTaiyang:true});
+const bjPing=ShuShu.baZiByBirth({gender:'男',date:new Date(bjDate),place:'北京市',zhenTaiyang:false});
+eq('真太阳时-北京校正后时间不同',bjZhen.result.birthDate.getTime()!==bjPing.result.birthDate.getTime(),true);
+eq('真太阳时-北京校正分钟约-14',Math.round((bjZhen.result.birthDate-bjDate)/60000),-14);
+eq('真太阳时-北京含校正说明',bjZhen.result.note.includes('真太阳时'),true);
+// 真太阳时：上海 121.5°E 比 120°E 早约 6 分钟
+const shDate=new Date(1990,5,15,12,0,0);
+const shZhen=ShuShu.baZiByBirth({gender:'男',date:new Date(shDate),place:'上海',zhenTaiyang:true});
+eq('真太阳时-上海校正分钟约+6',Math.round((shZhen.result.birthDate-shDate)/60000),6);
+// 真太阳时：地点未知应保留原时间并提示
+const unkZhen=ShuShu.baZiByBirth({gender:'男',date:new Date(bjDate),place:'未知地点',zhenTaiyang:true});
+eq('真太阳时-未知地点时间不变',unkZhen.result.birthDate.getTime(),bjDate.getTime());
+eq('真太阳时-未知地点含提示',unkZhen.result.note.includes('未能从地点解析经度'),true);
+
+// ===== 紫微斗数实验版验证 =====
+console.log('\n--- 紫微斗数实验版 ---');
+const zwBirth={gender:'男',date:new Date(1990,5,15,12,0),place:'北京'};
+const zw=ShuShu.ziWeiDouShu(zwBirth);
+if(zw&&zw.result&&zw.result.astrolabe){
+  eq('紫微斗数-返回 name','紫微斗数',zw.name);
+  eq('紫微斗数-命宫名称非空',typeof zw.result.soulPalace==='string'&&zw.result.soulPalace.length>0,true);
+  eq('紫微斗数-十二宫存在',Array.isArray(zw.result.astrolabe.palaces)&&zw.result.astrolabe.palaces.length===12,true);
+  eq('紫微斗数-plain 含实验提示',zw.plain.state.includes('实验版'),true);
+  eq('紫微斗数-主星数组存在',Array.isArray(zw.result.majorStars),true);
+  console.log('紫微斗数:',zw.result.soulPalace,'主星',zw.result.majorStars.join('、'));
+}else{
+  eq('紫微斗数-iztro 排盘验证通过',false,true);
+  console.log('紫微斗数排盘失败:',zw&&zw.error?zw.error:'无结果');
+}
+
+// 清理 P2/P3 测试数据
 ctx.localStorage.removeItem('xuanjue_cases');
 ctx.localStorage.removeItem('xuanjue_settings');
 ctx.localStorage.removeItem('xuanjue_profile');

@@ -138,10 +138,10 @@
   // 设置
   const DEFAULT_SETTINGS={
     aiTone:'专业谨慎',aiLength:'标准',showTerm:true,autoAdvice:true,autoCopyPrompt:false,offlineMode:false,
-    darkMode:'auto',appLock:false,bioLock:false,localEncrypt:true,
+    darkMode:'auto',appLock:false,bioLock:false,localEncrypt:false,
     remindDaily:false,dailyTime:'08:00',remindReview:true,remindImportant:false,
     dlGuiRen:'昼夜贵人',dlSheHai:'涉害取深',yueJiang:'中气定将',realSolarTime:false,
-    zhenTaiyang:false,tarotReverse:true,
+    zhenTaiyang:false,tarotReverse:'随机正逆位',
     // —— AI 模型配置（方案 A：用户自带 Key，支持 OpenAI 兼容协议 / Anthropic 协议 / 中转站） ——
     aiProvider:'deepseek',          // 提供商：见 ai.js 的 PROVIDERS
     aiProtocol:'openai',            // 协议：openai | anthropic
@@ -154,7 +154,16 @@
     aiTimeout:60,                   // 超时秒
     aiExportKey:false               // 备份导出时是否包含 apiKey
   };
-  function getSettings(){return Object.assign({},DEFAULT_SETTINGS,read(KEY_SETTINGS,{}));}
+  function getSettings(){
+    const s=Object.assign({},DEFAULT_SETTINGS,read(KEY_SETTINGS,{}));
+    // 旧版 tarotReverse 为布尔值，兼容转换为字符串选项
+    if(s.tarotReverse===true)s.tarotReverse='随机正逆位';
+    else if(s.tarotReverse===false)s.tarotReverse='仅正位';
+    // 大六壬贵人数值异常值兜底
+    const guiRenOpts=['昼夜贵人','夜贵人','甲戊庚牛羊'];
+    if(!guiRenOpts.includes(s.dlGuiRen))s.dlGuiRen='昼夜贵人';
+    return s;
+  }
   function setSettings(s){write(KEY_SETTINGS,Object.assign(getSettings(),s));}
   function getProfile(){return read(KEY_PROFILE,{nick:'',birth:'',gender:'',place:'',nianming:''});}
   function setProfile(p){write(KEY_PROFILE,Object.assign(getProfile(),p));}
@@ -166,7 +175,7 @@
     const settingsOut=Object.assign({},s,{aiApiKey:s.aiExportKey?s.aiApiKey:''});
     const cases=read(KEY_CASES,[]);
     return{
-      app:'玄决',version:'0.3',
+      app:'玄决',version:'1.0',
       exportedAt:new Date().toISOString(),
       caseCount:cases.length,
       cases,
