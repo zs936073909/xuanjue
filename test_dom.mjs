@@ -51,13 +51,19 @@ ok('首页含空亡或干支', pc.textContent.includes('干支')||pc.textContent
 // 3. 查看完整盘面
 d.getElementById('btnViewBoard').click();
 await sleep(60);
-ok('盘面页含四课', pc.textContent.includes('四课'));
-ok('盘面页含三传', pc.textContent.includes('三传'));
-ok('盘面页含格局', pc.textContent.includes('格局'));
-ok('盘面页含天地盘', pc.textContent.includes('天地盘'));
-ok('盘面页含神煞', pc.textContent.includes('神煞'));
-ok('盘面页含AI白话解读', pc.textContent.includes('AI 白话解读'));
-ok('盘面页含免责声明', pc.textContent.includes('免责声明')||pc.textContent.includes('不构成'));
+ok('盘面中心含实时起课', pc.textContent.includes('实时起课'));
+ok('盘面中心含命理排盘', pc.textContent.includes('命理排盘'));
+ok('盘面中心含命理趣玩', pc.textContent.includes('命理趣玩'));
+// 进入大六壬详细盘面
+d.getElementById('btnDlNow').click();
+await sleep(60);
+ok('详细盘面含四课', pc.textContent.includes('四课'));
+ok('详细盘面含三传', pc.textContent.includes('三传'));
+ok('详细盘面含格局', pc.textContent.includes('格局'));
+ok('详细盘面含天地盘', pc.textContent.includes('天地盘'));
+ok('详细盘面含神煞', pc.textContent.includes('神煞'));
+ok('详细盘面含AI白话解读', pc.textContent.includes('AI 白话解读'));
+ok('详细盘面含免责声明', pc.textContent.includes('免责声明')||pc.textContent.includes('不构成'));
 
 // 切换白话模式
 const plainBtn=[...d.querySelectorAll('.mode-toggle button')].find(b=>b.dataset.mode==='plain');

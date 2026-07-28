@@ -174,6 +174,27 @@ body{
 .qa-item::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(201,168,106,.08),transparent 70%);opacity:0;transition:.2s}
 .qa-item:active::after{opacity:1}
 .qa-ico{font-size:22px;color:var(--gold);margin-bottom:5px;font-family:var(--serif)}
+.game-item{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px 6px;text-align:center;cursor:pointer;font-size:12px;
+  transition:.15s;position:relative;overflow:hidden;
+}
+.game-item:active{background:var(--card2);transform:scale(.97)}
+
+/* board shortcuts & section divider */
+.section-divider{height:1px;background:var(--line);margin:14px 0}
+.board-shortcuts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.board-list{margin-top:12px}
+.board-shortcuts .btn.block{margin:0}
+
+/* fortune game modal */
+.game-result{text-align:center;padding:6px 0}
+.game-result .game-title{font-size:20px;color:var(--gold);font-family:var(--serif);margin-bottom:8px}
+.game-result .game-sub{font-size:14px;color:var(--muted);margin-bottom:12px}
+.game-result .game-text{font-size:14px;line-height:1.7;margin-bottom:12px}
+.game-result .game-score{font-size:14px;color:var(--gold);margin-top:12px}
+.wx-options{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:12px}
+.wx-options .wx-opt{min-width:60px;width:auto;flex:1 1 60px;max-width:90px;margin:0}
 
 /* recent */
 .recent-item{display:flex;justify-content:space-between;align-items:center;padding:11px;background:var(--card);border:1px solid var(--line);border-radius:9px;margin-bottom:8px;cursor:pointer;transition:.15s}

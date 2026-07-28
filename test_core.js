@@ -155,8 +155,8 @@ eq('塔罗 22 大阿卡纳内',ShuShu.TAROT.length,22);
 eq('塔罗三牌不重复',new Set(tr.result.cards.map(c=>c.name)).size,3);
 console.log('塔罗:',tr.result.cards.map(c=>c.name+'('+(c.up?'正':'逆')+')').join(' '));
 
-// 八字
-const bz=ShuShu.baZi(p1Date);
+// 八字（必须基于真实出生信息）
+const bz=ShuShu.baZiByBirth({gender:'男',date:p1Date});
 eq('八字返回 name',bz.name,'八字');
 eq('八字 4 柱',bz.result.pillars.length,4);
 eq('八字日柱 ganShen=日主',bz.result.pillars[2].ganShen,'日主');
@@ -233,6 +233,7 @@ eq('八字大运数组存在',Array.isArray(bzNormal.result.daYun)&&bzNormal.res
 eq('八字流年存在',typeof bzNormal.result.liuNian==='object',true);
 eq('八字流月存在',typeof bzNormal.result.liuYue==='object',true);
 eq('八字藏干存在',bzNormal.result.pillars.every(p=>Array.isArray(p.cangGan)),true);
+eq('八字不再支持实时无出生信息起盘',ShuShu.compute('八字',p1Date),null);
 
 // 大六壬九法三传
 const bzTestT0=Lunar.getBaZi(testDate);

@@ -676,13 +676,9 @@
     }
     return{forward,startAge:Math.round(startAgeBase*10)/10,pillars:dy};
   }
+  // 已移除基于当前时间的实时八字。八字必须基于真实出生信息，通过 baZiByBirth 使用。
   function baZi(date){
-    const r=baZiByBirth({gender:'男',date,unknownHour:false});
-    // 时间起卦兼容：提示非真实生辰
-    r.plain.state=r.plain.state.replace(/。$/,'，此非真实生辰，仅为时间起卦参考。');
-    r.result.note='此非真实生辰，仅为时间起卦参考';
-    r.plain.sources.push({type:'rule',desc:'此八字以当前时间起卦，非真实生辰'});
-    return r;
+    return {name:'八字',result:null,error:'八字需基于真实出生日期排盘，不支持实时起卦',plain:{state:'八字不支持以当前时间起盘，请在「命理排盘」或问事向导中填写真实出生信息。',tendency:'不可用',opps:[],risks:[],doAct:['使用出生日期排盘'],dontAct:['以当前时间当八字用'],signals:['需真实生辰'],env:'',reviewDays:0,sources:[{type:'rule',desc:'八字必须以真实出生年月日时排盘'}]}};
   }
 
   // 五行辅助
@@ -793,7 +789,8 @@
       case '塔罗':return tarot(date,isObj?data.spread:undefined,isObj?data.tarotReverse:undefined);
       case '八字':{
         if(askInfo && askInfo.birthInfo)return baZiByBirth(askInfo.birthInfo);
-        return baZi(date);
+        // 八字不再支持无出生信息的实时起盘
+        return null;
       }
       case '紫微斗数':{
         if(askInfo && askInfo.birthInfo)return ziWeiDouShu(askInfo.birthInfo);

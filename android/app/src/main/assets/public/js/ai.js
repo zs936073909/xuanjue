@@ -170,19 +170,29 @@
     }
     if(bg.persons)L.push('涉及人物：'+bg.persons);
     L.push('');
-    L.push('# 大六壬盘面（主盘）');
-    const ke=comp.ke,p=comp.plain,sc=ke.sanChuan;
-    L.push('起课时间：'+(ke.dateStr||'')+'　占时：'+(ke.scStr||''));
-    L.push('日干支：'+ke.baZi.day.gz+'　月将：'+ke.yueJiang.zhi+'　占时：'+ke.zhanShi.zhi);
-    L.push('贵人：'+ke.guiRen.label+ke.guiRen.zhi+'（乘'+ke.guiRen.chengShen+'）　空亡：'+Lunar.ZHI[ke.kongWang[0]]+Lunar.ZHI[ke.kongWang[1]]);
-    L.push('格局：'+ke.geju.join('、'));
-    L.push('三传：'+sc.chu.zhi+'('+sc.chu.tj+') → '+sc.zhong.zhi+'('+sc.zhong.tj+') → '+sc.mo.zhi+'('+sc.mo.tj+')　取法：'+sc.method);
-    L.push('类神：'+ke.leishenName+'（乘'+(ke.leishenShen!==null?Lunar.ZHI[ke.leishenShen]:'—')+'）');
-    L.push('神煞：驿马'+ke.shenSha.yima+' 桃花'+ke.shenSha.taohua+' 华盖'+ke.shenSha.huagai+' 太岁'+ke.shenSha.taiSui+' 月建'+ke.shenSha.yueJian);
-    L.push('盘面摘要：倾向='+p.tendency+'；机会='+(p.opps||[]).join('，')+'；风险='+(p.risks||[]).join('，')+'；环境='+p.env);
-    L.push('');
+    if(comp&&comp.ke){
+      L.push('# 大六壬盘面（主盘）');
+      const ke=comp.ke,p=comp.plain,sc=ke.sanChuan;
+      L.push('起课时间：'+(ke.dateStr||'')+'　占时：'+(ke.scStr||''));
+      L.push('日干支：'+ke.baZi.day.gz+'　月将：'+ke.yueJiang.zhi+'　占时：'+ke.zhanShi.zhi);
+      L.push('贵人：'+ke.guiRen.label+ke.guiRen.zhi+'（乘'+ke.guiRen.chengShen+'）　空亡：'+Lunar.ZHI[ke.kongWang[0]]+Lunar.ZHI[ke.kongWang[1]]);
+      L.push('格局：'+ke.geju.join('、'));
+      L.push('三传：'+sc.chu.zhi+'('+sc.chu.tj+') → '+sc.zhong.zhi+'('+sc.zhong.tj+') → '+sc.mo.zhi+'('+sc.mo.tj+')　取法：'+sc.method);
+      L.push('类神：'+ke.leishenName+'（乘'+(ke.leishenShen!==null?Lunar.ZHI[ke.leishenShen]:'—')+'）');
+      L.push('神煞：驿马'+ke.shenSha.yima+' 桃花'+ke.shenSha.taohua+' 华盖'+ke.shenSha.huagai+' 太岁'+ke.shenSha.taiSui+' 月建'+ke.shenSha.yueJian);
+      L.push('盘面摘要：倾向='+p.tendency+'；机会='+(p.opps||[]).join('，')+'；风险='+(p.risks||[]).join('，')+'；环境='+p.env);
+      L.push('');
+    }else if(shushuResults&&Object.keys(shushuResults).length){
+      // 无主盘时，取第一个术数作为主盘（支持八字/紫微等独立排盘）
+      const mainName=Object.keys(shushuResults)[0];
+      const r=shushuResults[mainName];
+      L.push('# '+mainName+'盘面（主盘）');
+      L.push('术数：'+mainName);
+      if(r.plain)L.push('盘面摘要：倾向='+(r.plain.tendency||'—')+'；状态='+(r.plain.state||'—'));
+      L.push('');
+    }
     if(shushuResults&&Object.keys(shushuResults).length){
-      L.push('# 辅盘术数数据（注意：以下为规则化摘要，非原始盘面事实，仅供交叉参考）');
+      L.push('# 辅盘/单盘术数数据（注意：以下为规则化摘要，非原始盘面事实，仅供交叉参考）');
       Object.keys(shushuResults).forEach(name=>{
         const r=shushuResults[name];
         L.push('## '+name+' · 摘要');
@@ -199,7 +209,8 @@
       });
       L.push('');
       L.push('# 多术数融合要求');
-      L.push('请综合主盘（大六壬）与辅盘的信号，指出各术数的共性与分歧，给出综合判断。辅盘数据为规则化摘要，不得作为原始盘面事实引用。');
+      if(comp&&comp.ke)L.push('请综合主盘（大六壬）与辅盘的信号，指出各术数的共性与分歧，给出综合判断。辅盘数据为规则化摘要，不得作为原始盘面事实引用。');
+      else L.push('请基于上述术数盘面给出解读，指出关键信号与建议。盘面数据为规则化摘要，不得作为原始命理事实引用。');
     }
     L.push('');
     L.push('# 输出要求');

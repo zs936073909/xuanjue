@@ -2,7 +2,7 @@
 (function(global){
   const $=s=>document.querySelector(s);
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
-  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null};
+  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null};
   let remindTimeout=null, remindInterval=null;
 
   // ---------- utils ----------
@@ -353,8 +353,9 @@
 
     let h='';
     h+=`<div class="phead"><div><div class="ptitle">玄决</div><div class="psub">实时决策台</div></div><div class="psub">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}</div></div>`;
-    // 时间卡
-    h+=`<div class="card"><div class="time-big">${pad(now.getHours())}:${pad(now.getMinutes())}</div>`;
+    // 实时决策卡：时间 + 此刻大六壬
+    h+=`<div class="card">`;
+    h+=`<div class="time-big">${pad(now.getHours())}:${pad(now.getMinutes())}</div>`;
     h+=`<div class="time-row"><span class="k">农历</span><span>${lunar?lunar.monthStr+lunar.dayStr:'—'}</span></div>`;
     h+=`<div class="time-row"><span class="k">干支</span><span><span class="stem">${bz.year.gz}</span>年 <span class="stem">${bz.month.gz}</span>月 <span class="stem">${bz.day.gz}</span>日 <span class="stem">${bz.hour.gz}</span>时</span></div>`;
     h+=`<div class="time-row"><span class="k">时辰</span><span>${sc.name} ${sc.range}</span></div>`;
@@ -363,19 +364,32 @@
     h+=`<div class="time-row"><span class="k">建除</span><span>${hl.jianchu}</span></div>`;
     h+=`<div class="time-row"><span class="k">冲煞</span><span>${cs.chong} ${cs.sha}</span></div>`;
     h+=`<div class="yiji"><div class="yiji-box yi"><div class="yj-title">宜</div><div class="yiji-tags">${hl.yi.map(y=>`<span>${y}</span>`).join('')}</div></div><div class="yiji-box ji"><div class="yj-title">忌</div><div class="yiji-tags">${hl.ji.map(j=>`<span>${j}</span>`).join('')}</div></div></div>`;
-    h+=`</div>`;
-    // 时课卡
-    h+=`<div class="card"><h3>此刻大六壬时课</h3>`;
+    h+=`<div class="section-divider"></div>`;
+    h+=`<h3>此刻大六壬时课</h3>`;
     h+=`<div class="time-row"><span class="k">月将 ${yj.zhi}</span><span class="k">占时 ${comp.sc.zhi}（${comp.scStr}）</span></div>`;
     h+=`<div class="one-line">${p.state}</div>`;
     h+=`<div class="tendency"><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
     if(p.risks.length)h+=`<div class="risk-tip">⚠ ${p.risks[0]}</div>`;
     h+=`<div class="suit-row"><span style="font-size:11px;color:var(--muted)">宜：</span>${p.doAct.map(d=>`<span class="lab do">${d}</span>`).join('')}</div>`;
     h+=`<div class="suit-row"><span style="font-size:11px;color:var(--muted)">忌：</span>${p.dontAct.map(d=>`<span class="lab dont">${d}</span>`).join('')}</div>`;
-    h+=`<div class="shike-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面</button></div>`;
+    if(settings.remindDaily){
+      h+=`<div class="section-note">今日时课：${p.tendency}；${p.doAct.length?'宜'+p.doAct.join('、'):''}${p.dontAct.length?'；忌'+p.dontAct.join('、'):''}</div>`;
+    }
+    h+=`<div class="shike-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面 · AI 分析</button></div>`;
     h+=`</div>`;
     // 快速问事
     h+=`<div class="card"><h3>快速问事</h3><div class="qa-grid">${qaTypes.map(t=>`<div class="qa-item" data-type="${t[0]}"><div class="qa-ico">${t[1]}</div>${t[0]}</div>`).join('')}</div></div>`;
+    // 命理排盘快捷入口
+    h+=`<div class="card"><h3>命理排盘</h3><div class="section-note">基于出生日期的八字 / 紫微斗数排盘与 AI 解读</div>`;
+    h+=`<div class="board-shortcuts"><button class="btn block" id="btnHomeBaZi">八字排盘</button><button class="btn block" id="btnHomeZiWei">紫微斗数</button></div>`;
+    h+=`</div>`;
+    // 命理趣玩
+    h+=`<div class="card"><h3>命理趣玩</h3><div class="qa-grid">`;
+    h+=`<div class="game-item" data-game="stick"><div class="qa-ico">🎋</div>抽今日卦签</div>`;
+    h+=`<div class="game-item" data-game="tarot"><div class="qa-ico">🃏</div>塔罗日运</div>`;
+    h+=`<div class="game-item" data-game="wuxing"><div class="qa-ico">☯</div>五行速配</div>`;
+    h+=`<div class="game-item" data-game="star"><div class="qa-ico">✦</div>星宿查询</div>`;
+    h+=`</div></div>`;
     // 首次使用引导
     if(cases.length===0){
       h+=`<div class="card home-guide-card">`;
@@ -384,15 +398,6 @@
       h+=`<div class="guide-step"><span class="guide-num">2</span>选择术数并补充所需信息（如出生时间）</div>`;
       h+=`<div class="guide-step"><span class="guide-num">3</span>查看盘面与白话解读，保存案例后定期复盘</div>`;
       h+=`<div class="section-note">所有数据默认保存在本机，可在“我的”页一键导出备份。</div>`;
-      h+=`</div>`;
-    }
-    // 每日时课提醒（开启时显示今日一课摘要）
-    if(settings.remindDaily){
-      h+=`<div class="card home-daily-card">`;
-      h+=`<h3>今日时课</h3>`;
-      h+=`<div class="daily-state">${p.state}</div>`;
-      h+=`<div class="daily-tendency"><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
-      h+=`<div class="section-note">${p.doAct.length?'宜：'+p.doAct.join('、'):''}${p.doAct.length&&p.dontAct.length?'　':''}${p.dontAct.length?'忌：'+p.dontAct.join('、'):''}</div>`;
       h+=`</div>`;
     }
     // 待复盘（受 remindReview 开关控制）
@@ -439,10 +444,16 @@
       tick();
       state.clockInterval=setInterval(tick,1000);
     }
-    $('#btnViewBoard').onclick=()=>{state.tab='board';renderTab();setTimeout(()=>showDaliurenBoard(state.currentKe),30);};
+    $('#btnViewBoard').onclick=()=>{state.tab='board';renderTab();};
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
       state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
     });
+    // 命理排盘快捷入口
+    const btnHomeBaZi=$('#btnHomeBaZi'),btnHomeZiWei=$('#btnHomeZiWei');
+    if(btnHomeBaZi)btnHomeBaZi.onclick=()=>{state.ask=newAsk();state.ask.shushu=['八字'];state.ask.step=4;state.tab='ask';renderTab();};
+    if(btnHomeZiWei)btnHomeZiWei.onclick=()=>{state.ask=newAsk();state.ask.shushu=['紫微斗数'];state.ask.step=4;state.tab='ask';renderTab();};
+    // 命理趣玩
+    document.querySelectorAll('.game-item').forEach(e=>e.onclick=()=>openFortuneGame(e.dataset.game));
     document.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.case;state.tab='case';renderTab();setTimeout(openCaseDetail,30);});
     document.querySelectorAll('[data-review]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.review;state.tab='case';renderTab();setTimeout(()=>openReview(e.dataset.review),30);});
     // 待复盘"查看全部"：跳转案例列表并自动筛选未复盘
@@ -472,6 +483,8 @@
   const QIKE_METHODS=[['auto','当前时间自动起课'],['manual','手动选择时间'],['random','随机起卦'],['number','数字起卦'],['hanzi','汉字起卦'],['coin','硬币起卦'],['baoshu','报数起卦']];
   const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
   const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
+  const REALTIME_SHU=['大六壬','六爻','梅花易数','小六壬','塔罗'];
+  const BIRTH_SHU=['八字','紫微斗数'];
   const LIUYAO_MODES=[['manual','手动六次摇卦'],['auto','一键摇六爻'],['time','时间起卦'],['input','手动输入爻象']];
   const MEIHUA_MODES=[['time','时间起卦'],['number','报数起卦'],['hanzi','汉字起卦'],['random','随机起卦']];
   const TAROT_SPREADS=[['single','单张'],['three','三张'],['relation','关系'],['choice','二选一']];
@@ -514,9 +527,13 @@
     return h;
   }
   function askStep3(a){
-    let h='<div class="field"><label>选择术数（可多选）</label><div class="chips">';
-    h+=SHU_PRESET.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
-    h+='</div></div>';
+    let h='';
+    h+=`<div class="field"><label>实时起课（基于当前/选定时间）</label><div class="chips">`;
+    h+=REALTIME_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
+    h+=`</div></div>`;
+    h+=`<div class="field"><label>命理排盘（基于出生日期）</label><div class="chips">`;
+    h+=BIRTH_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
+    h+=`</div></div>`;
     const isDl=a.shushu.includes('大六壬');
     if(isDl){
       h+=`<div class="field"><label>大六壬起课方式</label><div class="chips">`;
@@ -526,8 +543,6 @@
       if(['number','baoshu'].includes(a.method))h+=`<div class="field"><label>输入数字（多个用逗号）</label><input type="text" id="fNum" value="${a.methodInput}" placeholder="如 3,8"></div>`;
       if(a.method==='hanzi')h+=`<div class="field"><label>输入汉字</label><input type="text" id="fHan" value="${a.methodInput}" placeholder="如 玄"></div>`;
       h+=`<div class="section-note">说明：大六壬以时间起课，数字/汉字/硬币方式将折算为占时。</div>`;
-    }else{
-      h+=`<div class="section-note">提示：选择大六壬时可额外选择起课方式；其他术数将在下一步补充所需信息。</div>`;
     }
     h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">${a.shushu.some(s=>INFO_SHU.includes(s))?'下一步':'生成结果'}</button></div>`;
     return h;
@@ -874,16 +889,10 @@
     if(c.comp){
       mainPlain=c.comp.plain;
       h+=renderDaliurenResult(c.comp);
-      // 其它术数辅盘
+      // 其它术数辅盘：按实时 / 命理分组
       const others=a.shushu.filter(s=>s!=='大六壬');
       if(others.length && c.shushuResults){
-        h+=`<div class="card"><h3>其它术数辅盘</h3>`;
-        others.forEach(s=>{
-          const r=c.shushuResults[s];
-          if(r){h+=renderShuShuResult(r);}
-          else{h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">${crossHint(s,mainPlain)}</div></div>`;}
-        });
-        h+=`</div>`;
+        h+=renderShuShuGroups(others, c.shushuResults, mainPlain);
       }
     }else if(c.shushuResults){
       // 无主盘，取第一个有结果的术数做主盘
@@ -893,13 +902,7 @@
         h+=renderShuShuResult(c.shushuResults[mainName]);
         const others=a.shushu.filter(s=>s!==mainName);
         if(others.length){
-          h+=`<div class="card"><h3>其它术数辅盘</h3>`;
-          others.forEach(s=>{
-            const r=c.shushuResults[s];
-            if(r)h+=renderShuShuResult(r);
-            else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">未生成该术数结果，请检查输入或单独起课。</div></div>`;
-          });
-          h+=`</div>`;
+          h+=renderShuShuGroups(others, c.shushuResults, mainPlain, '其它术数');
         }
       }else{
         h+=`<div class="card"><div class="warn-text">未能生成术数结果</div></div>`;
@@ -921,8 +924,10 @@
     }
     h+=`<div class="card"><h3>操作</h3>`;
     h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
-    if(c.comp){
+    if(c.comp||Object.keys(c.shushuResults||{}).length){
       h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 深度解读</button>`;
+    }
+    if(c.comp){
       h+=`<button class="btn block mt8" id="btnCopyPrompt">复制 AI 提示词</button>`;
     }
     h+=`<button class="btn block mt8" id="btnExportBoard">导出盘面（文本）</button>`;
@@ -958,6 +963,32 @@
     h+=`<div class="plain-card"><div class="pc-t">观察信号</div><div class="pc-c">${p.signals.join('；')}</div></div>`;
     h+=`</div>`;
     h+=renderSourcesPanel(p,state.currentRagPassages);
+    return h;
+  }
+  function renderShuShuGroups(list, results, mainPlain, title){
+    const realtime=list.filter(s=>REALTIME_SHU.includes(s));
+    const birth=list.filter(s=>BIRTH_SHU.includes(s));
+    let h='';
+    if(realtime.length||birth.length){
+      h+=`<div class="card"><h3>${title||'其它术数辅盘'}</h3>`;
+      if(realtime.length){
+        h+=`<div class="section-note">实时起课</div>`;
+        realtime.forEach(s=>{
+          const r=results[s];
+          if(r)h+=renderShuShuResult(r);
+          else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">${mainPlain?crossHint(s,mainPlain):'未生成结果'}</div></div>`;
+        });
+      }
+      if(birth.length){
+        h+=`<div class="section-note mt12">命理排盘（基于出生日期）</div>`;
+        birth.forEach(s=>{
+          const r=results[s];
+          if(r)h+=renderShuShuResult(r);
+          else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">请填写出生信息后重新生成。</div></div>`;
+        });
+      }
+      h+=`</div>`;
+    }
     return h;
   }
   function renderSourcesPanel(plain,ragPassages){
@@ -1220,7 +1251,7 @@
     return h;
   }
   function crossHint(s,p){
-    const map={'六爻':'以大六壬三传为用神参考，倾向一致。','梅花易数':'体用关系参考，短期趋势与主盘相近。','小六壬':'快速吉凶参考，倾向 '+p.tendency+'。','塔罗':'心理投射工具，不作确定预测，用于觉察决策心理。','八字':'长期倾向参考，需结合流年。','紫微斗数':'紫微斗数实验版，仅作排盘与基础关键词参考，不做深度断盘。','黄历':'今日宜忌参考，见首页黄历卡。'};
+    const map={'六爻':'以大六壬三传为用神参考，倾向一致。','梅花易数':'体用关系参考，短期趋势与主盘相近。','小六壬':'快速吉凶参考，倾向 '+p.tendency+'。','塔罗':'心理投射工具，不作确定预测，用于觉察决策心理。','八字':'长期倾向参考，需结合流年。','紫微斗数':'基于出生日期的命盘排布参考，用于自我觉察。','黄历':'今日宜忌参考，见首页黄历卡。'};
     return map[s]||'多术数综合参考，请结合现实判断。';
   }
   // T3 多盘交叉摘要卡片渲染
@@ -1594,16 +1625,29 @@
   }
 
   // ================= 盘面中心 =================
-  // P1 术数已实现：小六壬/梅花易数/六爻/塔罗/八字
-  const SHU_P1=['小六壬','梅花易数','六爻','塔罗','八字'];
+  // P1 实时术数：小六壬/梅花易数/六爻/塔罗（八字已从实时移除，归入命理排盘）
+  const SHU_P1=['小六壬','梅花易数','六爻','塔罗'];
   function pageBoardCenter(){
-    let h=`<div class="phead"><div class="ptitle">盘面</div><div class="psub">专业盘面研究</div></div>`;
-    h+=`<div class="card"><h3>大六壬<span class="shu-badge">主盘</span></h3><button class="btn primary block" id="btnDlNow">此刻起课</button><button class="btn block mt8" id="btnDlManual">手动时间起课</button></div>`;
-    h+=`<div class="card"><h3>其它术数</h3>`;
+    let h=`<div class="phead"><div class="ptitle">盘面</div><div class="psub">实时起课 · 命理排盘 · AI 分析</div></div>`;
+    // 实时起课
+    h+=`<div class="card"><h3>实时起课</h3><div class="section-note">基于当前或选定时间起课，结果页可查看 AI 分析</div>`;
+    h+=`<div class="board-shortcuts"><button class="btn primary block" id="btnDlNow">大六壬 · 此刻起课</button><button class="btn block" id="btnDlManual">大六壬 · 手动时间</button></div>`;
+    h+=`<div class="board-list">`;
     SHU_P1.forEach(s=>{
       h+=`<div class="recent-item" data-shu="${s}"><div class="ri-t">${s}</div><div class="ri-m">点击此刻起课</div><div class="ri-r">›</div></div>`;
     });
-    h+=`</div>`;
+    h+=`</div></div>`;
+    // 命理排盘
+    state.birthBoard=state.birthBoard||{gender:'',calendar:'solar',date:'',hour:'',unknownHour:false,place:'',zhenTaiyang:false};
+    h+=renderBirthForm(state.birthBoard,'命理排盘 · 出生信息');
+    h+=`<div class="card"><div class="board-shortcuts"><button class="btn primary block" id="btnBoardBaZi">八字排盘 · AI 解读</button><button class="btn block" id="btnBoardZiWei">紫微斗数 · AI 解读</button></div></div>`;
+    // 命理趣玩
+    h+=`<div class="card"><h3>命理趣玩</h3><div class="qa-grid">`;
+    h+=`<div class="game-item" data-game="stick"><div class="qa-ico">🎋</div>抽今日卦签</div>`;
+    h+=`<div class="game-item" data-game="tarot"><div class="qa-ico">🃏</div>塔罗日运</div>`;
+    h+=`<div class="game-item" data-game="wuxing"><div class="qa-ico">☯</div>五行速配</div>`;
+    h+=`<div class="game-item" data-game="star"><div class="qa-ico">✦</div>星宿查询</div>`;
+    h+=`</div></div>`;
     if(state.currentKe){
       h+=`<div class="card"><h3>最近盘面</h3><div class="recent-item" id="lastBoard"><div><div class="ri-t">大六壬 · ${state.currentKe.ke.dateStr}</div><div class="ri-m">${state.currentKe.ke.geju.join('、')}</div></div><div class="ri-r">查看</div></div></div>`;
     }
@@ -1624,6 +1668,119 @@
       showShuShuBoard(res);
     });
     const lb=$('#lastBoard');if(lb)lb.onclick=()=>showDaliurenBoard(state.currentKe);
+    // 命理排盘
+    bindStep4({extra:{birth:state.birthBoard}});
+    const fDate=$('#fBirthDate');if(fDate)fDate.onchange=ev=>state.birthBoard.date=ev.target.value;
+    const fHour=$('#fBirthHour');if(fHour)fHour.onchange=ev=>state.birthBoard.hour=ev.target.value;
+    const fUnknown=$('#fBirthUnknownHour');if(fUnknown)fUnknown.onchange=ev=>{state.birthBoard.unknownHour=ev.target.checked;renderTab();};
+    const fPlace=$('#fBirthPlace');if(fPlace)fPlace.oninput=ev=>state.birthBoard.place=ev.target.value;
+    const fZhen=$('#fBirthZhenTaiyang');if(fZhen)fZhen.onchange=ev=>state.birthBoard.zhenTaiyang=ev.target.checked;
+    $('#btnBoardBaZi').onclick=()=>runBoardBirth('八字');
+    $('#btnBoardZiWei').onclick=()=>runBoardBirth('紫微斗数');
+    // 命理趣玩
+    document.querySelectorAll('.game-item').forEach(e=>e.onclick=()=>openFortuneGame(e.dataset.game));
+  }
+  function runBoardBirth(name){
+    const b=state.birthBoard;
+    if(!b||!b.date){toast('请填写出生日期');return;}
+    const d=resolveBirthDate(b);
+    if(!d){toast('出生日期解析失败');return;}
+    let r=null;
+    if(name==='八字')r=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
+    else r=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):null;
+    if(!r){toast(name+' 排盘失败，请检查出生信息');return;}
+    showShuShuBoard(r);
+  }
+  // ================= 命理趣玩 =================
+  function openFortuneGame(game){
+    if(game==='stick')runDailyStick();
+    else if(game==='tarot')runTarotDaily();
+    else if(game==='wuxing')runWuxingMatch();
+    else if(game==='star')runStarMansion();
+  }
+  function runDailyStick(){
+    const r=ShuShu.compute('小六壬',new Date());
+    const d=r&&r.result?r.result.detail:{};
+    const body=`<div class="game-result"><div class="game-title">今日卦签：${d.attr||'—'}</div><div class="game-sub">${d.ji||'—'} · ${d.wx||'—'}</div><div class="game-text">${d.desc||'暂无签文'}</div><div class="section-note">${(r&&r.plain&&r.plain.doAct?r.plain.doAct.join('、'):'')||''}</div></div>`;
+    modal('🎋 今日卦签',body,null,true,'再抽一支');
+    // 覆盖「再抽一支」按钮行为：重新生成随机签
+    const okBtn=$('#modal-root .btn.primary');
+    if(okBtn)okBtn.onclick=()=>{
+      const rr=ShuShu.compute('小六壬',{date:new Date(),questionType:'其他'});
+      // 随机换一个宫：以当前秒数扰动
+      const pos=ShuShu.XLR_POS||['大安','留连','速喜','赤口','小吉','空亡'];
+      const idx=(Math.floor(Math.random()*pos.length))%pos.length;
+      const fake={detail:{attr:['青龙','玄武','朱雀','白虎','六合','勾陈'][idx],ji:['吉','平','吉','凶','吉','凶'][idx],wx:['木','水','火','金','木','土'][idx],desc:['事事安和，谋为等候','事未决，纠缠拖延','喜事将至，速有佳音','口舌争讼，惊恐伤财','小有所得，和合生财','事多落空，徒劳无功'][idx]}};
+      const dd=rr&&rr.result?rr.result.detail:fake.detail;
+      const body2=`<div class="game-result"><div class="game-title">今日卦签：${dd.attr||'—'}</div><div class="game-sub">${dd.ji||'—'} · ${dd.wx||'—'}</div><div class="game-text">${dd.desc||'暂无签文'}</div></div>`;
+      const mb=$('#modal-root .modal-body');if(mb)mb.innerHTML=body2;
+    };
+  }
+  function runTarotDaily(){
+    const r=ShuShu.compute('塔罗',{date:new Date(),spread:'single',tarotReverse:'随机正逆位'});
+    let body='<div class="game-result"><div class="game-title">今日塔罗</div>';
+    if(r&&r.result&&r.result.cards&&r.result.cards.length){
+      const c=r.result.cards[0];
+      body+=`<div class="tarot-daily"><div class="tc-name">${c.name} <span class="${c.up?'tc-up':'tc-rev'}">${c.up?'正位':'逆位'}</span></div><div class="tc-mean">${c.meaning}</div><div class="section-note">${c.advice||''}</div></div>`;
+    }else{body+=`<div class="empty">塔罗牌阵生成失败</div>`;}
+    body+='</div>';
+    modal('🃏 塔罗日运',body,null,true,'关闭');
+  }
+  function runWuxingMatch(){
+    const Sheng={'金':'水','水':'木','木':'火','火':'土','土':'金'};
+    const Ke={'金':'木','木':'土','土':'水','水':'火','火':'金'};
+    const Wx=['金','木','水','火','土'];
+    const RELS=[{label:'生我',key:'shengMe'},{label:'我生',key:'sheng'},{label:'克我',key:'keMe'},{label:'我克',key:'ke'}];
+    let score=0,round=0,current=null,currentRel=null;
+    function build(){
+      const src=Wx[Math.floor(Math.random()*Wx.length)];
+      const rel=RELS[Math.floor(Math.random()*RELS.length)];
+      let answer='';
+      if(rel.key==='sheng')answer=Sheng[src];
+      else if(rel.key==='ke')answer=Ke[src];
+      else if(rel.key==='shengMe'){for(const k in Sheng)if(Sheng[k]===src){answer=k;break;}}
+      else if(rel.key==='keMe'){for(const k in Ke)if(Ke[k]===src){answer=k;break;}}
+      current={src,rel,answer};
+      const opts=shuffle([...Wx]).slice(0,4);
+      if(!opts.includes(answer)){opts[Math.floor(Math.random()*4)]=answer;}
+      const body=`<div class="game-result"><div class="game-title">第 ${round+1}/10 题</div><div class="game-sub">五行「${src}」的「${rel.label}」是？</div><div class="wx-options">${opts.map(o=>`<button class="btn block mt8 wx-opt" data-v="${o}">${o}</button>`).join('')}</div><div class="game-score">得分：${score}</div></div>`;
+      const mb=$('#modal-root .modal-body');
+      if(mb){
+        mb.innerHTML=body;
+        mb.querySelectorAll('.wx-opt').forEach(b=>b.onclick=()=>check(b.dataset.v));
+      }
+    }
+    function check(v){
+      if(v===current.answer)score+=10;
+      round++;
+      if(round>=10){
+        const rank=score>=90?'五行大师':(score>=70?'渐入佳境':(score>=50?'还需努力':'多练练吧'));
+        const body=`<div class="game-result"><div class="game-title">游戏结束</div><div class="game-sub">最终得分：${score} / 100</div><div class="game-text">${rank}</div><button class="btn primary block mt8" id="wxReplay">再来一局</button></div>`;
+        const mb=$('#modal-root .modal-body');if(mb){mb.innerHTML=body;$('#wxReplay').onclick=()=>{score=0;round=0;build();};}
+        return;
+      }
+      build();
+    }
+    function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+    modal('☯ 五行速配','<div class="game-result"><div class="game-title">规则</div><div class="game-text">根据五行生克关系，选择正确答案，共 10 题。</div><button class="btn primary block mt8" id="wxStart">开始</button></div>',null,true,'关闭');
+    const start=$('#wxStart');if(start)start.onclick=()=>build();
+  }
+  function runStarMansion(){
+    const XIU=['角','亢','氐','房','心','尾','箕','斗','牛','女','虚','危','室','壁','奎','娄','胃','昴','毕','觜','参','井','鬼','柳','星','张','翼','轸'];
+    const XIU_TEXT={
+      '角':'角宿：主聪明机敏，宜谋划开端。','亢':'亢宿：主刚强好胜，谨防过刚。','氐':'氐宿：主稳健守成，宜积累。','房':'房宿：主正直光明，贵人暗藏。','心':'心宿：主心思细腻，宜沟通。','尾':'尾宿：主善变灵活，随机应变。','箕':'箕宿：主机谋口舌，慎言。','斗':'斗宿：主福禄寿全，宜进取。','牛':'牛宿：主勤劳踏实，厚积薄发。','女':'女宿：主柔顺多艺，宜内省。','虚':'虚宿：主虚无变动，宜守不宜攻。','危':'危宿：主危机转机，谨慎行事。','室':'室宿：主安居乐业，宜稳定。','壁':'壁宿：主守护收藏，暗中积蓄。','奎':'奎宿：主文章才学，宜学习。','娄':'娄宿：主收纳归置，宜整理。','胃':'胃宿：主食禄仓廪，忌浪费。','昴':'昴宿：主明朗公正，宜公开。','毕':'毕宿：主完成收获，善终。','觜':'觜宿：主口舌是非，低调。','参':'参宿：主参商离别，聚散无常。','井':'井宿：主水源滋养，广结善缘。','鬼':'鬼宿：主幽微隐秘，宜洞察。','柳':'柳宿：主柔顺依附，借势而为。','星':'星宿：主声名远播，宜表现。','张':'张宿：主开张拓展，把握时机。','翼':'翼宿：主辅佐助力，合作共赢。','轸':'轸宿：主车辆迁移，宜出行。'
+    };
+    function calc(){
+      const m=parseInt($('#starMonth').value,10);
+      const d=parseInt($('#starDay').value,10);
+      if(!m||!d){toast('请输入有效的农历月日');return;}
+      const idx=((m-1)*2+d)%28;
+      const name=XIU[idx];
+      const out=$('#starResult');if(out)out.innerHTML=`<div class="game-title">二十八宿：${name}宿</div><div class="game-text">${XIU_TEXT[name]}</div>`;
+    }
+    const body=`<div class="game-result"><div class="game-title">星宿查询</div><div class="section-note">按农历月日快速查询对应二十八宿（趣味参考）</div><div class="field"><label>农历月</label><input type="number" id="starMonth" min="1" max="12" value="1"></div><div class="field"><label>农历日</label><input type="number" id="starDay" min="1" max="30" value="1"></div><button class="btn primary block mt8" id="btnStarCalc">查询</button><div id="starResult" class="mt12"></div></div>`;
+    modal('✦ 星宿查询',body,(m)=>calc(),true,'查询');
+    const calcBtn=$('#btnStarCalc');if(calcBtn)calcBtn.onclick=calc;
   }
   // P1 术数盘面展示（复用 ask 渠道）
   function showShuShuBoard(res){
