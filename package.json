@@ -1,12 +1,12 @@
 {
   "name": "xuanjue",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "玄决 · 大六壬决策台（个人时课助手）",
   "private": true,
   "main": "index.html",
   "scripts": {
     "start": "python3 -m http.server 8765",
-    "build:www": "rm -rf www && mkdir -p www && cp index.html www/ && cp -r css js www/",
+    "build:www": "rm -rf www && mkdir -p www && cp index.html www/ && cp -r css js data www/ && cp manifest.json icon-192.png icon-512.png service-worker.js www/ 2>/dev/null || true",
     "test:core": "node test_core.js",
     "test:dom": "node test_dom.mjs",
     "test": "node test_core.js && node test_dom.mjs",

@@ -47,6 +47,7 @@
 </div>
 
 <div id="modal-root"></div>
+<div id="lock-screen" class="hidden"></div>
 <div id="toast" class="toast"></div>
 
 <script src="js/lunar.js"></script>
@@ -58,6 +59,12 @@
 <script src="js/ai.js"></script>
 <script src="js/classics.js"></script>
 <script src="js/cross.js"></script>
+<script>
+  // 注册 PWA Service Worker（离线缓存 + 系统通知通道）
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  }
+</script>
 <script src="js/app.js"></script>
 </body>
 </html>

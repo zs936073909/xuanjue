@@ -697,7 +697,23 @@
     if(a==='火'&&b==='金')return true;return false;
   }
 
-  // ============ 紫微斗数（实验版，iztro 离线排盘）============
+  // ============ 紫微斗数（iztro 离线排盘 + 基础解读）============
+  const ZW_STAR_HINTS={
+    '紫微':{tend:'宜稳健把握',opp:'发挥领导与统筹能力',risk:'期望过高或过于固执',do:'制定中长期计划',dont:'独断专行'},
+    '天府':{tend:'宜守成积累',opp:'稳健守成，善于管理资源',risk:'保守错过变化时机',do:'巩固既有基础',dont:'过度囤积、回避改变'},
+    '天相':{tend:'宜协调沟通',opp:'重视协调与形象',risk:'顾虑过多、优柔寡断',do:'借助团队与规则推进',dont:'为面子而勉强'},
+    '天梁':{tend:'宜守成助人',opp:'善于照顾与指导他人',risk:'承担过多责任',do:'稳步帮助他人',dont:'过度干涉'},
+    '廉贞':{tend:'宜明辨取舍',opp:'情感细腻、原则性强',risk:'情绪起伏影响判断',do:'分清主次再行动',dont:'感情用事'},
+    '七杀':{tend:'宜主动求变',opp:'行动力强、敢于突破',risk:'冲动带来波动',do:'把握关键节点果断推进',dont:'盲目冒进'},
+    '破军':{tend:'宜破旧立新',opp:'开创力强、不惧变化',risk:'变动过大导致不稳',do:'在必要处革新',dont:'为变而变'},
+    '贪狼':{tend:'宜灵活应变',opp:'多才多艺、善于交际',risk:'欲望分散、定力不足',do:'聚焦核心目标',dont:'贪多求全'},
+    '太阳':{tend:'宜积极表达',opp:'热情外向、乐于助人',risk:'过度付出或锋芒太露',do:'主动沟通、公开表达',dont:'强出头'},
+    '巨门':{tend:'宜深入沟通',opp:'洞察力强、善于分析',risk:'口舌是非或过度猜疑',do:'以事实为依据表达',dont:'暗箭伤人'},
+    '天机':{tend:'宜思考观察',opp:'机敏灵活、善谋划',risk:'思虑过多、行动迟缓',do:'调研后再决策',dont:'反复犹豫'},
+    '武曲':{tend:'宜务实理财',opp:'务实坚韧、重视效率',risk:'过于刚硬、忽视人情',do:'踏实推进具体事务',dont:'唯利是图'},
+    '天同':{tend:'宜柔和顺势',opp:'性情温和、易得贵人',risk:'安逸懒散、逃避冲突',do:'以和为贵、顺势而为',dont:'一味退让'},
+    '太阴':{tend:'宜内敛筹划',opp:'细腻周到、善于储备',risk:'多虑内向、行动不足',do:'幕后规划、稳健执行',dont:'封闭消极'}
+  };
   function ziWeiDouShu(birthInfo){
     if(!window.iztro || !window.iztro.astro || !window.iztro.astro.bySolar)return null;
     const info=birthInfo||{};
@@ -716,25 +732,37 @@
       const majorNames=soulPalace&&soulPalace.majorStars?soulPalace.majorStars.map(s=>s.name).filter(Boolean):[];
       const palaceName=soulPalace?soulPalace.name:'命宫';
       const bodyName=bodyPalace?bodyPalace.name:'身宫';
+      const opps=[], risks=[], doAct=[], dontAct=[];
+      let tendency='宜观察学习';
+      majorNames.forEach(star=>{
+        const h=ZW_STAR_HINTS[star];
+        if(h){tendency=h.tend;opps.push(h.opp);risks.push(h.risk);doAct.push(h.do);dontAct.push(h.dont);}
+      });
+      if(!opps.length)opps.push('观察命宫与身宫星曜组合，理解自身倾向');
+      risks.push('单一命宫论断有限，需结合现实判断');
+      doAct.push('用于自我觉察与文化研习');
+      doAct.push('重大决定请结合现实信息');
+      dontAct.push('不用于医疗、法律、投资等决策');
+      dontAct.push('不迷信单一星曜论断');
       const plain={
-        state:`紫微斗数实验版排盘：命宫在${palaceName}，主星 ${majorNames.join('、')||'无'}；身宫在${bodyName}。五行局 ${astrolabe.fiveElementsClass||'未知'}。`,
-        tendency:'实验版，仅供参考',
-        opps:['查看十二宫星曜分布','结合大限流年观察趋势'],
-        risks:['实验功能，算法与解释未经充分校验','不作为决策依据'],
-        doAct:['用于自我觉察与文化研习','重大决定请结合现实信息'],
-        dontAct:['不用于医疗、法律、投资等决策','不迷信单一星曜论断'],
+        state:`紫微斗数排盘：命宫在${palaceName}，主星 ${majorNames.join('、')||'无主星'}；身宫在${bodyName}。五行局 ${astrolabe.fiveElementsClass||'未知'}。`,
+        tendency:tendency,
+        opps:opps,
+        risks:risks,
+        doAct:doAct,
+        dontAct:dontAct,
         signals:[`命宫：${palaceName}`,`命主：${astrolabe.soul||'未知'}`,`身主：${astrolabe.body||'未知'}`,`主星：${majorNames.join('、')||'无'}`],
         env:`出生时间 ${solarDate} ${astrolabe.time||''}，${info.zhenTaiyang?'已启用真太阳时校正':''}`,
         reviewDays:60,
         sources:[
           {type:'rule',desc:'紫微斗数以出生年月日时排布十二宫'},
           {type:'rule',desc:'命宫所在地支决定命主，身宫反映后天发展'},
-          {type:'rule',desc:'实验版仅展示排盘与基础关键词，不做深度断盘'}
+          {type:'rule',desc:'主星特性提供倾向参考，不做深度断盘'}
         ]
       };
       return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex},plain};
     }catch(e){
-      return{name:'紫微斗数',result:null,error:String(e.message||e),plain:{state:'紫微斗数排盘失败（实验版）',tendency:'不可用',opps:[],risks:['排盘异常'],doAct:['请检查出生时间'],dontAct:[],signals:[String(e.message||e)],env:'',reviewDays:0,sources:[]}};
+      return{name:'紫微斗数',result:null,error:String(e.message||e),plain:{state:'紫微斗数排盘失败',tendency:'不可用',opps:[],risks:['排盘异常'],doAct:['请检查出生时间'],dontAct:[],signals:[String(e.message||e)],env:'',reviewDays:0,sources:[]}};
     }
   }
 

@@ -2,7 +2,8 @@
 (function(global){
   const $=s=>document.querySelector(s);
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
-  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null};
+  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null};
+  let remindTimeout=null, remindInterval=null;
 
   // ---------- utils ----------
   function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
@@ -10,7 +11,38 @@
   function pad(n){return n<10?'0'+n:''+n;}
   function fmtDateTime(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
   function fmtDate(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  function fmtDateShort(d){return pad(d.getMonth()+1)+'-'+pad(d.getDate());}
   function jdnVal(y,m,d){const a=Math.floor((14-m)/12);const y2=y+4800-a,m2=m+12*a-3;return d+Math.floor((153*m2+2)/5)+365*y2+Math.floor(y2/4)-Math.floor(y2/100)+Math.floor(y2/400)-32045;}
+
+  // 提醒辅助：计算重要日期距今天数
+  // item.lunar 为 true 时 date 为农历 YYYY-MM-DD；item.repeat='year' 时按每年重复计算
+  function daysUntil(dateStr,item){
+    const today=new Date();today.setHours(0,0,0,0);
+    let target;
+    if(item&&item.lunar){
+      const parts=String(dateStr).split('-').map(x=>parseInt(x,10));
+      if(parts.length===3&&!isNaN(parts[1])&&!isNaN(parts[2])){
+        // 农历日期按当前公历年反查，若当年无此农历日则尝试次年
+        let solar=lunarToSolar(today.getFullYear(),parts[1],parts[2],false);
+        if(!solar)solar=lunarToSolar(today.getFullYear()+1,parts[1],parts[2],false);
+        if(!solar)return null;
+        target=new Date(solar.getFullYear(),solar.getMonth(),solar.getDate());
+      }else{return null;}
+    }else{
+      target=new Date(dateStr+'T00:00:00');
+    }
+    if(item&&item.repeat==='year'){
+      const y=today.getFullYear();
+      target.setFullYear(y);
+      target.setHours(0,0,0,0);
+      if(target<today)target.setFullYear(y+1);
+    }
+    target.setHours(0,0,0,0);
+    if(isNaN(target.getTime()))return null;
+    return Math.round((target-today)/86400000);
+  }
+  function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   // 公历转农历（修正版）：lunar.js 自带的 solarToLunar 存在 epoch bug——
   // 它用 `new Date(y,0,0)`（即上一年 12/31）作为 offset 起点，而 lunarInfo 历元是
   // 1900-01-31（农历 1900 正月初一），导致返回的 year 恒为 1900、月日也错位。
@@ -74,10 +106,15 @@
 
   // ---------- 大六壬 计算 ----------
   function computeDaliuren(date,questionType){
+    const s=Store.getSettings();
     const baZi=Lunar.getBaZi(date);
-    const yj=Lunar.getYueJiang(date);
+    const yj=Lunar.getYueJiang(date,s.yueJiang);
     const sc=Lunar.getShiChen(date);
-    const ke=DaLiuRen.qiKe(date,baZi,yj.zhiIdx,sc.index,{questionType});
+    const ke=DaLiuRen.qiKe(date,baZi,yj.zhiIdx,sc.index,{
+      questionType,
+      guiRenMode:s.dlGuiRen,
+      sheHaiMode:s.dlSheHai
+    });
     ke.dateStr=fmtDateTime(date);
     ke.scStr=sc.name+'（'+sc.range+'）';
     const plain=DaLiuRen.plainLang(ke,questionType);
@@ -110,18 +147,167 @@
       state.subPage='';
       state.tab=t.dataset.tab;renderTab();
     });
+    // 应用切到后台后自动上锁；切回前台时刷新提醒调度
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden && Store.getLockState().appLock){Store.lockApp();}
+      else if(!document.hidden){startReminderLoop();}
+    });
+    window.addEventListener('pagehide',()=>{
+      if(Store.getLockState().appLock){Store.lockApp();}
+    });
   }
   function showDisclaimer(){
     $('#screen-disclaimer').classList.remove('hidden');
     $('#main').classList.add('hidden');
+    $('#lock-screen').classList.add('hidden');
   }
   function enterApp(){
     $('#screen-disclaimer').classList.add('hidden');
-    $('#main').classList.remove('hidden');
-    renderTab();
+    applyDarkMode();
+    if(Store.isLocked()){
+      showLockScreen();
+    }else{
+      $('#main').classList.remove('hidden');
+      $('#lock-screen').classList.add('hidden');
+      renderTab();
+      startReminderLoop();
+    }
+  }
+
+  // ---------- 应用锁 ----------
+  function showLockScreen(){
+    const root=$('#lock-screen');
+    const lock=Store.getLockState();
+    root.innerHTML=`<div class="lock-title">玄决</div><div class="lock-sub">应用已锁定</div><input type="password" class="lock-input" id="lockPin" placeholder="输入密码/PIN" maxlength="16"><div class="lock-hint" id="lockHint"></div><div class="lock-btns"><button class="btn primary block" id="btnUnlock">解锁</button></div>${lock.bioLock?'<div class="lock-bio" id="btnBioUnlock">使用生物识别解锁</div>':''}<div class="lock-forget">忘记密码请在设置中关闭应用锁后重新设置（需先解锁）</div>`;
+    root.classList.remove('hidden');
+    $('#main').classList.add('hidden');
+    const doUnlock=()=>{
+      const pin=$('#lockPin').value.trim();
+      if(!pin){$('#lockHint').textContent='请输入密码';return;}
+      if(Store.unlock(pin)){
+        root.classList.add('hidden');
+        $('#main').classList.remove('hidden');
+        renderTab();
+        startReminderLoop();
+      }else{
+        $('#lockHint').textContent='密码错误';
+        $('#lockPin').value='';
+      }
+    };
+    $('#btnUnlock').onclick=doUnlock;
+    $('#lockPin').onkeydown=e=>{if(e.key==='Enter')doUnlock();};
+    const bio=$('#btnBioUnlock');
+    if(bio)bio.onclick=()=>tryBioUnlock();
+  }
+  function tryBioUnlock(){
+    // 优先尝试 WebAuthn（在支持的安全上下文可用）；否则提示
+    if(window.PublicKeyCredential){
+      navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:location.hostname,userVerification:'required',allowCredentials:[]}})
+        .then(()=>{
+          // WebAuthn 验证通过即视为解锁（不依赖 PIN 解密本地加密数据）
+          Store.setLockState({locked:false});
+          $('#lock-screen').classList.add('hidden');
+          $('#main').classList.remove('hidden');
+          renderTab();
+          startReminderLoop();
+        })
+        .catch(err=>{toast('生物识别不可用：'+(err.message||err));});
+    }else{
+      toast('当前环境不支持生物识别');
+    }
+  }
+  // 应用深色/浅色模式：auto 跟随系统，dark/light 强制切换
+  function applyDarkMode(){
+    const s=Store.getSettings();
+    const html=document.documentElement;
+    const prefersDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if(s.darkMode==='light'){html.setAttribute('data-theme','light');}
+    else if(s.darkMode==='dark'){html.removeAttribute('data-theme');}
+    else{
+      // auto：默认深色主题，仅系统明确浅色时切换
+      if(!prefersDark){html.setAttribute('data-theme','light');}
+      else{html.removeAttribute('data-theme');}
+    }
+  }
+  // 提醒：按天去重，支持每日提醒时间、重要日期、复盘到期
+  function showReminderNotification(title,body,tag){
+    if(!('Notification' in window) || Notification.permission!=='granted')return;
+    const icon='./icon-192.png';
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.ready.then(reg=>{
+        reg.showNotification(title,{body,icon,tag,badge:icon,requireInteraction:false});
+      }).catch(()=>{});
+    }else{
+      try{new Notification(title,{body,icon});}catch(e){}
+    }
+  }
+  function requestNotificationPermission(){
+    if(!('Notification' in window)){toast('当前环境不支持系统通知');return Promise.resolve('unsupported');}
+    return Notification.requestPermission().then(status=>{
+      if(status==='granted'){
+        Store.setSettings({notificationEnabled:true});
+        toast('已开启系统通知');
+      }else{
+        Store.setSettings({notificationEnabled:false});
+        toast('通知权限被拒绝，可在浏览器设置中手动开启');
+      }
+      renderTab();
+      return status;
+    });
+  }
+  function runDailyReminders(){
+    const s=Store.getSettings();
+    const st=Store.getRemindState();
+    const tday=todayStr();
+    if(st.lastRun===tday)return;
+    if(remindTimeout){clearTimeout(remindTimeout);remindTimeout=null;}
+    const doRemind=()=>{
+      if(st.lastRun===tday)return;
+      Store.setRemindState({lastRun:tday});
+      if(s.remindDaily){
+        const now=new Date();
+        const comp=computeDaliuren(now,'其他');
+        const title='玄决 · 今日时课';
+        const body=`${comp.plain.tendency} · ${comp.plain.state.slice(0,60)}`;
+        setTimeout(()=>{toast('今日时课：'+comp.plain.tendency+' · '+comp.plain.state);showReminderNotification(title,body,'daily-ke');},600);
+      }
+      if(s.remindImportant){
+        const todayItems=Store.listImportant().filter(it=>daysUntil(it.date,it)===0);
+        if(todayItems.length){
+          const names=todayItems.map(it=>it.name).join('、');
+          setTimeout(()=>{toast('今日重要日期：'+names);showReminderNotification('玄决 · 今日重要日期',names,'important-today');},1200);
+        }
+      }
+      if(s.remindReview){
+        const due=Store.listCases().filter(c=>!c.reviewed && c.reviewDue && Date.now()>c.reviewDue);
+        if(due.length){
+          const names=due.slice(0,3).map(c=>c.title).join('、')+(due.length>3?' 等':'')+`（共 ${due.length} 条）`;
+          setTimeout(()=>{toast('待复盘提醒：'+names);showReminderNotification('玄决 · 待复盘提醒',names,'review-due');},1800);
+        }
+      }
+    };
+    if(s.remindDaily && s.dailyTime){
+      const now=new Date();
+      const [dh,dm]=s.dailyTime.split(':').map(x=>parseInt(x,10));
+      const target=new Date(now.getFullYear(),now.getMonth(),now.getDate(),dh,dm,0);
+      const ms=target.getTime()-now.getTime();
+      if(ms<=0){doRemind();}
+      else{remindTimeout=setTimeout(()=>{if(Store.getRemindState().lastRun!==tday)doRemind();},ms);}
+    }else{
+      doRemind();
+    }
+  }
+  function startReminderLoop(){
+    runDailyReminders();
+    if(remindInterval)clearInterval(remindInterval);
+    remindInterval=setInterval(()=>{
+      const s=Store.getSettings();
+      if(s.remindDaily || s.remindImportant || s.remindReview)runDailyReminders();
+    },30000);
   }
 
   function renderTab(){
+    if(state.clockInterval){clearInterval(state.clockInterval);state.clockInterval=null;}
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
     const c=$('#page-container');
     if(state.tab==='home')c.innerHTML=pageHome();
@@ -161,6 +347,9 @@
     const todo=cases.filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
     const recent=cases.slice(0,5);
     const qaTypes=[['感情关系','♥'],['事业合作','★'],['学习考试','✎'],['出行移动','→'],['签约交易','§'],['人际沟通','✉'],['财务决策','¥'],['健康倾向','+'],['失物寻找','?'],['二选一决策','⇄'],['其他','⋯']];
+    const settings=Store.getSettings();
+    const important=settings.remindImportant?Store.listImportant():[];
+    const upcoming=important.map(it=>{const d=daysUntil(it.date,it);return d!==null?Object.assign({},it,{days:d}):null;}).filter(Boolean).filter(it=>it.days>=-1&&it.days<=7).sort((a,b)=>a.days-b.days);
 
     let h='';
     h+=`<div class="phead"><div><div class="ptitle">玄决</div><div class="psub">实时决策台</div></div><div class="psub">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())}</div></div>`;
@@ -187,17 +376,51 @@
     h+=`</div>`;
     // 快速问事
     h+=`<div class="card"><h3>快速问事</h3><div class="qa-grid">${qaTypes.map(t=>`<div class="qa-item" data-type="${t[0]}"><div class="qa-ico">${t[1]}</div>${t[0]}</div>`).join('')}</div></div>`;
-    // 待复盘
-    h+=`<div class="card home-due-card" id="homeDueCard">`;
-    if(todo.length){
-      h+=`<h3>待复盘提醒</h3>`;
-      h+=`<div class="due-count">有 ${todo.length} 条案例已到复盘时间</div>`;
-      todo.slice(0,3).forEach(c=>{h+=`<div class="recent-item" data-review="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">去复盘</div></div>`;});
-      if(todo.length>3)h+=`<div class="due-more" id="dueMore">查看全部 ${todo.length} 条 →</div>`;
-    }else{
-      h+=`<h3>待复盘提醒</h3><div class="empty">暂无待复盘案例</div>`;
+    // 首次使用引导
+    if(cases.length===0){
+      h+=`<div class="card home-guide-card">`;
+      h+=`<h3>欢迎使用玄决</h3>`;
+      h+=`<div class="guide-step"><span class="guide-num">1</span>点击上方“快速问事”或底部“问事”进入向导</div>`;
+      h+=`<div class="guide-step"><span class="guide-num">2</span>选择术数并补充所需信息（如出生时间）</div>`;
+      h+=`<div class="guide-step"><span class="guide-num">3</span>查看盘面与白话解读，保存案例后定期复盘</div>`;
+      h+=`<div class="section-note">所有数据默认保存在本机，可在“我的”页一键导出备份。</div>`;
+      h+=`</div>`;
     }
-    h+=`</div>`;
+    // 每日时课提醒（开启时显示今日一课摘要）
+    if(settings.remindDaily){
+      h+=`<div class="card home-daily-card">`;
+      h+=`<h3>今日时课</h3>`;
+      h+=`<div class="daily-state">${p.state}</div>`;
+      h+=`<div class="daily-tendency"><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
+      h+=`<div class="section-note">${p.doAct.length?'宜：'+p.doAct.join('、'):''}${p.doAct.length&&p.dontAct.length?'　':''}${p.dontAct.length?'忌：'+p.dontAct.join('、'):''}</div>`;
+      h+=`</div>`;
+    }
+    // 待复盘（受 remindReview 开关控制）
+    if(settings.remindReview){
+      h+=`<div class="card home-due-card" id="homeDueCard">`;
+      if(todo.length){
+        h+=`<h3>待复盘提醒</h3>`;
+        h+=`<div class="due-count">有 ${todo.length} 条案例已到复盘时间</div>`;
+        todo.slice(0,3).forEach(c=>{h+=`<div class="recent-item" data-review="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">去复盘</div></div>`;});
+        if(todo.length>3)h+=`<div class="due-more" id="dueMore">查看全部 ${todo.length} 条 →</div>`;
+      }else{
+        h+=`<h3>待复盘提醒</h3><div class="empty">暂无待复盘案例</div>`;
+      }
+      h+=`</div>`;
+    }
+    // 重要日期提醒
+    if(settings.remindImportant&&upcoming.length){
+      h+=`<div class="card home-important-card">`;
+      h+=`<h3>重要日期提醒</h3>`;
+      upcoming.forEach(it=>{
+        const dayText=it.days===0?'今天':(it.days===1?'明天':(it.days===-1?'昨天':(it.days>0?it.days+'天后':'已过期 '+(-it.days)+' 天')));
+        const dateLabel=it.lunar?('农历 '+it.date):(fmtDateShort(new Date(it.date+'T00:00:00')));
+        const repeatTag=it.repeat==='year'?'<span class="tag-mini">每年</span>':'';
+        h+=`<div class="important-item" data-important="${it.id}"><div><div class="ii-t">${esc(it.name)}${repeatTag}</div><div class="ii-m">${dateLabel} · ${it.note||''}</div></div><div class="ii-r ${it.days===0?'urgent':''}">${dayText}</div></div>`;
+      });
+      h+=`<div class="important-more" id="importantMore">管理重要日期 →</div>`;
+      h+=`</div>`;
+    }
     // 最近案例
     h+=`<div class="card"><h3>最近案例</h3>`;
     if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(c.review.result||'已复盘'):'待复盘'}</div></div>`;});}
@@ -206,6 +429,16 @@
     return h;
   }
   function bindHome(){
+    // 首页实时时钟：每秒刷新大时间显示
+    const timeBig=$('.time-big');
+    if(timeBig){
+      const tick=()=>{
+        const el=$('.time-big');
+        if(el){const n=new Date();el.textContent=pad(n.getHours())+':'+pad(n.getMinutes());}
+      };
+      tick();
+      state.clockInterval=setInterval(tick,1000);
+    }
     $('#btnViewBoard').onclick=()=>{state.tab='board';renderTab();setTimeout(()=>showDaliurenBoard(state.currentKe),30);};
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
       state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
@@ -220,14 +453,25 @@
         const r=$('#fResult');if(r){r.value='未复盘';renderCaseListBody();}
       },30);
     };
+    // 重要日期管理入口
+    const importantMore=$('#importantMore');
+    if(importantMore)importantMore.onclick=()=>{state.subPage='important';renderTab();};
+    document.querySelectorAll('[data-important]').forEach(e=>e.onclick=()=>{
+      const id=e.dataset.important;
+      const it=Store.getImportant(id);
+      if(it){
+        const dateLabel=it.lunar?('农历 '+it.date):it.date;
+        modal('重要日期',`<div class="detail-row"><span class="dk">名称</span><span>${esc(it.name)}</span></div><div class="detail-row"><span class="dk">日期</span><span>${dateLabel}${it.repeat==='year'?'（每年重复）':''}</span></div><div class="detail-row"><span class="dk">备注</span><span>${esc(it.note||'—')}</span></div>`,null,true,'关闭');
+      }
+    });
   }
 
   // ================= 问事向导 =================
   function newAsk(){return{step:1,bg:{questionType:'',title:'',desc:'',mood:'',urgent:'',hasOption:false,optA:'',optB:'',persons:'',other:'',adviceType:[]},method:'auto',methodTime:'',methodInput:'',shushu:['大六壬'],extra:{birth:{gender:'',calendar:'solar',date:'',hour:'',unknownHour:false,place:'',zhenTaiyang:false},liuyao:{mode:'manual',yaos:[],manualStr:''},meihua:{mode:'time',input:''},tarot:{spread:'three'},xiaoliuren:{topic:''}},computed:null};}
   const TYPES=['感情关系','事业合作','学习考试','出行移动','签约交易','人际沟通','财务决策','健康倾向','失物寻找','二选一决策','其他'];
   const QIKE_METHODS=[['auto','当前时间自动起课'],['manual','手动选择时间'],['random','随机起卦'],['number','数字起卦'],['hanzi','汉字起卦'],['coin','硬币起卦'],['baoshu','报数起卦']];
-  const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数','奇门遁甲','星盘','黄历'];
-  const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字'];
+  const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
+  const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
   const LIUYAO_MODES=[['manual','手动六次摇卦'],['auto','一键摇六爻'],['time','时间起卦'],['input','手动输入爻象']];
   const MEIHUA_MODES=[['time','时间起卦'],['number','报数起卦'],['hanzi','汉字起卦'],['random','随机起卦']];
   const TAROT_SPREADS=[['single','单张'],['three','三张'],['relation','关系'],['choice','二选一']];
@@ -291,7 +535,7 @@
   function askStep4(a){
     const selected=a.shushu;
     let h='';
-    if(selected.includes('八字'))h+=renderBirthForm(a.extra.birth);
+    if(selected.includes('八字')||selected.includes('紫微斗数'))h+=renderBirthForm(a.extra.birth,'八字、紫微斗数');
     if(selected.includes('六爻'))h+=renderLiuYaoForm(a.extra.liuyao);
     if(selected.includes('小六壬'))h+=renderXiaoLiuRenForm(a.extra.xiaoliuren);
     if(selected.includes('梅花易数'))h+=renderMeiHuaForm(a.extra.meihua);
@@ -302,8 +546,40 @@
   }
   function askStep5(a){return renderResult(a);}
   // ---------- step4 各术数信息补充表单 ----------
-  function renderBirthForm(b){
-    let h=`<div class="card"><h3>八字 · 出生信息</h3>`;
+  // 用个人信息预填八字出生信息
+  function fillBirthFromProfile(b){
+    if(!b||b.date)return b; // 已有日期不再覆盖
+    const p=Store.getProfile();
+    if(!p||(!p.birth&&!p.gender&&!p.place&&!p.nianming))return b;
+    // 个人信息中的 birth 是 datetime-local 字符串，拆成 date + hour
+    if(p.birth){
+      const parts=String(p.birth).split('T');
+      if(parts.length>=2){b.date=parts[0];b.hour=parts[1];}
+      else{b.date=p.birth;}
+    }
+    if(p.gender)b.gender=p.gender;
+    if(p.place)b.place=p.place;
+    if(p.nianming&&!b.nianming)b.nianming=p.nianming;
+    return b;
+  }
+  // 八字案例保存后，把 birth 信息回写到个人信息（若 profile 对应字段为空）
+  function syncProfileFromBirth(b){
+    if(!b||!b.date)return;
+    const p=Store.getProfile();
+    const updates={};
+    if(b.date){
+      const hourStr=b.hour||'00:00';
+      const nextBirth=b.date+'T'+hourStr;
+      if(!p.birth||p.birth!==nextBirth)updates.birth=nextBirth;
+    }
+    if(b.gender&&p.gender!==b.gender)updates.gender=b.gender;
+    if(b.place&&p.place!==b.place)updates.place=b.place;
+    if(b.nianming&&p.nianming!==b.nianming)updates.nianming=b.nianming;
+    if(Object.keys(updates).length>0)Store.setProfile(updates);
+  }
+  function renderBirthForm(b,title){
+    fillBirthFromProfile(b);
+    let h=`<div class="card"><h3>${title||'八字 · 出生信息'}</h3>`;
     h+=`<div class="field"><label>性别</label><div class="chips">${['男','女'].map(g=>`<span class="chip ${b.gender===g?'on':''}" data-birth-gender="${g}">${g}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>历法</label><div class="chips">${[['solar','公历'],['lunar','农历']].map(m=>`<span class="chip ${b.calendar===m[0]?'on':''}" data-birth-calendar="${m[0]}">${m[1]}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>出生日期</label><input type="date" id="fBirthDate" value="${b.date||''}"></div>`;
@@ -311,6 +587,7 @@
     h+=`<div class="switch"><span>时辰未知</span><input type="checkbox" id="fBirthUnknownHour" ${b.unknownHour?'checked':''}></div>`;
     h+=`<div class="field"><label>出生地点</label><input type="text" id="fBirthPlace" value="${b.place||''}" placeholder="如 北京市"></div>`;
     h+=`<div class="switch"><span>使用真太阳时</span><input type="checkbox" id="fBirthZhenTaiyang" ${b.zhenTaiyang?'checked':''}></div>`;
+    h+=`<div class="section-note">提示：可在「我的-个人信息」中预填出生时间，问事时会自动带入。</div>`;
     h+=`</div>`;
     return h;
   }
@@ -356,8 +633,11 @@
     return h;
   }
   function renderTarotForm(t){
+    const s=Store.getSettings();
+    const rev=t.reverse||s.tarotReverse||'随机正逆位';
     let h=`<div class="card"><h3>塔罗 · 牌阵</h3>`;
     h+=`<div class="field"><label>选择牌阵</label><div class="chips">${TAROT_SPREADS.map(x=>`<span class="chip ${t.spread===x[0]?'on':''}" data-tarot-spread="${x[0]}">${x[1]}</span>`).join('')}</div></div>`;
+    h+=`<div class="field"><label>正逆位</label><select id="fTarotReverse">${['随机正逆位','仅正位','仅逆位'].map(o=>`<option ${o===rev?'selected':''}>${o}</option>`).join('')}</select></div>`;
     h+=`</div>`;
     return h;
   }
@@ -418,10 +698,16 @@
     document.querySelectorAll('[data-liuyao-mode]').forEach(e=>e.onclick=()=>{a.extra.liuyao.mode=e.dataset.liuyaoMode;a.extra.liuyao.yaos=[];a.extra.liuyao.manualStr='';renderTab();});
     for(let i=0;i<6;i++){
       const btn=$('#fYaoBtn_'+i);
-      if(btn)btn.onclick=()=>{a.extra.liuyao.yaos.push(randomYao());renderTab();};
+      if(btn)btn.onclick=()=>{
+        btn.classList.add('yao-shake');
+        setTimeout(()=>{a.extra.liuyao.yaos.push(randomYao());renderTab();},280);
+      };
     }
     const doneBtn=$('#fLiuYaoDone');if(doneBtn)doneBtn.onclick=()=>{/* 完成摇卦为视觉确认 */};
-    const autoBtn=$('#fLiuYaoAuto');if(autoBtn)autoBtn.onclick=()=>{a.extra.liuyao.yaos=Array.from({length:6},randomYao);renderTab();};
+    const autoBtn=$('#fLiuYaoAuto');if(autoBtn)autoBtn.onclick=()=>{
+      autoBtn.classList.add('yao-shake');
+      setTimeout(()=>{a.extra.liuyao.yaos=Array.from({length:6},randomYao);renderTab();},280);
+    };
     const timeBtn=$('#fLiuYaoTime');if(timeBtn)timeBtn.onclick=()=>{
       const date=resolveZhanTime(a);
       const r=ShuShu.compute('六爻',date);
@@ -439,6 +725,7 @@
     const mhInput=$('#fMeiHuaInput');if(mhInput)mhInput.oninput=ev=>a.extra.meihua.input=ev.target.value;
     // 塔罗
     document.querySelectorAll('[data-tarot-spread]').forEach(e=>e.onclick=()=>{a.extra.tarot.spread=e.dataset.tarotSpread;renderTab();});
+    const fTarotReverse=$('#fTarotReverse');if(fTarotReverse)fTarotReverse.onchange=ev=>a.extra.tarot.reverse=ev.target.value;
     // 小六壬
     document.querySelectorAll('[data-xlr-topic]').forEach(e=>e.onclick=()=>{a.extra.xiaoliuren.topic=e.dataset.xlrTopic;renderTab();});
   }
@@ -455,6 +742,7 @@
       if(yaos)a.extra.liuyao.yaos=yaos;
     }
     const mhInput=$('#fMeiHuaInput');if(mhInput)a.extra.meihua.input=mhInput.value;
+    const fTarotReverse=$('#fTarotReverse');if(fTarotReverse)a.extra.tarot.reverse=fTarotReverse.value;
   }
   function goNext(){
     const a=state.ask;
@@ -478,7 +766,7 @@
     if(a.step===4){
       collectStep4(a);
       if(a.shushu.includes('六爻')&&a.extra.liuyao.yaos.length!==6){toast('请完成六爻摇卦');return;}
-      if(a.shushu.includes('八字')&&!a.extra.birth.date){toast('请填写八字出生日期');return;}
+      if((a.shushu.includes('八字')||a.shushu.includes('紫微斗数'))&&!a.extra.birth.date){toast('请填写出生日期');return;}
       a.computed=computeAskResult(a);a.step=5;renderTab();return;
     }
   }
@@ -499,6 +787,27 @@
     const d=new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,0,0);
     return d;
   }
+  function resolveBirthDate(b){
+    if(!b||!b.date)return null;
+    let d;
+    if(b.calendar==='lunar'){
+      const parts=String(b.date).split('-').map(x=>parseInt(x,10));
+      if(parts.length===3&&!isNaN(parts[0])&&!isNaN(parts[1])&&!isNaN(parts[2])){
+        const solar=lunarToSolar(parts[0],parts[1],parts[2],false);
+        if(solar){
+          const hh=b.hour?b.hour.split(':').map(x=>parseInt(x,10)||0):[0,0];
+          d=new Date(solar.getFullYear(),solar.getMonth(),solar.getDate(),hh[0],hh[1]);
+        }else{
+          d=new Date(b.date+(b.hour?'T'+b.hour:''));
+        }
+      }else{
+        d=new Date(b.date+(b.hour?'T'+b.hour:''));
+      }
+    }else{
+      d=new Date(b.date+(b.hour?'T'+b.hour:''));
+    }
+    return d;
+  }
   function computeAskResult(a){
     const date=resolveZhanTime(a);
     // 大六壬
@@ -510,28 +819,16 @@
       if(s==='大六壬')return;
       let r=null;
       if(s==='八字'){
-        const b=a.extra.birth;
-        if(b.date){
-          // 历法处理：农历先转公历，再起四柱
-          let d;
-          if(b.calendar==='lunar'){
-            const parts=String(b.date).split('-').map(x=>parseInt(x,10));
-            if(parts.length===3&&!isNaN(parts[0])&&!isNaN(parts[1])&&!isNaN(parts[2])){
-              const solar=lunarToSolar(parts[0],parts[1],parts[2],false);
-              if(solar){
-                const hh=b.hour?b.hour.split(':').map(x=>parseInt(x,10)||0):[0,0];
-                d=new Date(solar.getFullYear(),solar.getMonth(),solar.getDate(),hh[0],hh[1]);
-              }else{
-                // 农历转公历失败，降级按公历解析并提示
-                d=new Date(b.date+(b.hour?'T'+b.hour:''));
-              }
-            }else{
-              d=new Date(b.date+(b.hour?'T'+b.hour:''));
-            }
-          }else{
-            d=new Date(b.date+(b.hour?'T'+b.hour:''));
-          }
+        const d=resolveBirthDate(a.extra.birth);
+        if(d){
+          const b=a.extra.birth;
           r=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):ShuShu.compute('八字',d);
+        }
+      }else if(s==='紫微斗数'){
+        const d=resolveBirthDate(a.extra.birth);
+        if(d){
+          const b=a.extra.birth;
+          r=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):ShuShu.compute('紫微斗数',{askInfo:{birthInfo:{date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}}});
         }
       }else if(s==='六爻'){
         const ly=a.extra.liuyao;
@@ -546,7 +843,8 @@
         r=ShuShu.compute('小六壬',{date,questionType:a.extra.xiaoliuren.topic||a.bg.questionType});
         if(r&&r.plain&&a.extra.xiaoliuren.topic){r.plain.state+='（问事主题：'+a.extra.xiaoliuren.topic+'）';}
       }else if(s==='塔罗'){
-        r=ShuShu.compute('塔罗',{date,spread:a.extra.tarot.spread||'three'});
+        const rev=a.extra.tarot.reverse||Store.getSettings().tarotReverse||'随机正逆位';
+        r=ShuShu.compute('塔罗',{date,spread:a.extra.tarot.spread||'three',tarotReverse:rev});
         if(r&&r.result){r.result.spread=a.extra.tarot.spread;}
       }else{
         r=ShuShu.compute(s,date);
@@ -599,7 +897,7 @@
           others.forEach(s=>{
             const r=c.shushuResults[s];
             if(r)h+=renderShuShuResult(r);
-            else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">参考占位</div></div>`;
+            else h+=`<div class="plain-card"><div class="pc-t">${s}</div><div class="pc-c">未生成该术数结果，请检查输入或单独起课。</div></div>`;
           });
           h+=`</div>`;
         }
@@ -646,6 +944,7 @@
     else if(res.name==='六爻')h+=renderLiuYao(r);
     else if(res.name==='塔罗')h+=renderTarot(r);
     else if(res.name==='八字')h+=renderBaZi(r);
+    else if(res.name==='紫微斗数')h+=renderZiWei(r);
     h+=`</div>`;
     // 白话
     h+=`<div class="card"><h3>${res.name} · 白话解读</h3>`;
@@ -866,6 +1165,34 @@
     }
     return h;
   }
+  function renderZiWei(r){
+    if(!r||!r.astrolabe)return '<div class="section-note">紫微斗数排盘数据异常</div>';
+    const a=r.astrolabe;
+    let h=`<div class="zw-summary">`;
+    h+=`<div class="kv-grid">`;
+    h+=`<div class="kv"><span class="k">命宫</span><span class="v">${r.soulPalace||'未知'}</span></div>`;
+    h+=`<div class="kv"><span class="k">身宫</span><span class="v">${r.bodyPalace||'未知'}</span></div>`;
+    h+=`<div class="kv"><span class="k">命主</span><span class="v">${a.soul||'未知'}</span></div>`;
+    h+=`<div class="kv"><span class="k">身主</span><span class="v">${a.body||'未知'}</span></div>`;
+    h+=`<div class="kv"><span class="k">五行局</span><span class="v">${a.fiveElementsClass||'未知'}</span></div>`;
+    h+=`<div class="kv"><span class="k">出生时间</span><span class="v">${r.solarDate||''} ${a.time||''}</span></div>`;
+    h+=`</div>`;
+    if(r.majorStars&&r.majorStars.length){
+      h+=`<div class="section-note">命宫主星：${r.majorStars.join('、')}</div>`;
+    }
+    // 十二宫简表：宫名 + 主星
+    if(a.palaces&&a.palaces.length===12){
+      h+=`<div class="zw-palaces">`;
+      a.palaces.forEach(pal=>{
+        const stars=(pal.majorStars||[]).map(s=>s.name).filter(Boolean).join('、')||'无主星';
+        h+=`<div class="zw-palace"><div class="zwp-name">${pal.name}</div><div class="zwp-stars">${stars}</div></div>`;
+      });
+      h+=`</div>`;
+    }
+    h+=`<div class="section-note muted">紫微斗数提供命宫主星与十二宫星曜分布参考，用于自我觉察，不做确定性命运论断。</div>`;
+    h+=`</div>`;
+    return h;
+  }
   function sensitiveHint(cat){
     const map={selfHarm:'请拨打心理援助热线 400-161-9995 或联系专业心理机构。本应用无法处理危机情况。',medical:'健康问题请咨询专业医生，术数仅供参考，不作诊断依据。',legal:'法律问题请咨询专业律师，术数不作判决预测。',invest:'投资有风险，术数不作收益承诺，请理性决策。'};
     return map[cat]||'该问题超出参考范围，建议咨询专业人士。';
@@ -893,8 +1220,8 @@
     return h;
   }
   function crossHint(s,p){
-    const map={'六爻':'以大六壬三传为用神参考，倾向一致。','梅花易数':'体用关系参考，短期趋势与主盘相近。','小六壬':'快速吉凶参考，倾向 '+p.tendency+'。','塔罗':'心理投射工具，不作确定预测，用于觉察决策心理。','八字':'长期倾向参考，需结合流年。','紫微斗数':'宫位趋势参考，V0.1 暂为占位。','奇门遁甲':'时机方位参考，V0.1 暂为占位。','星盘':'性格关系参考，V0.1 暂为占位。','黄历':'今日宜忌参考，见首页黄历卡。'};
-    return map[s]||'参考占位。';
+    const map={'六爻':'以大六壬三传为用神参考，倾向一致。','梅花易数':'体用关系参考，短期趋势与主盘相近。','小六壬':'快速吉凶参考，倾向 '+p.tendency+'。','塔罗':'心理投射工具，不作确定预测，用于觉察决策心理。','八字':'长期倾向参考，需结合流年。','紫微斗数':'紫微斗数实验版，仅作排盘与基础关键词参考，不做深度断盘。','黄历':'今日宜忌参考，见首页黄历卡。'};
+    return map[s]||'多术数综合参考，请结合现实判断。';
   }
   // T3 多盘交叉摘要卡片渲染
   function renderCrossSummary(cross){
@@ -1192,6 +1519,8 @@
     };
     Store.saveCase(obj);
     a.savedCaseId=obj.id;
+    // 若含八字，将出生信息回写到个人信息（便于下次自动带入）
+    if(a.shushu&&a.shushu.includes('八字')&&a.extra&&a.extra.birth){syncProfileFromBirth(a.extra.birth);}
     toast('案例已保存');
     state.viewCaseId=obj.id;state.tab='case';renderTab();setTimeout(openCaseDetail,30);
   }
@@ -1265,20 +1594,14 @@
   }
 
   // ================= 盘面中心 =================
-  // P1 术数已实现：小六壬/梅花易数/六爻/塔罗/八字；P2 暂为占位
+  // P1 术数已实现：小六壬/梅花易数/六爻/塔罗/八字
   const SHU_P1=['小六壬','梅花易数','六爻','塔罗','八字'];
-  const SHU_P2=['紫微斗数','奇门遁甲','星盘'];
   function pageBoardCenter(){
     let h=`<div class="phead"><div class="ptitle">盘面</div><div class="psub">专业盘面研究</div></div>`;
     h+=`<div class="card"><h3>大六壬<span class="shu-badge">主盘</span></h3><button class="btn primary block" id="btnDlNow">此刻起课</button><button class="btn block mt8" id="btnDlManual">手动时间起课</button></div>`;
-    h+=`<div class="card"><h3>其它术数<span class="shu-badge">P1 已上线</span></h3>`;
+    h+=`<div class="card"><h3>其它术数</h3>`;
     SHU_P1.forEach(s=>{
       h+=`<div class="recent-item" data-shu="${s}"><div class="ri-t">${s}</div><div class="ri-m">点击此刻起课</div><div class="ri-r">›</div></div>`;
-    });
-    h+=`</div>`;
-    h+=`<div class="card"><h3>更多术数<span class="shu-badge">P2 待完善</span></h3>`;
-    SHU_P2.forEach(s=>{
-      h+=`<div class="recent-item" data-shu2="${s}"><div class="ri-t">${s}</div><div class="ri-m">V0.1 占位，后续版本</div><div class="ri-r">›</div></div>`;
     });
     h+=`</div>`;
     if(state.currentKe){
@@ -1300,7 +1623,6 @@
       if(!res){toast(name+' 暂不可用');return;}
       showShuShuBoard(res);
     });
-    document.querySelectorAll('[data-shu2]').forEach(e=>e.onclick=()=>toast(e.dataset.shu2+' 模块为 P2 待完善'));
     const lb=$('#lastBoard');if(lb)lb.onclick=()=>showDaliurenBoard(state.currentKe);
   }
   // P1 术数盘面展示（复用 ask 渠道）
@@ -1339,11 +1661,13 @@
     h+=`<div class="card"><div class="review-stat" id="miniStat"></div><button class="btn block" id="btnStat">复盘统计</button></div>`;
     // 筛选栏
     h+=`<div class="card filter-bar">`;
+    h+=`<div class="filter-row"><label>关键词</label><input type="text" class="filter-select" id="fKeyword" placeholder="搜索标题 / 描述 / 术数…"></div>`;
     h+=`<div class="filter-row"><label>术数</label><select class="filter-select" id="fShu"><option value="全部">全部</option>${REVIEW_SHU_OPTS.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>`;
     h+=`<div class="filter-row"><label>问题类型</label><select class="filter-select" id="fType"><option value="全部">全部</option>${typeOpts.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>`;
     h+=`<div class="filter-row"><label>应验程度</label><select class="filter-select" id="fResult"><option value="全部">全部</option><option value="已复盘">已复盘</option><option value="未复盘">未复盘</option><option value="到期待复盘">到期待复盘</option><option value="应验">应验</option><option value="部分应验">部分应验</option><option value="未应验">未应验</option><option value="无法判断">无法判断</option></select></div>`;
     h+=`<div class="filter-row"><label>起讫时间</label><div class="filter-date-row"><input type="date" class="filter-select" id="fDateFrom"><input type="date" class="filter-select" id="fDateTo"></div></div>`;
     h+=`<div class="filter-row"><label>标签</label><select class="filter-select" id="fTag"><option value="">全部</option>${tagOpts.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>`;
+    h+=`<div class="filter-row"><label>收藏</label><select class="filter-select" id="fFavor"><option value="全部">全部</option><option value="已收藏">已收藏</option><option value="未收藏">未收藏</option></select></div>`;
     h+=`<div class="filter-actions"><button class="btn primary sm" id="btnApplyFilter" type="button">应用筛选</button><button class="btn ghost sm" id="btnClearFilter" type="button">清空</button></div>`;
     h+=`</div>`;
     h+=`<div id="caseListBody"></div>`;
@@ -1352,6 +1676,7 @@
   }
   function collectFilter(){
     const f={};
+    const kw=$('#fKeyword');if(kw&&kw.value.trim())f.keyword=kw.value.trim();
     const s=$('#fShu');if(s)f.shushu=s.value||'全部';
     const t=$('#fType');if(t)f.questionType=t.value||'全部';
     const r=$('#fResult');if(r){
@@ -1364,6 +1689,11 @@
     const df=$('#fDateFrom');if(df&&df.value)f.dateFrom=df.value;
     const dt=$('#fDateTo');if(dt&&dt.value)f.dateTo=dt.value;
     const tg=$('#fTag');if(tg&&tg.value)f.tag=tg.value;
+    const fav=$('#fFavor');if(fav){
+      const v=fav.value;
+      if(v==='已收藏')f.favor=true;
+      else if(v==='未收藏')f.favor=false;
+    }
     return f;
   }
   function renderCaseListBody(){
@@ -1376,8 +1706,9 @@
       body.innerHTML=cases.map(c=>{
         const due=!c.reviewed&&c.reviewDue&&now>c.reviewDue;
         const dueTag=due?'<span class="due-dot"></span><span class="due-badge">到期</span>':'';
+        const favorTag=c.favor?'<span class="favor-star on">★</span>':'';
         const right=c.reviewed?(c.review.result||'已复盘'):'待复盘';
-        return `<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${dueTag}${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${right}</div></div>`;
+        return `<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${favorTag}${dueTag}${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${right}</div></div>`;
       }).join('');
       body.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>openCaseDetail(e.dataset.case));
     }
@@ -1391,8 +1722,9 @@
     const apply=$('#btnApplyFilter');if(apply)apply.onclick=()=>renderCaseListBody();
     const clear=$('#btnClearFilter');
     if(clear)clear.onclick=()=>{
-      const ids=['fShu','fType','fResult','fTag'];
+      const ids=['fShu','fType','fResult','fTag','fFavor'];
       ids.forEach(id=>{const e=$('#'+id);if(e)e.value='全部';});
+      const kw=$('#fKeyword');if(kw)kw.value='';
       const dfrom=$('#fDateFrom');if(dfrom)dfrom.value='';
       const dto=$('#fDateTo');if(dto)dto.value='';
       renderCaseListBody();
@@ -1470,12 +1802,13 @@
       h+=`<button class="btn primary block mt8" id="btnReview">立即复盘</button>`;
     }
     h+=`</div>`;
-    h+=`<div class="card"><button class="btn block" id="btnExportCase">导出本案例</button><button class="btn danger block mt8" id="btnDelCase">删除案例</button></div>`;
+    h+=`<div class="card"><button class="btn block" id="btnToggleFavor">${c.favor?'取消收藏':'收藏案例'}</button><button class="btn block mt8" id="btnExportCase">导出本案例</button><button class="btn danger block mt8" id="btnDelCase">删除案例</button></div>`;
     container.innerHTML=h;
     $('#backList').onclick=()=>{state.viewCaseId=null;renderTab();};
     $('#myJudge').oninput=ev=>{c.myJudge=ev.target.value;Store.saveCase(c);};
     if($('#btnReview'))$('#btnReview').onclick=()=>openReview(id);
     if($('#btnReviewAgain'))$('#btnReviewAgain').onclick=()=>openReview(id);
+    $('#btnToggleFavor').onclick=()=>{c.favor=!c.favor;Store.saveCase(c);openCaseDetail(id);toast(c.favor?'已收藏':'已取消收藏');};
     $('#btnExportCase').onclick=()=>exportCase(c);
     $('#btnDelCase').onclick=()=>{modal('删除案例','确定删除该案例？此操作不可恢复。',(m)=>{Store.deleteCase(id);closeModal();toast('已删除');renderTab();});};
   }
@@ -1660,16 +1993,17 @@
 
   // ================= 我的 =================
   function pageMe(){
+    if(state.subPage==='important')return pageImportant();
     const s=Store.getSettings(),p=Store.getProfile();
     let h=`<div class="phead"><div class="ptitle">我的</div></div>`;
     h+=`<div class="card"><div class="detail-row"><span class="dk">昵称</span><span>${p.nick||'未设置'}</span></div><div class="detail-row"><span class="dk">出生</span><span>${p.birth||'—'}</span></div></div>`;
     h+=`<div class="card set-group"><div class="sg-t">个人信息</div><button class="btn block" id="btnProfile">编辑个人信息</button></div>`;
     h+=`<div class="card set-group"><div class="sg-t">术数设置</div>`;
-    h+=selectRow('大六壬贵人','dlGuiRen',['昼夜贵人','天乙贵人']);
+    h+=selectRow('大六壬贵人','dlGuiRen',['昼夜贵人','夜贵人','甲戊庚牛羊']);
     h+=selectRow('涉害取法','dlSheHai',['涉害取深','涉害取孟仲季']);
     h+=selectRow('月将设置','yueJiang',['中气定将','节气定将']);
     h+=switchRow('八字真太阳时','zhenTaiyang',s.zhenTaiyang);
-    h+=switchRow('塔罗正逆位','tarotReverse',s.tarotReverse);
+    h+=selectRow('塔罗正逆位','tarotReverse',['随机正逆位','仅正位','仅逆位']);
     h+=`</div>`;
     h+=`<div class="card set-group"><div class="sg-t">AI 设置</div>`;
     h+=selectRow('AI 语气','aiTone',['专业谨慎','温和陪伴','直接简洁','传统术数','心理探索']);
@@ -1679,27 +2013,88 @@
     h+=switchRow('自动复制提示词','autoCopyPrompt',s.autoCopyPrompt);
     h+=switchRow('离线模式','offlineMode',s.offlineMode);
     h+=`</div>`;
-    h+=pageAIConfig(s);
-    h+=`<div class="card set-group"><div class="sg-t">隐私与安全</div>`;
-    h+=switchRow('应用锁','appLock',s.appLock);
-    h+=switchRow('生物识别','bioLock',s.bioLock);
-    h+=switchRow('本地加密','localEncrypt',s.localEncrypt);
-    h+=`<div class="section-note">本应用数据仅保存在本机，不上传服务器。</div>`;
+    h+=`<div class="card set-group"><div class="sg-t">外观</div>`;
+    h+=selectRow('深色模式','darkMode',['自动','深色','浅色']);
     h+=`</div>`;
+    h+=pageAIConfig(s);
     h+=`<div class="card set-group"><div class="sg-t">备份与恢复</div>`;
     const sz=Store.storageSizeEstimate();
     h+=`<div class="storage-info">当前案例 <span class="num-val">${sz.caseCount}</span> 条 · 占用 <span class="num-val">${sz.sizeText}</span></div>`;
     h+=`<button class="btn block" id="btnExport">导出备份</button><button class="btn block mt8" id="btnImport">导入备份</button><button class="btn danger block mt8" id="btnClear">一键清除全部案例</button>`;
     h+=`</div>`;
     h+=`<div class="card set-group"><div class="sg-t">提醒</div>`;
+    const notifyStatus=('Notification' in window)?(Notification.permission==='granted'?'已授权':(Notification.permission==='denied'?'已拒绝':'未授权')):'不支持';
+    h+=`<div class="detail-row"><span class="dk">系统通知</span><span>${notifyStatus}</span></div>`;
+    h+=switchRow('允许系统通知','notificationEnabled',s.notificationEnabled && notifyStatus==='已授权');
+    h+=`<button class="btn block mt8" id="btnReqNotify">${notifyStatus==='已授权'?'重新请求通知权限':'请求通知权限'}</button>`;
     h+=switchRow('每日时课提醒','remindDaily',s.remindDaily);
+    h+=`<div class="field" style="margin:8px 0"><label>每日提醒时间</label><input type="time" data-set="dailyTime" value="${escAttr(s.dailyTime)}"></div>`;
     h+=switchRow('复盘提醒','remindReview',s.remindReview);
     h+=switchRow('重要日期提醒','remindImportant',s.remindImportant);
+    h+=`<button class="btn block mt8" id="btnImportant">管理重要日期</button>`;
+    h+=`</div>`;
+    const lock=Store.getLockState();
+    h+=`<div class="card set-group"><div class="sg-t">隐私与安全</div>`;
+    h+=`<div class="detail-row"><span class="dk">应用锁</span><span>${lock.appLock?'已开启':'未开启'}</span></div>`;
+    h+=`<button class="btn block" id="btnLockSetting">${lock.appLock?'管理应用锁':'设置应用锁'}</button>`;
+    h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
     h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V0.3</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.1</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
+  // 重要日期管理子页
+  function pageImportant(){
+    const list=Store.listImportant();
+    let h=`<div class="phead"><div class="ptitle">重要日期</div><div class="psub">生日、约定日、事务节点</div></div>`;
+    h+=`<div class="card"><button class="btn primary block" id="btnAddImportant">添加重要日期</button></div>`;
+    if(list.length){
+      h+=`<div class="card">`;
+      list.forEach(it=>{
+        const d=daysUntil(it.date,it);
+        const dayText=d===0?'今天':(d===1?'明天':(d===-1?'昨天':(d!==null?(d>0?d+'天后':'已过期 '+(-d)+' 天'):'')));
+        const lunarTag=it.lunar?'<span class="tag-mini">农历</span>':'';
+        const repeatTag=it.repeat==='year'?'<span class="tag-mini">每年</span>':'';
+        h+=`<div class="important-manage-item" data-id="${it.id}"><div><div class="ii-t">${esc(it.name)}${lunarTag}${repeatTag}</div><div class="ii-m">${it.date}${it.note?' · '+esc(it.note):''}</div></div><div class="ii-r ${d===0?'urgent':''}">${dayText}<button class="btn danger mini" data-del="${it.id}">删除</button></div></div>`;
+      });
+      h+=`</div>`;
+    }else{
+      h+=`<div class="card"><div class="empty">暂无重要日期，点击上方按钮添加</div></div>`;
+    }
+    h+=`<div class="card"><div class="section-note">重要日期将在首页“重要日期提醒”区域显示（需开启提醒开关），默认展示未来 7 天与昨天。</div></div>`;
+    return h;
+  }
+  function bindImportant(){
+    $('#btnAddImportant').onclick=()=>openImportantEdit();
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=ev=>{
+      ev.stopPropagation();
+      const id=b.dataset.del;
+      Store.deleteImportant(id);
+      renderTab();
+      toast('已删除');
+    });
+    document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{
+      const it=Store.getImportant(e.dataset.id);
+      if(it)openImportantEdit(it);
+    });
+  }
+  function openImportantEdit(item){
+    item=item||{};
+    const dateInputType=item.lunar?'text':'date';
+    const datePlaceholder=item.lunar?'如 1990-05-20（农历）':'';
+    const body=`<div class="field"><label>名称</label><input type="text" id="iName" value="${escAttr(item.name||'')}" placeholder="如：母亲生日"></div><div class="field"><label>日期</label><input type="${dateInputType}" id="iDate" value="${item.date||''}" placeholder="${datePlaceholder}"></div><div class="field"><label>备注（可选）</label><input type="text" id="iNote" value="${escAttr(item.note||'')}" placeholder="如：准备礼物"></div><div class="check-line"><input type="checkbox" id="iLunar" ${item.lunar?'checked':''}><label for="iLunar">这是农历日期</label></div><div class="check-line"><input type="checkbox" id="iRepeat" ${item.repeat==='year'?'checked':''}><label for="iRepeat">每年重复</label></div>`;
+    modal(item.id?'编辑重要日期':'添加重要日期',body,m=>{
+      const name=$('#iName').value.trim(),date=$('#iDate').value,note=$('#iNote').value.trim();
+      const lunar=$('#iLunar').checked,repeat=$('#iRepeat').checked?'year':'';
+      if(!name){toast('请输入名称');return;}
+      if(!date){toast('请选择日期');return;}
+      // 农历日期格式校验：YYYY-MM-DD
+      if(lunar && !/^\d{4}-\d{2}-\d{2}$/.test(date)){toast('农历日期请按 1990-05-20 格式填写');return;}
+      Store.saveImportant({id:item.id,name,date,note,lunar,repeat});
+      closeModal();toast('已保存');renderTab();
+    },true,'保存');
+  }
+
   function selectRow(label,key,opts){
     const s=Store.getSettings();const cur=s[key];
     return `<div class="field" style="margin:8px 0"><label>${label}</label><select data-set="${key}">${opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('')}</select></div>`;
@@ -1775,27 +2170,47 @@
     };
   }
   function bindMe(){
+    if(state.subPage==='important'){bindImportant();return;}
     $('#btnProfile').onclick=()=>openProfile();
     document.querySelectorAll('[data-set]').forEach(e=>e.onchange=ev=>{
       const k=ev.target.dataset.set;
-      // aiProvider 由专用 handler 处理；temperature 由 input handler 处理；跳过
-      if(k==='aiProvider'||k==='aiTemperature')return;
+      // aiProvider / aiTemperature / notificationEnabled 由专用 handler 处理
+      if(k==='aiProvider'||k==='aiTemperature'||k==='notificationEnabled')return;
       let v=ev.target.type==='checkbox'?ev.target.checked:ev.target.value;
       if(['aiMaxTokens','aiTimeout'].includes(k))v=Number(v);
       // apiKey 留空时不清空原值
       if(k==='aiApiKey'&&!v)return;
       Store.setSettings({[k]:v});toast('已保存');
+      if(k==='darkMode'){applyDarkMode();}
+      if(k==='dailyTime'){
+        // 修改提醒时间后，清除今日已提醒状态，重新调度
+        Store.setRemindState({lastRun:''});
+        startReminderLoop();
+      }
     });
     bindAIConfig();
     $('#btnExport').onclick=()=>doExport();
     $('#btnImport').onclick=()=>doImport();
     $('#btnClear').onclick=()=>{modal('清除全部案例','将删除所有案例数据（设置保留），不可恢复。',m=>{Store.clearAll();closeModal();toast('已清除全部案例');renderTab();});};
+    $('#btnImportant').onclick=()=>{state.subPage='important';renderTab();};
+    $('#btnReqNotify').onclick=()=>requestNotificationPermission();
+    const notifySw=$('[data-set="notificationEnabled"]');
+    if(notifySw){
+      notifySw.onchange=ev=>{
+        if(ev.target.checked){
+          requestNotificationPermission();
+        }else{
+          Store.setSettings({notificationEnabled:false});toast('已关闭系统通知');renderTab();
+        }
+      };
+    }
+    $('#btnLockSetting').onclick=()=>openLockSetting();
     $('#btnAbout').onclick=()=>modal('关于玄决',aboutHtml(),null,true,'关闭');
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V0.3</span></p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.1</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
-    <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）</p>
+    <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
     <p style="color:var(--gold);margin-top:12px">免责声明</p>
     <p>${AI.DISCLAIMER}</p>
@@ -1808,6 +2223,56 @@
       Store.setProfile({nick:$('#pNick').value,birth:$('#pBirth').value,gender:$('#pGender').value,place:$('#pPlace').value,nianming:$('#pNian').value});
       closeModal();toast('已保存');renderTab();
     },true,'保存');
+  }
+  function openLockSetting(){
+    const lock=Store.getLockState();
+    if(lock.appLock){
+      // 已开启：管理界面（改密码、改选项、关闭）
+      const body=`<div class="field"><label>当前密码</label><input type="password" id="oldPin" placeholder="输入当前密码"></div><div class="field"><label>新密码（留空则不修改）</label><input type="password" id="newPin" placeholder="至少 4 位"></div><div class="field"><label>确认新密码</label><input type="password" id="newPin2" placeholder="再次输入"></div><div class="check-line"><input type="checkbox" id="setBio" ${lock.bioLock?'checked':''}><label for="setBio">允许生物识别/WebAuthn 解锁</label></div><div class="check-line"><input type="checkbox" id="setEnc" ${lock.localEncrypt?'checked':''}><label for="setEnc">本地加密 API Key 与个人信息</label></div><div class="section-note">本地加密依赖密码，关闭应用锁时会自动解密。</div><button class="btn danger block mt12" id="btnDisableLock" type="button">关闭应用锁</button>`;
+      const m=modal('管理应用锁',body,btn=>{
+        const oldPin=$('#oldPin').value.trim();
+        const newPin=$('#newPin').value.trim();
+        const newPin2=$('#newPin2').value.trim();
+        const bio=$('#setBio').checked;
+        const enc=$('#setEnc').checked;
+        if(!Store.verifyPin(oldPin)){toast('当前密码错误');return;}
+        if(newPin && newPin.length<4){toast('新密码至少 4 位');return;}
+        if(newPin && newPin!==newPin2){toast('两次输入的新密码不一致');return;}
+        try{
+          if(newPin)Store.changePin(oldPin,newPin);
+          Store.setLockState({bioLock:bio});
+          if(enc!==lock.localEncrypt)Store.toggleLocalEncrypt(enc);
+          closeModal();toast('已保存');renderTab();
+        }catch(e){toast(e.message||'保存失败');}
+      },true,'保存');
+      setTimeout(()=>{
+        const disableBtn=$('#btnDisableLock');
+        if(disableBtn)disableBtn.onclick=()=>{
+          const oldPin=$('#oldPin').value.trim();
+          if(!Store.verifyPin(oldPin)){toast('当前密码错误');return;}
+          Store.setAppLock('',false);
+          closeModal();toast('应用锁已关闭');renderTab();
+        };
+      },0);
+      return;
+    }else{
+      // 未开启：设置密码并启用
+      const body=`<div class="field"><label>设置密码</label><input type="password" id="setPin" placeholder="至少 4 位"></div><div class="field"><label>确认密码</label><input type="password" id="setPin2" placeholder="再次输入"></div><div class="check-line"><input type="checkbox" id="setBio"><label for="setBio">允许生物识别/WebAuthn 解锁</label></div><div class="check-line"><input type="checkbox" id="setEnc"><label for="setEnc">本地加密 API Key 与个人信息</label></div><div class="section-note">密码仅用于本地校验，不会上传。忘记密码需在设置中关闭应用锁（需当前密码）。</div>`;
+      modal('设置应用锁',body,m=>{
+        const pin=$('#setPin').value.trim();
+        const pin2=$('#setPin2').value.trim();
+        const bio=$('#setBio').checked;
+        const enc=$('#setEnc').checked;
+        if(pin.length<4){toast('密码至少 4 位');return;}
+        if(pin!==pin2){toast('两次输入的密码不一致');return;}
+        try{
+          Store.setAppLock(pin,true);
+          Store.setLockState({bioLock:bio});
+          if(enc)Store.toggleLocalEncrypt(true);
+          closeModal();toast('应用锁已开启');renderTab();
+        }catch(e){toast(e.message||'开启失败');}
+      },true,'开启');
+    }
   }
   function doExport(){
     const data=Store.exportBackup();

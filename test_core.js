@@ -6,7 +6,7 @@ const ctx={console,Date,Math,localStorage:{
   getItem:k=>Object.prototype.hasOwnProperty.call(_store,k)?_store[k]:null,
   setItem:(k,v)=>{_store[k]=String(v);},
   removeItem:k=>{delete _store[k];}
-}};
+},btoa:s=>Buffer.from(s,'binary').toString('base64'),atob:s=>Buffer.from(s,'base64').toString('binary')};
 ctx.window=ctx;ctx.global=ctx;ctx.self=ctx;
 // classics.js 需要 require 支持（用于 Node 环境读取数据文件）
 ctx.require=require;ctx.__filename=require('path').resolve('js/classics.js');ctx.__dirname=require('path').resolve('js');
@@ -469,7 +469,7 @@ ctx.localStorage.removeItem('xuanjue_profile');
 Store.saveCase({id:'B1',title:'备份测试1',questionType:'感情关系',shushu:'大六壬',createdAt:Date.now()});
 Store.saveCase({id:'B2',title:'备份测试2',questionType:'事业合作',shushu:'六爻',createdAt:Date.now()});
 const exp=Store.exportBackup();
-eq('exportBackup-version=1.0',exp.version,'1.0');
+eq('exportBackup-version=1.0.1',exp.version,'1.0.1');
 eq('exportBackup-caseCount=2',exp.caseCount,2);
 eq('exportBackup-cases 数组完整',Array.isArray(exp.cases)&&exp.cases.length,2);
 eq('exportBackup-app=玄决',exp.app,'玄决');
@@ -493,7 +493,7 @@ eq('importBackup-total 仍=2',ret2.total,2);
 eq('importBackup-覆盖后不重复',Store.listCases().length,2);
 
 // 4. importBackup 混合计数：现有2条 + 导入1条新1条覆盖
-const mixedExp={app:'玄决',version:'1.0',exportedAt:new Date().toISOString(),
+const mixedExp={app:'玄决',version:'1.0.1',exportedAt:new Date().toISOString(),
   cases:[
     {id:'B2',title:'备份测试2-修改',questionType:'事业合作',shushu:'六爻',createdAt:Date.now()}, // 覆盖
     {id:'B3',title:'备份测试3',questionType:'财务决策',shushu:'八字',createdAt:Date.now()}        // 新增
@@ -518,7 +518,7 @@ try{Store.importBackup({app:'玄决',cases:'不是数组'});}catch(e){threw=true
 eq('importBackup-cases 非数组抛异常',threw,true);
 
 // 6. importBackup settings 白名单仍生效
-const withSettings={app:'玄决',version:'1.0',cases:[],
+const withSettings={app:'玄决',version:'1.0.1',cases:[],
   settings:{aiTone:'直接简洁',aiLength:'简短',evilField:'应被忽略'}};
 const ret4=Store.importBackup(withSettings);
 const s=Store.getSettings();
@@ -685,7 +685,8 @@ if(zw&&zw.result&&zw.result.astrolabe){
   eq('紫微斗数-返回 name','紫微斗数',zw.name);
   eq('紫微斗数-命宫名称非空',typeof zw.result.soulPalace==='string'&&zw.result.soulPalace.length>0,true);
   eq('紫微斗数-十二宫存在',Array.isArray(zw.result.astrolabe.palaces)&&zw.result.astrolabe.palaces.length===12,true);
-  eq('紫微斗数-plain 含实验提示',zw.plain.state.includes('实验版'),true);
+  eq('紫微斗数-plain 不含实验字样',zw.plain.state.includes('实验版'),false);
+  eq('紫微斗数-plain 倾向非空',zw.plain.tendency.length>0,true);
   eq('紫微斗数-主星数组存在',Array.isArray(zw.result.majorStars),true);
   console.log('紫微斗数:',zw.result.soulPalace,'主星',zw.result.majorStars.join('、'));
 }else{
@@ -693,10 +694,72 @@ if(zw&&zw.result&&zw.result.astrolabe){
   console.log('紫微斗数排盘失败:',zw&&zw.error?zw.error:'无结果');
 }
 
+// ===== 提醒与重要日期 =====
+console.log('\n--- 提醒与重要日期 ---');
+ctx.localStorage.removeItem('xuanjue_important');
+ctx.localStorage.removeItem('xuanjue_remind_state');
+const it1=Store.saveImportant({name:'测试生日',date:'2026-08-01',note:'准备礼物'});
+eq('重要日期-保存返回id',typeof it1.id==='string'&&it1.id.length>0,true);
+eq('重要日期-保存返回名称',it1.name,'测试生日');
+const it2=Store.saveImportant({name:'约会',date:'2026-07-28'});
+const list=Store.listImportant();
+eq('重要日期-列表长度=2',list.length,2);
+eq('重要日期-按日期排序',list[0].date,'2026-07-28');
+const got=Store.getImportant(it1.id);
+eq('重要日期-读取单条',got&&got.name,'测试生日');
+Store.deleteImportant(it2.id);
+eq('重要日期-删除后长度=1',Store.listImportant().length,1);
+// 提醒状态
+Store.setRemindState({lastRun:'2026-07-27'});
+eq('提醒状态-读取lastRun',Store.getRemindState().lastRun,'2026-07-27');
+// 农历 + 年度重复保存
+const it3=Store.saveImportant({name:'农历生日',date:'1990-05-20',lunar:true,repeat:'year'});
+eq('重要日期-农历字段保存',Store.getImportant(it3.id).lunar,true);
+eq('重要日期-重复字段保存',Store.getImportant(it3.id).repeat,'year');
+
+// 备份含重要日期
+const bk=Store.exportBackup();
+eq('exportBackup-含important数组',Array.isArray(bk.important),true);
+eq('exportBackup-important长度=2',bk.important.length,2);
+
+// ===== 应用锁与本地加密 =====
+console.log('\n--- 应用锁与本地加密 ---');
+ctx.localStorage.removeItem('xuanjue_lock');
+eq('应用锁-默认未开启',Store.getLockState().appLock,false);
+Store.setAppLock('1234',true);
+eq('应用锁-开启后锁定',Store.isLocked(),true);
+eq('应用锁-错误密码不解锁',Store.unlock('0000'),false);
+eq('应用锁-正确密码解锁',Store.unlock('1234'),true);
+eq('应用锁-解锁后未锁定',Store.isLocked(),false);
+// 本地加密
+Store.setSettings({aiApiKey:'sk-test-key'});
+Store.toggleLocalEncrypt(true);
+eq('本地加密-设置后标记开启',Store.getLockState().localEncrypt,true);
+const sEnc=JSON.parse(ctx.localStorage.getItem('xuanjue_settings'));
+eq('本地加密-apiKey已加密',String(sEnc.aiApiKey).startsWith('enc:'),true);
+eq('本地加密-读取时自动解密',Store.getSettings().aiApiKey,'sk-test-key');
+Store.toggleLocalEncrypt(false);
+eq('本地加密-关闭后标记关闭',Store.getLockState().localEncrypt,false);
+eq('本地加密-关闭后解密',Store.getSettings().aiApiKey,'sk-test-key');
+// 改密码
+Store.setAppLock('1234',true);
+Store.toggleLocalEncrypt(true);
+eq('改密码-旧密码错误返回false',Store.changePin('0000','5678'),false);
+eq('改密码-旧密码正确返回true',Store.changePin('1234','5678'),true);
+eq('改密码-新密码可解锁',Store.unlock('5678'),true);
+eq('改密码-加密数据仍可读',Store.getSettings().aiApiKey,'sk-test-key');
+// 关闭应用锁
+Store.setAppLock('',false);
+eq('应用锁-关闭后未锁定',Store.isLocked(),false);
+eq('应用锁-关闭后无pinHash',Store.getLockState().pinHash,'');
+
 // 清理 P2/P3 测试数据
 ctx.localStorage.removeItem('xuanjue_cases');
 ctx.localStorage.removeItem('xuanjue_settings');
 ctx.localStorage.removeItem('xuanjue_profile');
+ctx.localStorage.removeItem('xuanjue_important');
+ctx.localStorage.removeItem('xuanjue_remind_state');
+ctx.localStorage.removeItem('xuanjue_lock');
 
 console.log('\n=========================');
 console.log('通过:',pass,'失败:',fail);

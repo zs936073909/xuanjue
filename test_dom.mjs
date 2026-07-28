@@ -131,8 +131,9 @@ await sleep(40);
 ok('我的页含术数设置', pc.textContent.includes('术数设置'));
 ok('我的页含AI设置', pc.textContent.includes('AI 设置'));
 ok('我的页含备份', pc.textContent.includes('备份与恢复'));
-ok('我的页不含未实现隐私开关', !pc.textContent.includes('应用锁'));
-ok('我的页含版本', pc.textContent.includes('V1.0'));
+ok('我的页含隐私与安全入口', pc.textContent.includes('隐私与安全'));
+ok('我的页含应用锁入口', !!d.getElementById('btnLockSetting'));
+ok('我的页含版本', pc.textContent.includes('V1.0.1'));
 // 关于
 d.getElementById('btnAbout').click();
 await sleep(40);
@@ -167,7 +168,7 @@ ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
 // T5：存储信息显示
 ok('备份卡显示存储信息', !!d.querySelector('.storage-info'));
-ok('版本号显示 V1.0', pc.textContent.includes('V1.0'));
+ok('版本号显示 V1.0.1', pc.textContent.includes('V1.0.1'));
 ok('我的页含术数模块列表', pc.textContent.includes('大六壬')&&pc.textContent.includes('塔罗'));
 ok('我的页含古籍库统计', pc.textContent.includes('古籍库'));
 ok('我的页含不上传声明', pc.textContent.includes('不上传'));
@@ -202,12 +203,70 @@ ok('案例详情含立即复盘按钮', !!d.getElementById('btnReview'));
 // 14. T5：关于弹窗含 v0.3 和术数模块
 d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
 d.getElementById('btnAbout').click();await sleep(40);
-ok('关于弹窗含 V1.0', d.querySelector('.modal').textContent.includes('V1.0'));
+ok('关于弹窗含 V1.0.1', d.querySelector('.modal').textContent.includes('V1.0.1'));
 ok('关于弹窗含术数模块', d.querySelector('.modal').textContent.includes('术数模块'));
 d.querySelector('.modal .btn.ghost').click();await sleep(30);
 
-// 清理注入的测试案例
+// 15. 提醒与重要日期
+// 开启每日时课提醒
+w.localStorage.setItem('xuanjue_settings', JSON.stringify(Object.assign({}, JSON.parse(w.localStorage.getItem('xuanjue_settings')||'{}'), {remindDaily:true, remindImportant:true})));
+d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
+ok('首页开启每日提醒后显示今日时课', pc.textContent.includes('今日时课'));
+// 注入重要日期并刷新
+const tomorrowDate=new Date();tomorrowDate.setDate(tomorrowDate.getDate()+1);
+const tdStr=tomorrowDate.getFullYear()+'-'+String(tomorrowDate.getMonth()+1).padStart(2,'0')+'-'+String(tomorrowDate.getDate()).padStart(2,'0');
+w.localStorage.setItem('xuanjue_important', JSON.stringify([{id:'IMPDOM1',name:'DOM重要测试',date:tdStr,note:'备注'}]));
+d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
+ok('首页显示重要日期提醒', pc.textContent.includes('重要日期提醒'));
+ok('首页显示重要日期名称', pc.textContent.includes('DOM重要测试'));
+ok('首页显示明天', pc.textContent.includes('明天'));
+// 进入重要日期管理
+w.localStorage.removeItem('xuanjue_remind_state');
+d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
+d.getElementById('btnImportant').click();await sleep(60);
+ok('重要日期管理页显示', pc.textContent.includes('添加重要日期'));
+ok('重要日期管理页列出测试项', pc.textContent.includes('DOM重要测试'));
+// 返回
+const backBtn=[...d.querySelectorAll('.phead .ptitle')].find(el=>el.textContent==='重要日期');
+// 通过底部“我的”Tab 返回设置页
+d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
+ok('设置页含重要日期管理入口', !!d.getElementById('btnImportant'));
+
+// 15b. 重要日期农历与重复标签
+d.getElementById('btnImportant').click();await sleep(60);
+d.getElementById('btnAddImportant').click();await sleep(60);
+const modal=d.querySelector('.modal');
+ok('重要日期编辑弹窗出现', !!modal);
+if(modal){
+  d.getElementById('iName').value='DOM农历重复';
+  d.getElementById('iDate').value='1990-05-20';
+  d.getElementById('iLunar').checked=true;
+  d.getElementById('iRepeat').checked=true;
+  modal.querySelector('.btn.primary').click();await sleep(60);
+}
+ok('重要日期列表含农历标签', pc.textContent.includes('农历'));
+ok('重要日期列表含每年标签', pc.textContent.includes('每年'));
+// 返回设置页
+d.querySelector('.tab[data-tab="me"]').click();await sleep(40);
+
+// 16. 应用锁入口与弹窗
+ok('设置页含隐私与安全', pc.textContent.includes('隐私与安全'));
+d.getElementById('btnLockSetting').click();await sleep(60);
+ok('应用锁设置弹窗出现', pc.textContent.includes('设置应用锁')||pc.textContent.includes('管理应用锁'));
+const lockModal=d.querySelector('.modal');
+if(lockModal)lockModal.querySelector('.btn.ghost').click();
+await sleep(30);
+
+// 17. 典籍页与古籍库数据加载
+d.querySelector('.tab[data-tab="classics"]').click();await sleep(200);
+ok('典籍页显示古籍库', pc.textContent.includes('古籍知识库')||pc.textContent.includes('古籍库'));
+ok('典籍页列出书籍', pc.textContent.includes('增删卜易')||pc.textContent.includes('大六壬指南'));
+
+// 清理注入的测试数据
 w.localStorage.removeItem('xuanjue_cases');
+w.localStorage.removeItem('xuanjue_important');
+w.localStorage.removeItem('xuanjue_remind_state');
+w.localStorage.removeItem('xuanjue_lock');
 
 console.log('\n=========================');
 console.log('DOM 测试 通过:',pass,'失败:',fail);

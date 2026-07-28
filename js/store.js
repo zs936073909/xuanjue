@@ -3,7 +3,11 @@
   const KEY_CASES='xuanjue_cases';
   const KEY_SETTINGS='xuanjue_settings';
   const KEY_AGREE='xuanjue_agreed';
-  const KEY_PROFILE='xuanjue_profile';
+    const KEY_PROFILE='xuanjue_profile';
+  const KEY_IMPORTANT='xuanjue_important';
+  const KEY_REMIND_STATE='xuanjue_remind_state';
+  const KEY_LOCK='xuanjue_lock';
+  let _sessionPin=''; // 解锁后缓存 PIN，用于本地加密解密
 
   function read(k,dft){try{const v=localStorage.getItem(k);return v?JSON.parse(v):dft;}catch(e){return dft;}}
   function write(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}
@@ -98,9 +102,10 @@
     };
   }
 
-  // 筛选案例：filter={shushu,questionType,result,reviewed,duePending,dateFrom,dateTo,tag}
+  // 筛选案例：filter={shushu,questionType,result,reviewed,duePending,dateFrom,dateTo,tag,favor,keyword}
   // reviewed 为 true/false 时按已/未复盘过滤；result 为应验程度时按 review.result 过滤
   // duePending=true 时筛到期待复盘（!reviewed && reviewDue && Date.now()>reviewDue）
+  // favor=true 时只显示收藏案例；keyword 在标题/描述/术数中搜索
   // 返回按 createdAt 降序的案例数组
   function listCasesByFilter(filter){
     filter=filter||{};
@@ -132,6 +137,16 @@
     if(filter.tag){
       arr=arr.filter(c=>c.reviewed&&Array.isArray(c.review.tags)&&c.review.tags.includes(filter.tag));
     }
+    if(filter.favor===true){
+      arr=arr.filter(c=>c.favor===true);
+    }
+    if(filter.keyword){
+      const k=String(filter.keyword).toLowerCase();
+      arr=arr.filter(c=>{
+        const hay=(c.title||'')+' '+(c.desc||'')+' '+(c.questionType||'')+' '+(c.shushu||'')+' '+(c.mood||'');
+        return hay.toLowerCase().includes(k);
+      });
+    }
     return arr;
   }
 
@@ -139,7 +154,7 @@
   const DEFAULT_SETTINGS={
     aiTone:'专业谨慎',aiLength:'标准',showTerm:true,autoAdvice:true,autoCopyPrompt:false,offlineMode:false,
     darkMode:'auto',appLock:false,bioLock:false,localEncrypt:false,
-    remindDaily:false,dailyTime:'08:00',remindReview:true,remindImportant:false,
+    remindDaily:false,dailyTime:'08:00',remindReview:true,remindImportant:false,notificationEnabled:false,
     dlGuiRen:'昼夜贵人',dlSheHai:'涉害取深',yueJiang:'中气定将',realSolarTime:false,
     zhenTaiyang:false,tarotReverse:'随机正逆位',
     // —— AI 模型配置（方案 A：用户自带 Key，支持 OpenAI 兼容协议 / Anthropic 协议 / 中转站） ——
@@ -154,6 +169,108 @@
     aiTimeout:60,                   // 超时秒
     aiExportKey:false               // 备份导出时是否包含 apiKey
   };
+  // 简单混淆：用于本地加密开关。安全性依赖 PIN 不外泄，仅防 casual 读取。
+  function xorObfuscate(text,key){
+    if(!text||!key)return text;
+    let out='';
+    for(let i=0;i<text.length;i++){
+      out+=String.fromCharCode(text.charCodeAt(i)^key.charCodeAt(i%key.length));
+    }
+    try{return 'enc:'+btoa(unescape(encodeURIComponent(out)));}catch(e){return text;}
+  }
+  function xorDeobfuscate(b64,key){
+    if(!b64||!key||!String(b64).startsWith('enc:'))return b64;
+    try{
+      const s=decodeURIComponent(escape(atob(String(b64).slice(4))));
+      let out='';
+      for(let i=0;i<s.length;i++){
+        out+=String.fromCharCode(s.charCodeAt(i)^key.charCodeAt(i%key.length));
+      }
+      return out;
+    }catch(e){return '';}
+  }
+  function pinHash(pin){
+    // 简单摘要，非密码学安全，仅用于本地校验
+    let h=0;
+    for(let i=0;i<pin.length;i++){h=((h<<5)-h)+pin.charCodeAt(i);h|=0;}
+    return 'h'+Math.abs(h).toString(36);
+  }
+  function getLockState(){return read(KEY_LOCK,{locked:false,appLock:false,pinHash:'',bioLock:false,localEncrypt:false});}
+  function setLockState(patch){write(KEY_LOCK,Object.assign({},getLockState(),patch));}
+  function isLocked(){return getLockState().locked && getLockState().appLock;}
+  function verifyPin(pin){return pinHash(pin)===getLockState().pinHash;}
+  function unlock(pin){
+    if(!verifyPin(pin))return false;
+    _sessionPin=pin;
+    setLockState({locked:false});
+    return true;
+  }
+  function lockApp(){_sessionPin='';setLockState({locked:true});}
+  function changePin(oldPin,newPin){
+    if(!verifyPin(oldPin))return false;
+    const lock=getLockState();
+    // 若开启本地加密，先用旧 PIN 解密再重新加密
+    if(lock.localEncrypt && lock.appLock){
+      const curS=read(KEY_SETTINGS,{});
+      const curP=read(KEY_PROFILE,{});
+      const oldKey=pinHash(oldPin);
+      const newKey=pinHash(newPin);
+      if(curS.aiApiKey && String(curS.aiApiKey).startsWith('enc:')){
+        curS.aiApiKey=xorObfuscate(xorDeobfuscate(curS.aiApiKey,oldKey),newKey);
+      }
+      write(KEY_SETTINGS,curS);
+      const encP=read(KEY_PROFILE+'_enc','');
+      if(encP){
+        const decP=xorDeobfuscate(encP,oldKey);
+        write(KEY_PROFILE+'_enc',xorObfuscate(decP,newKey));
+      }else{
+        write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(curP),newKey));
+        localStorage.removeItem(KEY_PROFILE);
+      }
+    }
+    setLockState({pinHash:pinHash(newPin)});
+    _sessionPin=newPin;
+    return true;
+  }
+  function setAppLock(pin,enable){
+    if(enable){
+      setLockState({appLock:true,pinHash:pinHash(pin),locked:true});
+      _sessionPin=pin;
+    }else{
+      // 关闭锁时同时关闭本地加密并解密数据
+      const lock=getLockState();
+      if(lock.localEncrypt){toggleLocalEncrypt(false);}
+      setLockState({appLock:false,pinHash:'',bioLock:false,locked:false});
+      _sessionPin='';
+    }
+  }
+  function toggleLocalEncrypt(enable){
+    const lock=getLockState();
+    if(enable && (!lock.appLock || !lock.pinHash)){throw new Error('请先设置应用锁');}
+    const key=lock.pinHash||'';
+    const curS=read(KEY_SETTINGS,{});
+    const curP=read(KEY_PROFILE,{});
+    if(enable){
+      if(curS.aiApiKey && !String(curS.aiApiKey).startsWith('enc:')){
+        curS.aiApiKey=xorObfuscate(curS.aiApiKey,key);
+      }
+      write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(curP),key));
+      // 清除明文 profile
+      localStorage.removeItem(KEY_PROFILE);
+    }else{
+      if(curS.aiApiKey && String(curS.aiApiKey).startsWith('enc:')){
+        curS.aiApiKey=xorDeobfuscate(curS.aiApiKey,key);
+      }
+      const encP=read(KEY_PROFILE+'_enc','');
+      if(encP){
+        try{write(KEY_PROFILE,JSON.parse(xorDeobfuscate(encP,key)));}catch(e){write(KEY_PROFILE,{});}
+        localStorage.removeItem(KEY_PROFILE+'_enc');
+      }
+    }
+    write(KEY_SETTINGS,curS);
+    setLockState({localEncrypt:enable});
+  }
+
   function getSettings(){
     const s=Object.assign({},DEFAULT_SETTINGS,read(KEY_SETTINGS,{}));
     // 旧版 tarotReverse 为布尔值，兼容转换为字符串选项
@@ -162,11 +279,41 @@
     // 大六壬贵人数值异常值兜底
     const guiRenOpts=['昼夜贵人','夜贵人','甲戊庚牛羊'];
     if(!guiRenOpts.includes(s.dlGuiRen))s.dlGuiRen='昼夜贵人';
+    // 本地加密：解密 API Key
+    const lock=getLockState();
+    if(lock.localEncrypt && lock.appLock && _sessionPin && s.aiApiKey && String(s.aiApiKey).startsWith('enc:')){
+      s.aiApiKey=xorDeobfuscate(s.aiApiKey,pinHash(_sessionPin));
+    }
     return s;
   }
-  function setSettings(s){write(KEY_SETTINGS,Object.assign(getSettings(),s));}
-  function getProfile(){return read(KEY_PROFILE,{nick:'',birth:'',gender:'',place:'',nianming:''});}
-  function setProfile(p){write(KEY_PROFILE,Object.assign(getProfile(),p));}
+  function setSettings(s){
+    const lock=getLockState();
+    if(s.aiApiKey!==undefined && lock.localEncrypt && lock.appLock && _sessionPin){
+      s.aiApiKey=xorObfuscate(s.aiApiKey,pinHash(_sessionPin));
+    }
+    write(KEY_SETTINGS,Object.assign(getSettings(),s));
+  }
+  function getProfile(){
+    const lock=getLockState();
+    if(lock.localEncrypt && lock.appLock && _sessionPin){
+      const encP=read(KEY_PROFILE+'_enc','');
+      if(encP){
+        try{return JSON.parse(xorDeobfuscate(encP,pinHash(_sessionPin)))||{};}catch(e){return {};}
+      }
+    }
+    return read(KEY_PROFILE,{nick:'',birth:'',gender:'',place:'',nianming:''});
+  }
+  function setProfile(p){
+    const lock=getLockState();
+    const merged=Object.assign(getProfile(),p);
+    if(lock.localEncrypt && lock.appLock && _sessionPin){
+      write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(merged),pinHash(_sessionPin)));
+      localStorage.removeItem(KEY_PROFILE);
+    }else{
+      write(KEY_PROFILE,merged);
+      localStorage.removeItem(KEY_PROFILE+'_enc');
+    }
+  }
 
   // 备份
   function exportBackup(){
@@ -175,12 +322,13 @@
     const settingsOut=Object.assign({},s,{aiApiKey:s.aiExportKey?s.aiApiKey:''});
     const cases=read(KEY_CASES,[]);
     return{
-      app:'玄决',version:'1.0',
+      app:'玄决',version:'1.0.1',
       exportedAt:new Date().toISOString(),
       caseCount:cases.length,
       cases,
       settings:settingsOut,
-      profile:getProfile()
+      profile:getProfile(),
+      important:read(KEY_IMPORTANT,[])
     };
   }
   // 允许导入的 settings 字段白名单（防止恶意备份注入任意字段）
@@ -210,6 +358,7 @@
     const merged=Object.keys(curMap).map(k=>curMap[k]);
     write(KEY_CASES,merged);
     if(obj.profile)write(KEY_PROFILE,obj.profile);
+    if(Array.isArray(obj.important))write(KEY_IMPORTANT,obj.important);
     if(obj.settings){
       const curS=getSettings();
       // 仅白名单字段导入；apiKey 字符串校验
@@ -249,9 +398,30 @@
   function isAgreed(){return localStorage.getItem(KEY_AGREE)==='1';}
   function setAgreed(){localStorage.setItem(KEY_AGREE,'1');}
 
+  // 重要日期（生日、约定日、事务节点等）
+  function listImportant(){return read(KEY_IMPORTANT,[]).sort((a,b)=>a.date.localeCompare(b.date));}
+  function getImportant(id){return read(KEY_IMPORTANT,[]).find(x=>x.id===id)||null;}
+  function saveImportant(item){
+    const arr=read(KEY_IMPORTANT,[]);
+    item.id=item.id||'I'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    item.updatedAt=Date.now();
+    const i=arr.findIndex(x=>x.id===item.id);
+    if(i>=0)arr[i]=item;else arr.push(item);
+    write(KEY_IMPORTANT,arr);
+    return item;
+  }
+  function deleteImportant(id){write(KEY_IMPORTANT,read(KEY_IMPORTANT,[]).filter(x=>x.id!==id));}
+
+  // 提醒状态（每日/重要日期今日是否已提示，避免重复弹窗）
+  function getRemindState(){return read(KEY_REMIND_STATE,{});}
+  function setRemindState(patch){write(KEY_REMIND_STATE,Object.assign({},getRemindState(),patch));}
+
   global.Store={
     listCases,getCase,saveCase,deleteCase,genId,addReview,reviewStats,listCasesByFilter,
     getSettings,setSettings,getProfile,setProfile,
+    listImportant,getImportant,saveImportant,deleteImportant,
+    getRemindState,setRemindState,
+    getLockState,setLockState,isLocked,verifyPin,unlock,lockApp,changePin,setAppLock,toggleLocalEncrypt,
     exportBackup,importBackup,storageSizeEstimate,clearAll,clearEverything,
     isAgreed,setAgreed
   };
