@@ -361,6 +361,81 @@
     return `[${passage.book || ''}·${passage.chapter || ''}] ${text}`;
   }
 
+  // ---------- 完整阅读 ----------
+  const _fullTexts = {}; // bookId -> fullTextData
+
+  /**
+   * 加载某本书的完整文本（按章节）
+   * @param {string} bookId
+   * @returns {Object|null|Promise} {id,title,dynasty,author,chapters:[{title,text}],total_chars}
+   */
+  function loadFullText(bookId) {
+    if (_fullTexts[bookId]) return _fullTexts[bookId];
+    const url = BASE + 'fulltext/' + bookId + '.json';
+    const text = _loadTextSync(url);
+    if (text) {
+      try {
+        const data = JSON.parse(text);
+        _fullTexts[bookId] = data;
+        return data;
+      } catch (e) { return null; }
+    }
+    return _loadTextAsync(url).then(t => {
+      if (!t) return null;
+      const data = JSON.parse(t);
+      _fullTexts[bookId] = data;
+      return data;
+    }).catch(() => null);
+  }
+
+  /**
+   * 获取所有书籍列表（含元数据）
+   * @returns {Array} books
+   */
+  function getBookList() {
+    if (!_index) loadIndex();
+    if (!_index) return [];
+    return _index.books || [];
+  }
+
+  /**
+   * 按术数分类获取书籍列表
+   * @param {string} shushu
+   * @returns {Array} books
+   */
+  function getBooksByShushu(shushu) {
+    return getBookList().filter(b => b.shushu === shushu);
+  }
+
+  /**
+   * 在单本书内搜索段落
+   * @param {string} bookId
+   * @param {string} query
+   * @param {number} limit
+   * @returns {Array} passages
+   */
+  function searchInBook(bookId, query, limit) {
+    if (!_index) loadIndex();
+    if (!_index) return [];
+    const meta = _metaById[bookId];
+    if (!meta) return [];
+    if (!_books[bookId]) loadBook(bookId);
+    const book = _books[bookId];
+    if (!book || !book.passages) return [];
+    const q = String(query || '').trim();
+    if (!q) return book.passages.slice(0, limit || 50);
+    const qTokens = _tokenize(q);
+    const scored = book.passages.map(p => {
+      let score = 0;
+      qTokens.forEach(tok => {
+        const hit = _inverted[tok];
+        if (hit && hit[p.id]) score += hit[p.id];
+      });
+      return { p, score };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit || 50).map(x => x.p);
+  }
+
   /**
    * 获取已加载段落总数（调试用）
    */
@@ -384,7 +459,11 @@
   global.ClassicLibrary = {
     loadIndex,
     loadBook,
+    loadFullText,
+    getBookList,
+    getBooksByShushu,
     search,
+    searchInBook,
     extractBoardFeatures,
     formatCitation,
     loadedCount,

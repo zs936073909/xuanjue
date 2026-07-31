@@ -38,6 +38,10 @@
   // 天将
   const TIANJIANG=['贵人','螣蛇','朱雀','六合','勾陈','青龙','天空','白虎','太常','玄武','太阴','天后'];
   const TJ_JI={贵人:1,螣蛇:-1,朱雀:-1,六合:1,勾陈:-1,青龙:1,天空:-1,白虎:-1,太常:1,玄武:-1,太阴:1,天后:1};
+  // 天将所属五行（贵人/太常/六合=土；螣蛇/朱雀=火；青龙=木；白虎=金；天空=土；玄武=水；太阴/天后=水）
+  const TJ_WX={贵人:'土',螣蛇:'火',朱雀:'火',六合:'木',勾陈:'土',青龙:'木',天空:'土',白虎:'金',太常:'土',玄武:'水',太阴:'水',天后:'水'};
+  // 天将方位（用于贵人昼夜顺逆起将参考）
+  const TJ_GAN={贵人:'吉',螣蛇:'凶',朱雀:'凶',六合:'吉',勾陈:'凶',青龙:'吉',天空:'凶',白虎:'凶',太常:'吉',玄武:'凶',太阴:'吉',天后:'吉'};
   // 贵人地支（昼/夜）by 日干
   const GUIREN={
     '甲':{day:1,night:7},'戊':{day:1,night:7},'庚':{day:1,night:7},
@@ -52,8 +56,22 @@
     '签约交易':'青龙','人际沟通':'六合','财务决策':'太常','健康倾向':'白虎',
     '失物寻找':'玄武','二选一决策':'六合','其他':'贵人'
   };
+  // 地支生肖
+  const SHENGXIAO=['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
+  // 地支方位（用于盘面方位标示）
+  const ZHI_FANGWEI=['北','东北','东北','东','东南','东南','南','西南','西南','西','西北','西北'];
+  // 卦气七元时辰（占时方位辅助）
+  const ZHI_SHI=['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+  // 八卦方位映射（用于盘面）
+  const ZHI_BAGUA={0:'坎',1:'艮',2:'艮',3:'震',4:'巽',5:'巽',6:'离',7:'坤',8:'坤',9:'兑',10:'乾',11:'乾'};
+  // 五行颜色编码（用于可视化）
+  const WX_COLOR={水:'#6a8aaa',木:'#6a9a6a',火:'#c45a4a',土:'#c9a86a',金:'#d4d4d4'};
+  // 五行相生：金生水/水生木/木生火/火生土/土生金
+  // 五行相克：金克木/木克土/土克水/水克火/火克金（详见 wxKe）
 
-  function isDayTime(zhanShiIdx){return zhanShiIdx>=2&&zhanShiIdx<=7;} // 寅-未
+  // 古籍《大六壬指南》: "自卯至申用昼贵，自酉至寅用夜贵"
+  // 卯(3)-申(8) 为昼, 酉(9)-寅(2) 为夜
+  function isDayTime(zhanShiIdx){return zhanShiIdx>=3&&zhanShiIdx<=8;}
 
   // 起课主函数
   // date: Date; dayGz: {gan,zhi,ganIdx,zhiIdx,index}; hourGz:{...}; yueJiangIdx; zhanShiIdx
@@ -104,8 +122,21 @@
       const shen=day?(guiChengShen+i)%12:(guiChengShen-i+12)%12;
       tjByShen[shen]=TIANJIANG[i];
     }
-    // 给四课加天将
-    lessons.forEach(l=>{l.upTJ=tjByShen[l.up];l.downTJ=tjByShen[l.down];});
+    // 给四课加天将、五行、生肖、生克关系、旺相休囚
+    const monthZhiIdx=baZi.month.zhiIdx;
+    lessons.forEach(l=>{
+      l.upTJ=tjByShen[l.up];
+      l.downTJ=tjByShen[l.down];
+      l.upWX=WX[l.up];
+      l.downWX=WX[l.down];
+      l.upSX=SHENGXIAO[l.up];
+      l.downSX=SHENGXIAO[l.down];
+      l.upFW=ZHI_FANGWEI[l.up];
+      l.downFW=ZHI_FANGWEI[l.down];
+      l.relation=wxRelation(l.up,l.down);
+      l.upWXState=wangXiang(l.up,monthZhiIdx);
+      l.downWXState=wangXiang(l.down,monthZhiIdx);
+    });
 
     // 空亡
     const xunShou=Math.floor(baZi.day.index/10)*10;
@@ -116,6 +147,20 @@
     const isFuYin=yueJiangIdx===zhanShiIdx;
     const isFanYin=(Math.abs(yueJiangIdx-zhanShiIdx)%12)===6;
     const sanChuan=computeSanChuan(lessons,dayGan,dayGanIdx,dayZhiIdx,tianPan,tjByShen,offset,isFuYin,isFanYin,sheHaiMode);
+
+    // 给三传补全生肖、方位、天将五行、生克链、旺相休囚
+    const sc=sanChuan;
+    [sc.chu,sc.zhong,sc.mo].forEach(t=>{
+      t.sx=SHENGXIAO[t.idx];
+      t.fw=ZHI_FANGWEI[t.idx];
+      t.bg=ZHI_BAGUA[t.idx];
+      t.tjWX=TJ_WX[t.tj]||'—';
+      t.tjJi=TJ_GAN[t.tj]||'—';
+      t.isKong=kongWang.includes(t.idx);
+      t.wxState=wangXiang(t.idx,monthZhiIdx);
+    });
+    sc.chuToZhong=wxRelation(sc.chu.idx,sc.zhong.idx);
+    sc.zhongToMo=wxRelation(sc.zhong.idx,sc.mo.idx);
 
     // 格局
     const geju=detectGeju(yueJiangIdx,zhanShiIdx,lessons,baZi,sanChuan);
@@ -128,13 +173,19 @@
     let leishenShen=null;
     for(const shen in tjByShen){if(tjByShen[shen]===leishenName){leishenShen=parseInt(shen);break;}}
 
+    // 天将落宫表（便于前端展示十二天将各自所乘神与所在地支）
+    const tjList=TIANJIANG.map((name,i)=>{
+      const zhi=tianJiangZhi(name,tjByShen);
+      return{name,zhi,zhiIdx:zhi,chengShen:zhi>=0?ZHI[zhi]:'—',wx:TJ_WX[name],ji:TJ_GAN[name],isKong:zhi>=0&&kongWang.includes(zhi)};
+    });
+
     return{
-      yueJiang:{idx:yueJiangIdx,zhi:ZHI[yueJiangIdx]},
-      zhanShi:{idx:zhanShiIdx,zhi:ZHI[zhanShiIdx]},
+      yueJiang:{idx:yueJiangIdx,zhi:ZHI[yueJiangIdx],wx:WX[yueJiangIdx]},
+      zhanShi:{idx:zhanShiIdx,zhi:ZHI[zhanShiIdx],wx:WX[zhanShiIdx]},
       offset,tianPan,
       dayGan,dayGanIdx,dayZhiIdx,ganJi,
       guiRen:{idx:guiZhiIdx,zhi:ZHI[guiZhiIdx],chengShen:ZHI[guiChengShen],isDay:day,label:day?'昼贵':'夜贵'},
-      tjByShen,
+      tjByShen,tjList,
       lessons,sanChuan,geju,shenSha,kongWang,leishenName,leishenShen,
       isFuYin,
       isFanYin,
@@ -175,9 +226,12 @@
     });
     const isGang=dayGanIdx%2===0; // 刚日(阳干)：甲丙戊庚壬
     let chosen=null,method='';
-
-    // 8. 伏吟法（天盘=地盘，不论有克无克皆用伏吟取法）
-    if(isFuYin){
+    // 古籍《大六壬指南》: "伏吟之课，先观四课有克无克。有克者，照常以贼克比用涉害法取初传；
+    // 但伏吟之传不行，中传即同初传，末传取初传之冲，曰杜传。无克者，刚日取日干寄宫之上神为
+    // 初传(自任格)，柔日取日支之上神为初传(自信格)，中末同上(亦为杜传)。"
+    // 即伏吟有克仍走贼克法，仅中末按杜传处理；伏吟无克方用自任/自信。
+    if(isFuYin && kes.length===0){
+      // 伏吟无克: 自任/自信
       if(isGang){
         // 自任格：刚日取日干寄宫之上神（伏吟天盘=地盘，上神即寄宫本身）
         const c1=GAN_JI[dayGan];
@@ -190,7 +244,7 @@
         method='伏吟-自信';
       }
     }else if(kes.length>0){
-      // 1/2/3. 贼克/比用/涉害
+      // 1/2/3. 贼克/比用/涉害 (含伏吟有克的情况)
       if(kes.length===1){
         chosen={up:kes[0].up,from:kes[0].idx};
         method=kes[0].type==='贼'?'重审':'元首';
@@ -235,6 +289,8 @@
           }
         }
       }
+      // 伏吟有克: 在贼克法 method 前加"伏吟-"以标识课体
+      if(isFuYin)method='伏吟-'+method;
     }else if(isFanYin){
       // 9. 返吟法（四课无克时：天盘=地盘对冲）
       const zhiShang=tianPan[dayZhiIdx]; // 日支上神（即日支之冲）
@@ -352,15 +408,17 @@
   }
 
   // 神煞
+  // 古籍：寅午戌见卯, 申子辰见酉, 巳酉丑见午, 亥卯未见子（咸池/桃花）
+  // 即桃花 = 三合中间字 - 3 (mod 12)
   function computeShenSha(baZi,dayZhiIdx){
     const sanhe=[[8,0,4],[2,6,10],[5,9,1],[11,3,7]]; // 申子辰/寅午戌/巳酉丑/亥卯未
     let ma=-1,tao=-1,gai=-1;
     for(const g of sanhe){
       if(g.includes(dayZhiIdx)){
         // 驿马=三合第一字之冲
-        ma=g[0];ma=(ma+6)%12;
-        // 桃花=三合中间字(咸池)
-        tao=g[1];
+        ma=(g[0]+6)%12;
+        // 桃花(咸池)=三合中间字之逆三位
+        tao=(g[1]+9)%12; // 等价于 (g[1]-3+12)%12
         // 华盖=三合末字
         gai=g[2];
         break;
@@ -417,12 +475,106 @@
     };
   }
 
+  // 计算两支的五行关系：返回 '生'/'克'/'同'/'无'
+  function wxRelation(aIdx,bIdx){
+    const a=WX[aIdx],b=WX[bIdx];
+    if(a===b)return '同';
+    if(wxSheng(a,b))return '生'; // a 生 b
+    if(wxSheng(b,a))return '被生'; // a 被 b 生
+    if(wxKe(a,b))return '克'; // a 克 b
+    if(wxKe(b,a))return '被克'; // a 被 b 克
+    return '无';
+  }
+  // 天将所在宫位（顺逆推算后落地支）
+  function tianJiangZhi(tjName,tjByShen){
+    for(const shen in tjByShen){if(tjByShen[shen]===tjName)return parseInt(shen);}
+    return -1;
+  }
+  // 旺相休囚死：以月令(月建)为我，同我者旺，我生者相，生我者休，克我者囚，我克者死
+  // 古籍《五行大义》《渊海子平》："春木旺、火相、土死、金囚、水休。"
+  // 即：木(月令)克土 → 土死；金克木(月令) → 金囚
+  // 返回地支在当前月令下的旺衰状态
+  function wangXiang(xIdx, monthZhiIdx){
+    const xWx=WX[xIdx];
+    const mWx=WX[monthZhiIdx];
+    if(xWx===mWx)return '旺';          // 同我者旺
+    if(wxSheng(mWx,xWx))return '相';   // 我生者相：月令生target
+    if(wxSheng(xWx,mWx))return '休';   // 生我者休：target生月令
+    if(wxKe(mWx,xWx))return '死';      // 我克者死：月令克target
+    if(wxKe(xWx,mWx))return '囚';      // 克我者囚：target克月令
+    return '平';
+  }
+  // 课体格局详解：根据九宗门与盘面特征生成详细说明
+  function explainGeju(ke){
+    const sc=ke.sanChuan;
+    const m=sc.method;
+    const list=[];
+    // 课体说明（取自《大六壬大全》《大六壬指南》）
+    const EXPLAIN={
+      '元首':'元首课：上克下，君得位，臣服从。事多顺理，吉则大吉，凶则大凶。',
+      '重审':'重审课：下贼上，臣强君弱。事有反复，宜再审慎，不可轻动。',
+      '重审(多贼取一)':'重审课(多贼取一)：四课中多下贼上，取最先一课。事多反复阻力。',
+      '元首(多克取一)':'元首课(多克取一)：四课中多上克下，取最先一课。',
+      '比用':'比用课：阴阳同类曰比。多克取与日干阴阳同性者为用。事有比和之象。',
+      '涉害':'涉害课：涉，渡也；害，克也。多克且同比用，取受克最深者为用。事多艰难。',
+      '弹射':'弹射课(遥克)：日干克上神，如弹射远取。事远而缓，所谋难成。',
+      '蒿矢':'蒿矢课(遥克)：上神克日干，如蒿矢弱射。事虽来势弱，但久亦有损。',
+      '虎视':'昴星-虎视格(刚日)：四课无克无遥，取酉上神。如虎视眈眈，事多惊恐。',
+      '冬蛇掩目':'昴星-冬蛇掩目格(柔日)：取酉下神。如冬蛇掩目，事隐伏不彰。',
+      '别责':'别责课(八专日刚日)：取日干合神之上神。事有倚托他人之象。',
+      '八专':'八专课(八专日柔日)：干支同位，取日支上神。事体专一，无悔有咎。',
+      '伏吟-自任':'伏吟-自任格(刚日)：天盘=地盘，刚日取日干寄宫。事自任己力，伏匿不动。',
+      '伏吟-自信':'伏吟-自信格(柔日)：柔日取日支。事自信守常，伏而不行。',
+      '返吟-无依':'返吟-无依格：天盘=地盘对冲，无克时取日支上神。事多动摇，反复无依。',
+      '返吟-无亲':'返吟-无亲格：日支上神为日干之墓。事无亲援，孤军作战。'
+    };
+    // 找最匹配的说明
+    let matched=null;
+    for(const k in EXPLAIN){
+      if(m===k||m.startsWith(k)){matched=EXPLAIN[k];break;}
+    }
+    if(matched)list.push({k:'取法',v:matched});
+    // 三传吉凶链
+    const chuJi=TJ_JI[sc.chu.tj]||0, zhongJi=TJ_JI[sc.zhong.tj]||0, moJi=TJ_JI[sc.mo.tj]||0;
+    const jiLabel=ji=>ji>0?'吉':ji<0?'凶':'平';
+    let chain='初传 '+sc.chu.zhi+'乘'+sc.chu.tj+'('+jiLabel(chuJi)+')';
+    chain+=' → 中传 '+sc.zhong.zhi+'乘'+sc.zhong.tj+'('+jiLabel(zhongJi)+')';
+    chain+=' → 末传 '+sc.mo.zhi+'乘'+sc.mo.tj+'('+jiLabel(moJi)+')';
+    list.push({k:'传变',v:chain});
+    // 三传吉凶总评（综合初/中/末，以初末为主、中传为辅）
+    const allJi=[chuJi,zhongJi,moJi];
+    const jiCnt=allJi.filter(x=>x>0).length, xiongCnt=allJi.filter(x=>x<0).length;
+    if(chuJi>0&&moJi>0)list.push({k:'总评',v:(jiCnt===3?'初中末皆吉':'初末皆吉'+(zhongJi<0?'、中传凶':'')+'，事可成。宜主动推进。')});
+    else if(chuJi<0&&moJi<0)list.push({k:'总评',v:(xiongCnt===3?'初中末皆凶':'初末皆凶'+(zhongJi>0?'、中传吉':'')+'，事难成。宜避守不动。')});
+    else if(chuJi<0&&moJi>0)list.push({k:'总评',v:'初凶末吉，先难后易，宜坚持。'});
+    else if(chuJi>0&&moJi<0)list.push({k:'总评',v:'初吉末凶，先易后难，宜速决。'});
+    else list.push({k:'总评',v:'吉凶参半，宜观变而行。'});
+    // 空亡提示
+    const kongChuan=[sc.chu.isKong,sc.zhong.isKong,sc.mo.isKong];
+    const kongCount=kongChuan.filter(Boolean).length;
+    if(kongCount>0){
+      const kongList=[];
+      if(sc.chu.isKong)kongList.push('初传');
+      if(sc.zhong.isKong)kongList.push('中传');
+      if(sc.mo.isKong)kongList.push('末传');
+      list.push({k:'空亡',v:kongList.join('、')+'落空亡，力量减弱。'+(kongCount>=2?' 多传落空，所谋恐全虚。':'')});
+    }
+    // 类神状态
+    if(ke.leishenShen!==null){
+      const leishenKong=ke.kongWang.includes(ke.leishenShen);
+      list.push({k:'类神',v:'类神「'+ke.leishenName+'」乘'+ZHI[ke.leishenShen]+(leishenKong?'（落空亡，主所问之事无力）':'（不空，有力）')});
+    }
+    return list;
+  }
   global.DaLiuRen={
     qiKe,plainLang,
-    GAN_JI,TIANJIANG,TJ_JI,GUIREN,LEISHEN,WX,
+    GAN_JI,TIANJIANG,TJ_JI,TJ_WX,TJ_GAN,GUIREN,LEISHEN,WX,WX_COLOR,
     GAN_WX,WX_MU,GAN_HE,BA_ZHUAN,
+    SHENGXIAO,ZHI_FANGWEI,ZHI_BAGUA,
     ganHe,ganMuIdx,isBaZhuanDay,
-    wxKe,wxSheng,isDayTime,
-    mengZhongJi,sheHaiDepth
+    wxKe,wxSheng,wxRelation,isDayTime,
+    mengZhongJi,sheHaiDepth,
+    tianJiangZhi,
+    wangXiang,explainGeju
   };
 })(window);

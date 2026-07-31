@@ -408,7 +408,9 @@
       yongShen:{target:yongMap.target,yao:yongYao,desc:yongMap.desc,found:yongFound},
       kongWang,yuePo:{zhi:yuePoZhi,lines:yuePoLines},dayRiRelation,
       dayGanWx:dayGanWx, // 兼容旧字段：日干五行
-      dayZhiWx:dayZhiWx // 日支五行（日辰生克实际所用）
+      dayZhiWx:dayZhiWx, // 日支五行（日辰生克实际所用）
+      dayGan:baZi.day.gan, // 日干（用于起六神）
+      dayGz:baZi.day.gz    // 日柱干支
     },plain};
   }
   function liuYao(date){
