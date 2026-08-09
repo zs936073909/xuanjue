@@ -531,6 +531,11 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ai-fu-chip{font-size:11px;padding:4px 9px;border-radius:14px;background:var(--card2);border:1px solid var(--line);color:var(--ink2);cursor:pointer;transition:.15s}
 .ai-fu-chip:active{background:var(--card);transform:scale(.96)}
 
+/* 问事向导步骤内分组 */
+.step-section{margin:14px 0;padding:12px;background:var(--card2);border-radius:10px;border:1px solid var(--line)}
+.step-section-title{font-size:13px;color:var(--gold);font-family:var(--serif);letter-spacing:1px;margin-bottom:4px}
+.step-section-desc{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5}
+
 /* ===== 信息补充与依据来源 ===== */
 .yao-roll{display:flex;flex-direction:column;gap:6px;margin:10px 0}
 .yao-roll-item{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card);border-radius:6px;font-family:var(--serif)}

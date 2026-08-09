@@ -544,8 +544,18 @@
    * @param {string} providerKey
    * @returns {Object} 需要写入 settings 的字段
    */
-  function applyProvider(providerKey){
+  function applyProvider(providerKey, current){
     const p=PROVIDERS[providerKey]||PROVIDERS.custom;
+    const cur=current||{};
+    // 自定义：保留用户当前值，避免清空
+    if(providerKey==='custom'){
+      return{
+        aiProvider:'custom',
+        aiProtocol:cur.aiProtocol||'openai',
+        aiBaseUrl:cur.aiBaseUrl||'',
+        aiModel:cur.aiModel||''
+      };
+    }
     return{
       aiProvider:providerKey,
       aiProtocol:p.protocol,

@@ -345,8 +345,6 @@
   }
 
   function renderTab(){
-    // 切页前先把 AI 配置表单当前输入同步到 Store，避免"输入了未失焦"导致密钥丢失
-    try{flushAIFormToStore&&flushAIFormToStore();}catch(e){}
     if(state.clockInterval){clearInterval(state.clockInterval);state.clockInterval=null;}
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
     const c=$('#page-container');
@@ -506,51 +504,7 @@
 
     h+=`</div>`; // end 双栏
 
-    // ============ 双栏下方：通用区 ============
-    // 命理趣玩
-    h+=`<div class="card"><h3>命理趣玩</h3><div class="qa-grid">`;
-    h+=`<div class="game-item" data-game="stick"><div class="qa-ico">🎋</div>抽今日卦签</div>`;
-    h+=`<div class="game-item" data-game="tarot"><div class="qa-ico">🃏</div>塔罗日运</div>`;
-    h+=`<div class="game-item" data-game="wuxing"><div class="qa-ico">☯</div>五行速配</div>`;
-    h+=`<div class="game-item" data-game="star"><div class="qa-ico">✦</div>星宿查询</div>`;
-    h+=`</div></div>`;
-    // 首次使用引导
-    if(cases.length===0){
-      h+=`<div class="card home-guide-card">`;
-      h+=`<h3>欢迎使用玄决</h3>`;
-      h+=`<div class="guide-step"><span class="guide-num">1</span>左栏「终身命理」：填写出生信息，开启 AI 趋吉避凶顾问</div>`;
-      h+=`<div class="guide-step"><span class="guide-num">2</span>右栏「实时卜筮」：起当下时课，开启 AI 决策顾问</div>`;
-      h+=`<div class="guide-step"><span class="guide-num">3</span>底部「问事」进入完整向导，多术数交叉印证</div>`;
-      h+=`<div class="section-note">所有数据默认保存在本机，可在“我的”页一键导出备份。</div>`;
-      h+=`</div>`;
-    }
-    // 待复盘（受 remindReview 开关控制）
-    if(settings.remindReview){
-      h+=`<div class="card home-due-card" id="homeDueCard">`;
-      if(todo.length){
-        h+=`<h3>待复盘提醒</h3>`;
-        h+=`<div class="due-count">有 ${todo.length} 条案例已到复盘时间</div>`;
-        todo.slice(0,3).forEach(c=>{h+=`<div class="recent-item" data-review="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">去复盘</div></div>`;});
-        if(todo.length>3)h+=`<div class="due-more" id="dueMore">查看全部 ${todo.length} 条 →</div>`;
-      }else{
-        h+=`<h3>待复盘提醒</h3><div class="empty">暂无待复盘案例</div>`;
-      }
-      h+=`</div>`;
-    }
-    // 重要日期提醒
-    if(settings.remindImportant&&upcoming.length){
-      h+=`<div class="card home-important-card">`;
-      h+=`<h3>重要日期提醒</h3>`;
-      upcoming.forEach(it=>{
-        const dayText=it.days===0?'今天':(it.days===1?'明天':(it.days===-1?'昨天':(it.days>0?it.days+'天后':'已过期 '+(-it.days)+' 天')));
-        const dateLabel=it.lunar?('农历 '+it.date):(fmtDateShort(new Date(it.date+'T00:00:00')));
-        const repeatTag=it.repeat==='year'?'<span class="tag-mini">每年</span>':'';
-        h+=`<div class="important-item" data-important="${it.id}"><div><div class="ii-t">${esc(it.name)}${repeatTag}</div><div class="ii-m">${dateLabel} · ${it.note||''}</div></div><div class="ii-r ${it.days===0?'urgent':''}">${dayText}</div></div>`;
-      });
-      h+=`<div class="important-more" id="importantMore">管理重要日期 →</div>`;
-      h+=`</div>`;
-    }
-    // 最近案例
+    // 最近案例（首页唯一下方区块，保持简洁）
     h+=`<div class="card"><h3>最近案例</h3>`;
     if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(c.review.result||'已复盘'):'待复盘'}</div></div>`;});}
     else h+=`<div class="empty">暂无案例，去“问事”起一课吧</div>`;
@@ -577,8 +531,24 @@
     });
     // 命理排盘快捷入口
     const btnHomeBaZi=$('#btnHomeBaZi'),btnHomeZiWei=$('#btnHomeZiWei');
-    if(btnHomeBaZi)btnHomeBaZi.onclick=()=>{state.ask=newAsk();state.ask.shushu=['八字'];state.ask.step=4;state.tab='ask';renderTab();};
-    if(btnHomeZiWei)btnHomeZiWei.onclick=()=>{state.ask=newAsk();state.ask.shushu=['紫微斗数'];state.ask.step=4;state.tab='ask';renderTab();};
+    if(btnHomeBaZi)btnHomeBaZi.onclick=()=>{
+      const profile=Store.getProfile();
+      if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
+      const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+      const d=resolveBirthDate(b);
+      const res=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
+      if(!res){toast('八字排盘失败');return;}
+      showShuShuBoard({name:'八字',result:res,plain:res.plain||{}});
+    };
+    if(btnHomeZiWei)btnHomeZiWei.onclick=()=>{
+      const profile=Store.getProfile();
+      if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
+      const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+      const d=resolveBirthDate(b);
+      const res=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):null;
+      if(!res){toast('紫微排盘失败');return;}
+      showShuShuBoard({name:'紫微斗数',result:res,plain:res.plain||{}});
+    };
     // 编辑个人信息
     const btnEditProfile=$('#btnEditProfile');
     if(btnEditProfile)btnEditProfile.onclick=()=>{state.tab='me';renderTab();setTimeout(()=>{const c=$('#profileCard');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});},60);};
@@ -705,10 +675,10 @@
   }
   function askStep3(a){
     let h='';
-    h+=`<div class="field"><label>实时起课（基于当前/选定时间）</label><div class="chips">`;
+    h+=`<div class="step-section"><div class="step-section-title">实时起课 · 当下时课</div><div class="step-section-desc">基于当前时间起卦/起课，适合具体事项的短期决策</div><div class="chips">`;
     h+=REALTIME_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
     h+=`</div></div>`;
-    h+=`<div class="field"><label>命理排盘（基于出生日期）</label><div class="chips">`;
+    h+=`<div class="step-section"><div class="step-section-title">命理排盘 · 终身命理</div><div class="step-section-desc">基于出生日期排盘，适合分析个人长期运势与趋吉避凶</div><div class="chips">`;
     h+=BIRTH_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
     h+=`</div></div>`;
     const isDl=a.shushu.includes('大六壬');
@@ -3839,13 +3809,24 @@
   }
   function bindAIConfig(){
     const prov=$('#aiProvider');
+    const baseUrlInp=$('#aiBaseUrl');
+    const modelInp=$('#aiModel');
+    const protoInp=$('#aiProtocol');
+    const modelList=$('#aiModelList');
     if(prov){
       prov.onchange=ev=>{
         const k=ev.target.value;
-        const patch=AI.applyProvider(k);
+        const curS=Store.getSettings();
+        const patch=AI.applyProvider(k,curS);
         Store.setSettings(patch);
-        toast('已应用预设：'+(AI.PROVIDERS[k]?AI.PROVIDERS[k].label:'自定义'));
-        renderTab();
+        toast('已切换：'+(AI.PROVIDERS[k]?AI.PROVIDERS[k].label:'自定义'));
+        // 不整个 renderTab，只更新当前页相关输入框，避免失焦/闪烁
+        if(baseUrlInp)baseUrlInp.value=patch.aiBaseUrl;
+        if(modelInp)modelInp.value=patch.aiModel;
+        if(protoInp)protoInp.value=patch.aiProtocol;
+        // 更新模型候选列表
+        const models=AI.PROVIDERS[k]&&AI.PROVIDERS[k].models?AI.PROVIDERS[k].models:['(请直接输入模型名)'];
+        if(modelList)modelList.innerHTML=models.map(m=>'<option value="'+escAttr(m)+'">').join('');
       };
     }
     const temp=$('#aiTemp');
