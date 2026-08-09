@@ -650,8 +650,7 @@
     let h=`<div class="card"><h3>${title||'八字 · 出生信息'}</h3>`;
     h+=`<div class="field"><label>性别</label><div class="chips">${['男','女'].map(g=>`<span class="chip ${b.gender===g?'on':''}" data-birth-gender="${g}">${g}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>历法</label><div class="chips">${[['solar','公历'],['lunar','农历']].map(m=>`<span class="chip ${b.calendar===m[0]?'on':''}" data-birth-calendar="${m[0]}">${m[1]}</span>`).join('')}</div></div>`;
-    h+=`<div class="field"><label>出生日期</label><input type="date" id="fBirthDate" value="${b.date||''}"></div>`;
-    h+=`<div class="field"><label>出生时辰</label><input type="time" id="fBirthHour" value="${b.hour||''}" ${b.unknownHour?'disabled':''}></div>`;
+    h+=renderDateTimePicker('fBirthDate','fBirthHour',b.date,b.hour,b.unknownHour);
     h+=`<div class="switch"><span>时辰未知</span><input type="checkbox" id="fBirthUnknownHour" ${b.unknownHour?'checked':''}></div>`;
     h+=`<div class="field"><label>出生地点</label><input type="text" id="fBirthPlace" value="${b.place||''}" placeholder="如 北京市"></div>`;
     h+=`<div class="switch"><span>使用真太阳时</span><input type="checkbox" id="fBirthZhenTaiyang" ${b.zhenTaiyang?'checked':''}></div>`;
@@ -659,7 +658,341 @@
     h+=`</div>`;
     return h;
   }
-  function yaoName(v){return {6:'老阴',7:'少阳',8:'少阴',9:'老阳'}[v]||'?';}
+  // ===== 滚轮式日期时间选择器（年/月/日/时 四列独立滚轮，支持触摸滑动+按钮微调）=====
+  // 保留隐藏的真实 input（持有 .value 并触发 change），确保与现有 collectStep4/bindStep4 读取逻辑兼容
+  const DTP_ITEM_H=36;            // 单项高度（px）
+  const DTP_YEAR_MIN=1900, DTP_YEAR_MAX=new Date().getFullYear()+1;
+  // 解析 YYYY-MM-DD 与 HH:MM
+  function dtpParse(dateStr,hourStr){
+    let y=1990,mo=1,d=1,h=12,mi=0;
+    if(dateStr){
+      const p=dateStr.split('-');
+      if(p.length>=3){y=parseInt(p[0])||1990;mo=parseInt(p[1])||1;d=parseInt(p[2])||1;}
+    }
+    if(hourStr){
+      const p=hourStr.split(':');
+      if(p.length>=2){h=parseInt(p[0])||0;mi=parseInt(p[1])||0;}
+    }
+    return{y,mo,d,h,mi};
+  }
+  function dtpPad(n){return n<10?'0'+n:''+n;}
+  function dtpDateStr(v){return dtpPad(v.y)+'-'+dtpPad(v.mo)+'-'+dtpPad(v.d);}
+  function dtpHourStr(v){return dtpPad(v.h)+':'+dtpPad(v.mi);}
+  function dtpDaysInMonth(y,mo){return new Date(y,mo,0).getDate();}
+  function dtpClampDay(v){const max=dtpDaysInMonth(v.y,v.mo);if(v.d>max)v.d=max;return v;}
+  function renderDateTimePicker(dateId,hourId,dateVal,hourVal,unknownHour){
+    const v=dtpParse(dateVal,hourVal);
+    // 隐藏的真实 input（持有 value，供 collectStep4 读取）
+    let h=`<input type="hidden" id="${dateId}" value="${dateVal||''}">`;
+    h+=`<input type="hidden" id="${hourId}" value="${hourVal||''}">`;
+    h+=`<div class="dtp ${unknownHour?'dtp-hour-off':''}" data-dtp="${dateId}|${hourId}">`;
+    h+=`<div class="dtp-row">`;
+    // 年（含快速输入与长按加速）
+    h+=`<div class="dtp-col dtp-col-year" data-dtp-col="y">
+      <button class="dtp-btn dtp-btn-y" data-dtp-adj="y,-1" type="button" data-hold-fast="1">−</button>
+      <div class="dtp-viewport" data-dtp-vp="y"><ul class="dtp-list"></ul></div>
+      <button class="dtp-btn dtp-btn-y" data-dtp-adj="y,1" type="button" data-hold-fast="1">+</button>
+      <div class="dtp-col-lbl"><span class="dtp-y-edit" data-dtp-y-edit>年</span></div>
+    </div>`;
+    // 月
+    h+=`<div class="dtp-col" data-dtp-col="mo">
+      <button class="dtp-btn" data-dtp-adj="mo,-1" type="button">−</button>
+      <div class="dtp-viewport" data-dtp-vp="mo"><ul class="dtp-list"></ul></div>
+      <button class="dtp-btn" data-dtp-adj="mo,1" type="button">+</button>
+      <div class="dtp-col-lbl">月</div>
+    </div>`;
+    // 日
+    h+=`<div class="dtp-col" data-dtp-col="d">
+      <button class="dtp-btn" data-dtp-adj="d,-1" type="button">−</button>
+      <div class="dtp-viewport" data-dtp-vp="d"><ul class="dtp-list"></ul></div>
+      <button class="dtp-btn" data-dtp-adj="d,1" type="button">+</button>
+      <div class="dtp-col-lbl">日</div>
+    </div>`;
+    // 时
+    h+=`<div class="dtp-col dtp-col-hour" data-dtp-col="h">
+      <button class="dtp-btn" data-dtp-adj="h,-1" type="button">−</button>
+      <div class="dtp-viewport" data-dtp-vp="h"><ul class="dtp-list"></ul></div>
+      <button class="dtp-btn" data-dtp-adj="h,1" type="button">+</button>
+      <div class="dtp-col-lbl">时</div>
+    </div>`;
+    // 分
+    h+=`<div class="dtp-col dtp-col-min" data-dtp-col="mi">
+      <button class="dtp-btn" data-dtp-adj="mi,-1" type="button">−</button>
+      <div class="dtp-viewport" data-dtp-vp="mi"><ul class="dtp-list"></ul></div>
+      <button class="dtp-btn" data-dtp-adj="mi,1" type="button">+</button>
+      <div class="dtp-col-lbl">分</div>
+    </div>`;
+    h+=`</div></div>`;
+    // 把初始值存到 dataset，bind 时读取
+    h+=`<script class="dtp-init" data-y="${v.y}" data-mo="${v.mo}" data-d="${v.d}" data-h="${v.h}" data-mi="${v.mi}"></script>`;
+    return h;
+  }
+  // 生成某列的选项列表
+  function dtpGenItems(col,v){
+    const items=[];
+    if(col==='y'){
+      for(let i=DTP_YEAR_MIN;i<=DTP_YEAR_MAX;i++)items.push(i);
+    }else if(col==='mo'){
+      for(let i=1;i<=12;i++)items.push(i);
+    }else if(col==='d'){
+      const max=dtpDaysInMonth(v.y,v.mo);
+      for(let i=1;i<=max;i++)items.push(i);
+    }else if(col==='h'){
+      for(let i=0;i<24;i++)items.push(i);
+    }else if(col==='mi'){
+      for(let i=0;i<60;i++)items.push(i);
+    }
+    return items;
+  }
+  // 渲染某列的 ul 内容
+  function dtpRenderCol(vp,col,v){
+    const ul=vp.querySelector('.dtp-list');
+    if(!ul)return;
+    const items=dtpGenItems(col,v);
+    const cur=v[col];
+    ul.innerHTML=items.map(n=>`<li class="dtp-item${n===cur?' sel':''}" data-v="${n}">${n}</li>`).join('');
+    const idx=items.indexOf(cur);
+    if(idx>=0){
+      ul.style.transform=`translateY(${DTP_ITEM_H*2 - idx*DTP_ITEM_H}px)`;
+    }
+  }
+  // 同步隐藏 input 的 value
+  function dtpSyncInputs(root,v){
+    const dateId=root.dataset.dtp.split('|')[0];
+    const hourId=root.dataset.dtp.split('|')[1];
+    const dateInp=document.getElementById(dateId);
+    const hourInp=document.getElementById(hourId);
+    if(dateInp){dateInp.value=dtpDateStr(v);dateInp.dispatchEvent(new Event('change',{bubbles:true}));}
+    if(hourInp){hourInp.value=dtpHourStr(v);hourInp.dispatchEvent(new Event('change',{bubbles:true}));}
+  }
+  // 绑定单个滚轮列的触摸滑动 + 惯性
+  function dtpBindCol(root,col,v,getV,setV){
+    const vp=root.querySelector(`[data-dtp-vp="${col}"]`);
+    if(!vp)return;
+    dtpRenderCol(vp,col,v);
+    let startY=0,startTrans=0,curTrans=0,dragging=false,lastY=0,lastT=0,vel=0,rafId=null;
+    function getTrans(){const m=(ul().style.transform||'').match(/-?\d+\.?\d*/);return m?parseFloat(m[0]):0;}
+    function ul(){return vp.querySelector('.dtp-list');}
+    function setTrans(t){ul().style.transform=`translateY(${t}px)`;}
+    function maxIdx(){return dtpGenItems(col,getV()).length-1;}
+    function snap(trans,animate){
+      // 计算最近的项索引
+      const idx=Math.round((DTP_ITEM_H*2 - trans)/DTP_ITEM_H);
+      const ci=Math.max(0,Math.min(maxIdx(),idx));
+      const target=DTP_ITEM_H*2 - ci*DTP_ITEM_H;
+      if(animate){
+        ul().style.transition='transform .25s cubic-bezier(.2,.8,.2,1)';
+      }else{
+        ul().style.transition='';
+      }
+      setTrans(target);
+      // 更新选中值
+      const items=dtpGenItems(col,getV());
+      const newVal=items[ci];
+      if(getV()[col]!==newVal){
+        const nv=Object.assign({},getV());
+        nv[col]=newVal;
+        if(col==='y'||col==='mo'){
+          // 年/月变化需重算日的最大值并钳制
+          dtpClampDay(nv);
+          setV(nv);
+          // 日列需重新渲染
+          const dVp=root.querySelector('[data-dtp-vp="d"]');
+          if(dVp)dtpRenderCol(dVp,'d',nv);
+        }else{
+          setV(nv);
+        }
+        dtpSyncInputs(root,getV());
+        // 更新 sel 样式
+        ul().querySelectorAll('.dtp-item').forEach(li=>{
+          li.classList.toggle('sel',parseInt(li.dataset.v)===newVal);
+        });
+      }
+      // 动画结束后清除 transition
+      if(animate){
+        clearTimeout(dtpBindCol._t);
+        dtpBindCol._t=setTimeout(()=>{ul().style.transition='';},280);
+      }
+    }
+    function onMove(e){
+      if(!dragging)return;
+      const cy=e.touches?e.touches[0].clientY:e.clientY;
+      let dy=cy-startY;
+      curTrans=startTrans+dy;
+      // 边界阻尼
+      const maxUp=DTP_ITEM_H*2; // 第一项
+      const maxDown=DTP_ITEM_H*2 - maxIdx()*DTP_ITEM_H; // 最后一项
+      if(curTrans>maxUp)curTrans=maxUp+(curTrans-maxUp)*0.3;
+      if(curTrans<maxDown)curTrans=maxDown+(curTrans-maxDown)*0.3;
+      setTrans(curTrans);
+      // 速度计算
+      const now=Date.now();
+      if(now-lastT>0){vel=(cy-lastY)/((now-lastT)||1);lastY=cy;lastT=now;}
+      if(e.cancelable)e.preventDefault();
+    }
+    function onEnd(){
+      if(!dragging)return;
+      dragging=false;
+      // 惯性滑动
+      if(Math.abs(vel)>0.3){
+        const inertia=vel*120;
+        const target=curTrans+inertia;
+        // 清除惯性 raf
+        cancelAnimationFrame(rafId);
+        snap(target,true);
+      }else{
+        snap(curTrans,true);
+      }
+      vel=0;
+      document.removeEventListener('touchmove',onMove);
+      document.removeEventListener('touchend',onEnd);
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onEnd);
+    }
+    function onStart(e){
+      dragging=true;
+      startY=e.touches?e.touches[0].clientY:e.clientY;
+      startTrans=getTrans();
+      curTrans=startTrans;
+      lastY=startY;lastT=Date.now();vel=0;
+      ul().style.transition='';
+      document.addEventListener('touchmove',onMove,{passive:false});
+      document.addEventListener('touchend',onEnd);
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('mouseup',onEnd);
+      if(e.cancelable)e.preventDefault();
+    }
+    vp.addEventListener('touchstart',onStart,{passive:false});
+    vp.addEventListener('mousedown',onStart);
+    // 点击单项直接选中
+    vp.addEventListener('click',e=>{
+      if(dragging)return;
+      const li=e.target.closest?e.target.closest('.dtp-item'):null;
+      if(!li)return;
+      const n=parseInt(li.dataset.v);
+      const nv=Object.assign({},getV());
+      nv[col]=n;
+      if(col==='y'||col==='mo'){
+        dtpClampDay(nv);
+        setV(nv);
+        // 年/月变化需重新渲染日列（天数随年月变化）
+        const dVp=root.querySelector('[data-dtp-vp="d"]');
+        if(dVp)dtpRenderCol(dVp,'d',getV());
+      }else{
+        setV(nv);
+      }
+      dtpSyncInputs(root,getV());
+      // 当前列只更新 sel 样式与位置，不重建 DOM（避免外部缓存的 li 引用失效）
+      const ulEl=vp.querySelector('.dtp-list');
+      const items=dtpGenItems(col,getV());
+      const curVal=getV()[col];
+      ulEl.querySelectorAll('.dtp-item').forEach(it=>{
+        it.classList.toggle('sel',parseInt(it.dataset.v)===curVal);
+      });
+      const idx=items.indexOf(curVal);
+      if(idx>=0)ulEl.style.transform=`translateY(${DTP_ITEM_H*2 - idx*DTP_ITEM_H}px)`;
+    });
+  }
+  // 绑定整个 dtp 容器
+  function bindDateTimePicker(){
+    document.querySelectorAll('.dtp[data-dtp]').forEach(root=>{
+      if(root._dtpBound)return;
+      root._dtpBound=true;
+      // 读取初始值
+      const init=root.parentElement.querySelector('.dtp-init');
+      let v={y:1990,mo:1,d:1,h:12,mi:0};
+      if(init){v={y:+init.dataset.y,mo:+init.dataset.mo,d:+init.dataset.d,h:+init.dataset.h,mi:+init.dataset.mi};}
+      const getV=()=>v;
+      const setV=nv=>{v=nv;};
+      // 绑定四列
+      ['y','mo','d','h','mi'].forEach(col=>dtpBindCol(root,col,v,getV,setV));
+      // 绑定 +/- 按钮（年份支持长按快速滚动）
+      const adjOnce=(btn)=>{
+        const [col,delta]=btn.dataset.dtpAdj.split(',');
+        const d=parseInt(delta);
+        const nv=Object.assign({},v);
+        const items=dtpGenItems(col,v);
+        const idx=items.indexOf(v[col]);
+        let ni=idx+d;
+        if(ni<0)ni=0;if(ni>=items.length)ni=items.length-1;
+        if(ni===idx)return; // 无变化
+        nv[col]=items[ni];
+        if(col==='y'||col==='mo'){dtpClampDay(nv);v=nv;const dVp=root.querySelector('[data-dtp-vp="d"]');if(dVp)dtpRenderCol(dVp,'d',v);}
+        else v=nv;
+        dtpSyncInputs(root,v);
+        const vp=root.querySelector(`[data-dtp-vp="${col}"]`);
+        if(vp)dtpRenderCol(vp,col,v);
+      };
+      root.querySelectorAll('[data-dtp-adj]').forEach(btn=>{
+        btn.onclick=()=>adjOnce(btn);
+        // 长按加速：按住 450ms 后每 80ms 连续触发，年份列每次跳 5
+        if(btn.dataset.holdFast==='1'){
+          let holdT=null,fastT=null,stepCnt=0;
+          const startFast=()=>{
+            const delta=parseInt(btn.dataset.dtpAdj.split(',')[1]);
+            stepCnt++;
+            // 年份长按：第 3 步起每次跳 5（快速跨越几十年）
+            const step=stepCnt>=3?(delta>0?5:-5):delta;
+            const orig=btn.dataset.dtpAdj;
+            btn.dataset.dtpAdj='y,'+step;
+            adjOnce(btn);
+            btn.dataset.dtpAdj=orig;
+          };
+          btn.addEventListener('touchstart',()=>{
+            stepCnt=0;
+            holdT=setTimeout(()=>{fastT=setInterval(startFast,80);},450);
+          },{passive:true});
+          btn.addEventListener('mousedown',()=>{
+            stepCnt=0;
+            holdT=setTimeout(()=>{fastT=setInterval(startFast,80);},450);
+          });
+          const stopFast=()=>{clearTimeout(holdT);clearInterval(fastT);fastT=null;};
+          btn.addEventListener('touchend',stopFast);
+          btn.addEventListener('touchcancel',stopFast);
+          btn.addEventListener('mouseup',stopFast);
+          btn.addEventListener('mouseleave',stopFast);
+        }
+      });
+      // 年份直接输入：点击"年"标签弹出输入框
+      const yEditBtn=root.querySelector('[data-dtp-y-edit]');
+      if(yEditBtn){
+        yEditBtn.style.cursor='pointer';
+        yEditBtn.title='点击直接输入年份';
+        yEditBtn.onclick=(e)=>{
+          e.stopPropagation();
+          const cur=v.y;
+          const input=prompt('请输入年份（'+DTP_YEAR_MIN+'-'+DTP_YEAR_MAX+'）',cur);
+          if(input===null)return;
+          const n=parseInt(input);
+          if(isNaN(n)||n<DTP_YEAR_MIN||n>DTP_YEAR_MAX){
+            toast('年份请输入 '+DTP_YEAR_MIN+'-'+DTP_YEAR_MAX+' 之间的数字');
+            return;
+          }
+          const nv=Object.assign({},v);
+          nv.y=n;
+          dtpClampDay(nv);
+          v=nv;
+          const dVp=root.querySelector('[data-dtp-vp="d"]');
+          if(dVp)dtpRenderCol(dVp,'d',v);
+          dtpSyncInputs(root,v);
+          const yVp=root.querySelector('[data-dtp-vp="y"]');
+          if(yVp)dtpRenderCol(yVp,'y',v);
+        };
+      }
+      // 时辰未知时禁用时/分列
+      const updateHourDisabled=()=>{
+        const off=root.classList.contains('dtp-hour-off');
+        root.querySelectorAll('.dtp-col-hour,.dtp-col-min').forEach(c=>{
+          c.classList.toggle('dtp-disabled',off);
+          c.querySelectorAll('.dtp-btn').forEach(b=>b.disabled=off);
+        });
+      };
+      updateHourDisabled();
+      // 监听时辰未知变化（外部 checkbox 改 class）
+      const mo=new MutationObserver(()=>updateHourDisabled());
+      mo.observe(root,{attributes:true,attributeFilter:['class']});
+    });
+  }
   function yaoSymStr(y){return y.yang?'▬▬▬':'▬ ▬';}
   function randomYao(){const v=Math.floor(Math.random()*4)+6;return {val:v,yang:v%2===1,dong:v===6||v===9};}
   function parseYaoInput(str){const nums=str.split(/[,，\s]/).filter(x=>x!=='').map(x=>parseInt(x)).filter(x=>!isNaN(x)&&x>=6&&x<=9);if(nums.length!==6)return null;return nums.map(v=>({val:v,yang:v%2===1,dong:v===6||v===9}));}
@@ -797,7 +1130,11 @@
     document.querySelectorAll('[data-birth-calendar]').forEach(e=>e.onclick=()=>{a.extra.birth.calendar=e.dataset.birthCalendar;renderTab();});
     const fBirthDate=$('#fBirthDate');if(fBirthDate)fBirthDate.onchange=ev=>a.extra.birth.date=ev.target.value;
     const fBirthHour=$('#fBirthHour');if(fBirthHour)fBirthHour.onchange=ev=>a.extra.birth.hour=ev.target.value;
-    const fBirthUnknown=$('#fBirthUnknownHour');if(fBirthUnknown)fBirthUnknown.onchange=ev=>{a.extra.birth.unknownHour=ev.target.checked;renderTab();};
+    const fBirthUnknown=$('#fBirthUnknownHour');if(fBirthUnknown)fBirthUnknown.onchange=ev=>{
+      a.extra.birth.unknownHour=ev.target.checked;
+      // 仅切换 dtp 的禁用状态，避免整页重渲染丢失滚轮位置
+      document.querySelectorAll('.dtp[data-dtp]').forEach(r=>r.classList.toggle('dtp-hour-off',ev.target.checked));
+    };
     const fBirthPlace=$('#fBirthPlace');if(fBirthPlace)fBirthPlace.oninput=ev=>a.extra.birth.place=ev.target.value;
     const fBirthZhen=$('#fBirthZhenTaiyang');if(fBirthZhen)fBirthZhen.onchange=ev=>a.extra.birth.zhenTaiyang=ev.target.checked;
     // 六爻
@@ -834,6 +1171,8 @@
     const fTarotReverse=$('#fTarotReverse');if(fTarotReverse)fTarotReverse.onchange=ev=>a.extra.tarot.reverse=ev.target.value;
     // 小六壬
     document.querySelectorAll('[data-xlr-topic]').forEach(e=>e.onclick=()=>{a.extra.xiaoliuren.topic=e.dataset.xlrTopic;renderTab();});
+    // 滚轮式日期时间选择器
+    bindDateTimePicker();
   }
   function collectStep4(a){
     const b=a.extra.birth;
@@ -941,10 +1280,18 @@
           r=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):ShuShu.compute('八字',d);
         }
       }else if(s==='紫微斗数'){
-        const d=resolveBirthDate(a.extra.birth);
+        const b=a.extra.birth;
+        const d=resolveBirthDate(b);
         if(d){
-          const b=a.extra.birth;
-          r=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):ShuShu.compute('紫微斗数',{askInfo:{birthInfo:{date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}}});
+          // 农历路径：若用户选农历，直接把农历字符串传给 iztro.byLunar（避免公历反查误差）
+          const lunarInfo={date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang};
+          if(b.calendar==='lunar' && b.date){
+            // b.date 形如 "1990-5-15"（农历），iztro byLunar 接受 "YYYY-M-D"
+            lunarInfo.calendar='lunar';
+            lunarInfo.lunarDateStr=b.date;
+            lunarInfo.isLeapMonth=!!b.isLeapMonth;
+          }
+          r=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu(lunarInfo):ShuShu.compute('紫微斗数',{askInfo:{birthInfo:lunarInfo}});
         }
       }else if(s==='六爻'){
         const ly=a.extra.liuyao;
@@ -1028,7 +1375,7 @@
     if(c.comp||Object.keys(c.shushuResults||{}).length){
       h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 深度解读</button>`;
     }
-    if(c.comp){
+    if(c.comp||Object.keys(c.shushuResults||{}).length){
       h+=`<button class="btn block mt8" id="btnCopyPrompt">复制 AI 提示词</button>`;
     }
     h+=`<button class="btn block mt8" id="btnExportBoard">导出盘面（文本）</button>`;
@@ -1388,12 +1735,24 @@
     if(r.majorStars&&r.majorStars.length){
       h+=`<div class="section-note">命宫主星：${r.majorStars.join('、')}</div>`;
     }
-    // 十二宫简表：宫名 + 主星
+    // 十二宫简表：宫名 + 宫干支 + 主星 + 辅星（参考 react-iztro 布局，分字号显示）
     if(a.palaces&&a.palaces.length===12){
       h+=`<div class="zw-palaces">`;
       a.palaces.forEach(pal=>{
-        const stars=(pal.majorStars||[]).map(s=>s.name).filter(Boolean).join('、')||'无主星';
-        h+=`<div class="zw-palace"><div class="zwp-name">${pal.name}</div><div class="zwp-stars">${stars}</div></div>`;
+        const stars=(pal.majorStars||[]).map(s=>s.name+(s.brightness?('('+s.brightness+')'):'')).filter(Boolean).join('、')||'无主星';
+        const minor=(pal.minorStars||[]).map(s=>s.name).filter(Boolean).join('、');
+        const adj=(pal.adjectiveStars||[]).map(s=>s.name).filter(Boolean).join('、');
+        const gz=(pal.heavenlyStem||'')+(pal.earthlyBranch||'');
+        const isSoul=pal.name===r.soulPalace;
+        const isBody=pal.name===r.bodyPalace;
+        h+=`<div class="zw-palace${isSoul?' soul':''}${isBody?' body':''}">`;
+        h+=`<div class="zwp-head"><span class="zwp-name">${pal.name}</span><span class="zwp-gz">${gz}</span></div>`;
+        h+=`<div class="zwp-stars">${stars}</div>`;
+        if(minor)h+=`<div class="zwp-minor">${minor}</div>`;
+        if(adj)h+=`<div class="zwp-adj">${adj}</div>`;
+        if(isSoul)h+=`<div class="zwp-tag tag-soul">命</div>`;
+        if(isBody)h+=`<div class="zwp-tag tag-body">身</div>`;
+        h+=`</div>`;
       });
       h+=`</div>`;
     }
@@ -1510,7 +1869,18 @@
     if(tg.length)tg.forEach(b=>b.onclick=()=>{state.boardMode=b.dataset.mode;renderTab();});
     const btnSave=$('#btnSaveCase');if(btnSave)btnSave.onclick=()=>saveCurrentAsCase(a);
     const btnCopy=$('#btnCopyPrompt');
-    if(btnCopy&&comp)btnCopy.onclick=()=>{const txt=AI.buildPrompt(comp.ke,comp.plain,a.bg,Store.getSettings());copyText(txt);toast('AI 提示词已复制到剪贴板');};
+    if(btnCopy)btnCopy.onclick=()=>{
+      // 优先用大六壬主盘构建提示词；无主盘时用多术数融合提示词
+      let txt='';
+      if(comp){
+        txt=AI.buildPrompt(comp.ke,comp.plain,a.bg,Store.getSettings());
+      }else{
+        const sys=AI.buildSystemPrompt(Store.getSettings());
+        const usr=AI.buildMultiShuUserPrompt(c.comp,c.shushuResults,a.bg,Store.getSettings());
+        txt=sys+'\n\n---\n\n'+usr;
+      }
+      copyText(txt);toast('AI 提示词已复制到剪贴板，可粘贴到外部 AI 工具解读');
+    };
     const btnExp=$('#btnExportBoard');
     if(btnExp)btnExp.onclick=()=>{
       if(comp)exportBoardText(comp);
@@ -1663,16 +2033,39 @@
         return;
       }
       // 错误信息用 textContent 渲染（避免响应体 XSS）
+      out.innerHTML='';
       const errBox=document.createElement('div');
       errBox.className='ai-error';
       errBox.textContent='✗ 调用失败：'+e.message;
-      out.innerHTML='';
       out.appendChild(errBox);
       const tip=document.createElement('div');
       tip.className='section-note';
       tip.style.marginTop='8px';
       tip.textContent='建议：1. 检查「我的 → AI 模型配置」中 BaseUrl / API Key / 模型名是否正确；2. 若用 Anthropic 协议，请通过支持 CORS 的中转站；3. 网络不通可改用「复制 AI 提示词」按钮，外部 AI 工具粘贴解读。';
       out.appendChild(tip);
+      // 内联重试按钮：错误时无需滚回顶部即可重试
+      const retryBox=document.createElement('div');
+      retryBox.style.marginTop='10px';
+      retryBox.style.display='flex';
+      retryBox.style.gap='8px';
+      const btnRetry=document.createElement('button');
+      btnRetry.className='btn gold sm';
+      btnRetry.textContent='重新调用 AI';
+      btnRetry.onclick=()=>runAIDeepRead(a);
+      const btnTest=document.createElement('button');
+      btnTest.className='btn sm';
+      btnTest.textContent='去测试连接';
+      btnTest.onclick=()=>{
+        state.tab='me';
+        renderTab();
+        setTimeout(()=>{
+          const card=$('#aiConfigCard');
+          if(card){card.scrollIntoView({behavior:'smooth',block:'center'});}
+        },60);
+      };
+      retryBox.appendChild(btnRetry);
+      retryBox.appendChild(btnTest);
+      out.appendChild(retryBox);
     }finally{
       _aiAbort=null;
     }
@@ -2139,13 +2532,8 @@
       showShuShuBoard(res);
     });
     const lb=$('#lastBoard');if(lb)lb.onclick=()=>showDaliurenBoard(state.currentKe);
-    // 命理排盘
+    // 命理排盘（bindStep4 内已绑定 birth 表单与滚轮选择器）
     bindStep4({extra:{birth:state.birthBoard}});
-    const fDate=$('#fBirthDate');if(fDate)fDate.onchange=ev=>state.birthBoard.date=ev.target.value;
-    const fHour=$('#fBirthHour');if(fHour)fHour.onchange=ev=>state.birthBoard.hour=ev.target.value;
-    const fUnknown=$('#fBirthUnknownHour');if(fUnknown)fUnknown.onchange=ev=>{state.birthBoard.unknownHour=ev.target.checked;renderTab();};
-    const fPlace=$('#fBirthPlace');if(fPlace)fPlace.oninput=ev=>state.birthBoard.place=ev.target.value;
-    const fZhen=$('#fBirthZhenTaiyang');if(fZhen)fZhen.onchange=ev=>state.birthBoard.zhenTaiyang=ev.target.checked;
     $('#btnBoardBaZi').onclick=()=>runBoardBirth('八字');
     $('#btnBoardZiWei').onclick=()=>runBoardBirth('紫微斗数');
     // 命理趣玩
@@ -2674,7 +3062,7 @@
     h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
     h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.1</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.4</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
   // 重要日期管理子页
@@ -2746,7 +3134,7 @@
       ?P[s.aiProvider].models:['(请直接输入模型名)'];
     // 密钥不直接落 DOM（防截图/审查泄露）；只显示掩码提示
     const keyMasked=s.aiApiKey?(s.aiApiKey.slice(0,4)+'****'+s.aiApiKey.slice(-4)):'';
-    let h=`<div class="card set-group"><div class="sg-t">AI 模型配置</div>`;
+    let h=`<div class="card set-group" id="aiConfigCard"><div class="sg-t">AI 模型配置</div>`;
     h+=`<div class="section-note">用户自带 Key，应用不内置密钥。兼容 OpenAI/DeepSeek/通义/Kimi/智谱/Ollama/中转站等。请求仅在用户主动调用 AI 解读时发起。</div>`;
     h+=`<div class="field"><label>提供商</label><select id="aiProvider" data-set="aiProvider">${provOpts}</select></div>`;
     h+=`<div class="field"><label>API 协议</label><select id="aiProtocol" data-set="aiProtocol">${protoOpts}</select></div>`;
@@ -2763,6 +3151,22 @@
     h+=`<div class="section-note">⚠ 密钥明文存于本机 localStorage，请勿在共享设备上保存。直接调用 Anthropic 官方接口可能因 CORS 失败，建议通过支持 Anthropic 协议的中转站。</div>`;
     h+=`</div>`;
     return h;
+  }
+  // 把 AI 配置表单当前输入框的值同步到 Store
+  // 解决"输入了 BaseUrl/Key 但未失焦，测试连接或调用 AI 时读到旧值"的体验问题
+  function flushAIFormToStore(){
+    const fields=['aiProvider','aiProtocol','aiBaseUrl','aiApiKey','aiModel','aiMaxTokens','aiTimeout'];
+    const patch={};
+    fields.forEach(k=>{
+      const el=$('#'+k);
+      if(!el)return;
+      let v=el.type==='checkbox'?el.checked:el.value;
+      if(['aiMaxTokens','aiTimeout'].includes(k))v=Number(v);
+      // apiKey 留空时不覆盖原值
+      if(k==='aiApiKey'&&!v)return;
+      patch[k]=v;
+    });
+    if(Object.keys(patch).length)Store.setSettings(patch);
   }
   function bindAIConfig(){
     const prov=$('#aiProvider');
@@ -2794,13 +3198,24 @@
     const testBtn=$('#btnTestAI');
     if(testBtn)testBtn.onclick=async()=>{
       const r=$('#aiTestResult');
-      r.innerHTML='<span class="pending">测试中…</span>';
+      r.innerHTML='<span class="pending">测试中…（发送极简请求验证配置）</span>';
       testBtn.disabled=true;
+      testBtn.textContent='测试中…';
+      // 关键：先把当前输入框的值同步到 Store，避免"输入了但未失焦"导致测试旧值
+      flushAIFormToStore();
       const ret=await AI.testConnection();
       testBtn.disabled=false;
-      r.innerHTML=ret.ok
-        ?'<span class="ok">✓ '+ret.msg+'</span>'
-        :'<span class="fail">✗ '+ret.msg+'</span>';
+      testBtn.textContent='测试连接';
+      const elapsedTxt=ret.elapsed!=null?'<span class="elapsed">'+ret.elapsed+'ms</span>':'';
+      if(ret.ok){
+        r.innerHTML='<span class="ok">✓ '+ret.msg+'</span>'+elapsedTxt;
+      }else{
+        let html='<span class="fail">✗ '+ret.msg+'</span>'+elapsedTxt;
+        if(ret.detail){
+          html+='<div class="diag"><span class="diag-label">诊断详情</span>'+esc(ret.detail)+'</div>';
+        }
+        r.innerHTML=html;
+      }
     };
   }
   function bindMe(){
@@ -2842,7 +3257,7 @@
     $('#btnAbout').onclick=()=>modal('关于玄决',aboutHtml(),null,true,'关闭');
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.1</span></p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.4</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
     <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>

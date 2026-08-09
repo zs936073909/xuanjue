@@ -295,6 +295,7 @@
   }
 
   // 友好错误信息（截断响应体，避免泄露密钥/触发 XSS）
+  // 兼容多种错误结构：OpenAI{error.message}、{msg}、{detail}、Anthropic{error.message}、纯文本
   function friendlyError(status,text){
     if(status===401||status===403)return 'API Key 无效或无权限（'+status+'）。请检查密钥与权限。';
     if(status===404)return '接口地址错误或模型名不存在（404）。请检查 BaseUrl 与模型名。';
@@ -304,17 +305,27 @@
     let detail='';
     try{
       const j=JSON.parse(text);
-      detail=j.error&&j.error.message||j.message||'';
-    }catch(e){detail='';}
-    // 仅取 message 字段，截断 120 字
-    detail=(detail||'').replace(/[<>"']/g,'').slice(0,120);
+      // 兼容多种错误字段结构
+      detail = (j.error&&(j.error.message||j.error.code))
+            || j.message || j.msg || j.detail
+            || (Array.isArray(j.errors)&&j.errors[0]&&j.errors[0].message)
+            || (typeof j.error==='string'&&j.error)
+            || '';
+    }catch(e){
+      // 非 JSON 响应，取纯文本前 120 字
+      detail=(text||'').replace(/[<>"']/g,'').slice(0,120);
+    }
+    detail=(detail||'').replace(/[<>"']/g,'').slice(0,160);
     return 'HTTP '+status+(detail?'：'+detail:'');
   }
 
   /**
    * 调用 LLM（非流式或流式统一入口）
+   * - 429/5xx 自动重试（最多 2 次，指数退避 1s/2s）
+   * - 流式空响应抛错（避免把空串当成功）
+   * - 超时与主动取消可区分
    * @param {Array<{role,content}>} messages 消息数组
-   * @param {Object} opts {stream:false, onDelta:function(text)=>void, signal:AbortSignal}
+   * @param {Object} opts {stream:false, onDelta:function(text)=>void, signal:AbortSignal, retries:2}
    * @returns {Promise<string>} 完整响应文本（流式时通过 onDelta 增量回调，最终返回完整文本）
    */
   async function callLLM(messages,opts){
@@ -326,19 +337,52 @@
     if(!cfg.aiBaseUrl)throw new Error('未配置 BaseUrl。');
     if(!cfg.aiModel)throw new Error('未配置模型名。');
 
+    const maxRetries=opts.retries!==undefined?opts.retries:2;
+    let lastErr=null;
+    for(let attempt=0;attempt<=maxRetries;attempt++){
+      try{
+        return await _doFetch(messages,opts,cfg);
+      }catch(e){
+        lastErr=e;
+        // 主动取消不重试
+        if(e.name==='AbortError'&&opts.signal&&opts.signal.aborted)throw e;
+        // 仅对 429/5xx 重试，其他错误直接抛出
+        const retryable = /429|服务端错误|HTTP 5\d\d/.test(e.message||'');
+        if(!retryable||attempt>=maxRetries)throw e;
+        // 指数退避：1s, 2s
+        const delay=Math.pow(2,attempt)*1000;
+        await new Promise(r=>setTimeout(r,delay));
+      }
+    }
+    throw lastErr||new Error('调用失败');
+  }
+
+  // 实际发起单次请求（含超时、流式解析、空响应检测）
+  async function _doFetch(messages,opts,cfg){
     const url=buildRequestUrl(cfg.aiBaseUrl,cfg.aiProtocol);
     const headers=buildHeaders(cfg);
     const body=buildBody(cfg,messages,{stream:opts.stream});
 
     // 超时控制（opts.signal 优先；否则内部 AbortController）
-    let controller=null,timer=null;
-    const signal=opts.signal||(controller=new AbortController(),timer=setTimeout(()=>controller.abort(),(Number(cfg.aiTimeout)||60)*1000),controller.signal);
+    // 区分"用户主动取消"与"内部超时"：内部超时用独立标记
+    let controller=null,timer=null,internalTimeout=false;
+    let signal;
+    if(opts.signal){
+      signal=opts.signal;
+    }else{
+      controller=new AbortController();
+      timer=setTimeout(()=>{internalTimeout=true;controller.abort();},(Number(cfg.aiTimeout)||60)*1000);
+      signal=controller.signal;
+    }
 
     let res;
     try{
       res=await fetch(url,{method:'POST',headers,body,signal});
     }catch(e){
-      if(e.name==='AbortError')throw new Error('请求超时或被中止。');
+      if(e.name==='AbortError'){
+        if(internalTimeout)throw new Error('请求超时（'+(Number(cfg.aiTimeout)||60)+'秒），请检查网络或在配置中调大超时时间。');
+        throw new Error('请求被中止。');
+      }
       throw new Error('网络请求失败：'+e.message+'（常见原因：CORS 跨域、BaseUrl 不可达、HTTPS 证书问题）');
     }finally{
       if(timer)clearTimeout(timer);
@@ -346,7 +390,10 @@
 
     if(!res.ok){
       const txt=await res.text().catch(()=> '');
-      throw new Error(friendlyError(res.status,txt));
+      const err=new Error(friendlyError(res.status,txt));
+      err.status=res.status;       // 挂状态码供重试判断
+      err.responseText=txt;        // 挂原始响应供测试连接展示
+      throw err;
     }
 
     if(opts.stream&&res.body&&res.body.getReader){
@@ -388,38 +435,99 @@
         // 异常时也释放 reader
         try{reader.cancel();}catch(e){}
       }
+      // 流式空响应：服务端 200 但未返回任何内容，视为异常
+      if(!full||!full.trim()){
+        throw new Error('AI 返回内容为空（服务端未输出有效内容，可能模型异常或被内容过滤）。');
+      }
       return full;
     }
 
     // 非流式 JSON
     const data=await res.json();
     if(cfg.aiProtocol==='anthropic'){
-      if(data.content&&data.content[0]&&data.content[0].text)return data.content[0].text;
-      throw new Error('Anthropic 响应格式异常（无 content 字段）');
+      // 结构存在但内容为空时，给出更精准的"空响应"提示而非"格式异常"
+      if(Array.isArray(data.content)&&data.content[0]&&typeof data.content[0].text==='string'){
+        const t=data.content[0].text;
+        if(!t.trim())throw new Error('AI 返回内容为空（content[0].text 为空）。');
+        return t;
+      }
+      throw new Error('Anthropic 响应格式异常（无 content 字段）。原始：'+JSON.stringify(data).slice(0,100));
     }
-    if(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content){
-      return data.choices[0].message.content;
+    // OpenAI：先校验结构，再校验内容；避免空串被误判为"格式异常"
+    if(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content!==undefined&&data.choices[0].message.content!==null){
+      const content=data.choices[0].message.content;
+      if(typeof content!=='string'){
+        // 某些模型返回数组型 content（如视觉模型），尝试拼接文本段
+        if(Array.isArray(content)){
+          const joined=content.map(c=>(c&&typeof c.text==='string')?c.text:'').join('');
+          if(!joined.trim())throw new Error('AI 返回内容为空（choices.message.content 数组无文本）。');
+          return joined;
+        }
+        throw new Error('OpenAI 响应格式异常（content 类型异常：'+typeof content+'）。');
+      }
+      if(!content.trim())throw new Error('AI 返回内容为空（choices.message.content 为空）。');
+      return content;
     }
-    throw new Error('OpenAI 响应格式异常（无 choices.message.content）');
+    // 兼容部分中转站直接返回 {content: "..."} 或 {text: "..."} 的非标准结构
+    if(typeof data.content==='string'&&data.content.trim())return data.content;
+    if(typeof data.text==='string'&&data.text.trim())return data.text;
+    throw new Error('OpenAI 响应格式异常（无 choices.message.content）。原始：'+JSON.stringify(data).slice(0,100));
   }
 
   /**
    * 测试连接：发送极简请求验证配置可用
-   * @returns {Promise<{ok:boolean,msg:string}>}
+   * @returns {Promise<{ok:boolean,msg:string,detail?:string,elapsed?:number}>}
+   *   detail: 失败时附原始响应或诊断建议；elapsed: 耗时(ms)
    */
   async function testConnection(){
     const cfg=Store.getSettings();
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama')return{ok:false,msg:'未填写 API Key'};
-    if(!cfg.aiBaseUrl)return{ok:false,msg:'未填写 BaseUrl'};
-    if(!cfg.aiModel)return{ok:false,msg:'未填写模型名'};
+    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama')return{ok:false,msg:'未填写 API Key',detail:'请在配置中填写 API Key 后再测试。'};
+    if(!cfg.aiBaseUrl)return{ok:false,msg:'未填写 BaseUrl',detail:'请在配置中填写接口地址（如 https://api.deepseek.com/v1）。'};
+    if(!cfg.aiModel)return{ok:false,msg:'未填写模型名',detail:'请在配置中填写模型名（如 deepseek-chat）。'};
+    // baseUrl 格式校验
+    const b=normBaseUrl(cfg.aiBaseUrl);
+    if(!/^https?:\/\//i.test(b)){
+      return{ok:false,msg:'BaseUrl 格式错误',detail:'地址应以 http:// 或 https:// 开头。当前：'+b};
+    }
+    // 混合内容检测：HTTPS 页面调用 HTTP 接口会被浏览器拦截
+    if(location.protocol==='https:'&&/^http:\/\//i.test(b)){
+      return{ok:false,msg:'混合内容被拦截',detail:'当前页面是 HTTPS，但 BaseUrl 是 HTTP，浏览器会阻止此请求。请改用 HTTPS 的 BaseUrl，或通过本地 Ollama (http://localhost:11434/v1)。'};
+    }
+    // 空格/中文等常见输入错误检测
+    if(/\s/.test(cfg.aiApiKey)){
+      return{ok:false,msg:'API Key 含空格',detail:'密钥中包含空格或换行，请重新粘贴（注意去除首尾空格）。'};
+    }
+    const t0=Date.now();
     try{
       const txt=await callLLM([
         {role:'system',content:'你是测试机器人，只回复"OK"两个字。'},
         {role:'user',content:'ping'}
-      ],{stream:false});
-      return{ok:true,msg:'连接成功。模型回复：'+(txt||'').slice(0,30)};
+      ],{stream:false,retries:1});
+      const elapsed=Date.now()-t0;
+      return{ok:true,msg:'连接成功（耗时 '+elapsed+'ms）。模型回复：'+(txt||'').slice(0,40),elapsed};
     }catch(e){
-      return{ok:false,msg:e.message};
+      const elapsed=Date.now()-t0;
+      // 构造诊断建议
+      let detail=e.responseText?('原始响应：'+e.responseText.replace(/[<>"']/g,'').slice(0,200)):'';
+      const m=e.message||'';
+      if(/CORS|跨域/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：浏览器跨域被拦截。建议：1) 改用支持 CORS 的中转站；2) Anthropic 官方接口需通过中转；3) 本地 Ollama 默认允许跨域。';
+      }else if(/混合内容/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：HTTPS 页面调用 HTTP 接口被拦截。请改用 HTTPS 接口地址。';
+      }else if(/401|403|Key 无效/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：密钥无效或无权限。请检查 API Key 是否正确、是否过期、是否有该模型调用权限。';
+      }else if(/404|地址错误|模型名不存在/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：地址或模型名错误。请检查 BaseUrl 末尾是否含 /v1（OpenAI 协议）或 /v1（Anthropic 协议），模型名是否拼写正确。';
+      }else if(/429|频率|余额/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：请求频率超限或账户余额不足。请稍后重试或登录服务商控制台查看额度。';
+      }else if(/超时/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：请求超时。请检查网络连接，或在配置中调大「请求超时」秒数。';
+      }else if(/为空/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：服务端返回 200 但内容为空，可能模型异常或触发了内容过滤。';
+      }else if(/Failed to fetch|NetworkError|网络请求失败/.test(m)){
+        detail=(detail?detail+'\n':'')+'诊断：网络层失败。常见原因：1) BaseUrl 不可达/拼写错误；2) CORS 跨域被拦截；3) HTTPS 证书问题；4) 手机端未联网。建议先用浏览器访问 BaseUrl 确认可达。';
+      }
+      return{ok:false,msg:m,detail,elapsed};
     }
   }
 

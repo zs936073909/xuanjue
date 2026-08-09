@@ -469,6 +469,13 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7) sepia(.5
 .ai-test-result .ok{color:var(--green)}
 .ai-test-result .fail{color:var(--red)}
 .ai-test-result .pending{color:var(--ink2)}
+.ai-test-result .diag{
+  margin-top:8px;padding:10px 12px;border-radius:8px;
+  background:var(--card2);border:1px solid var(--line);
+  color:var(--ink2);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;
+}
+.ai-test-result .diag-label{color:var(--gold);font-weight:600;display:block;margin-bottom:4px}
+.ai-test-result .elapsed{color:var(--muted);font-size:11px;margin-left:6px}
 input[type="range"]{width:100%;accent-color:var(--gold);height:4px;background:var(--line);border-radius:2px;-webkit-appearance:none;margin-top:6px}
 input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--gold);cursor:pointer;box-shadow:0 0 0 2px rgba(201,168,106,.2)}
 input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--gold);cursor:pointer;border:none}
@@ -547,9 +554,18 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 
 /* 紫微斗数实验版 */
 .zw-palaces{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
-.zw-palace{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center}
-.zw-palace .zwp-name{font-size:10px;color:var(--muted);margin-bottom:3px}
+.zw-palace{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 4px 8px;text-align:center;position:relative;min-height:72px}
+.zw-palace.soul{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;background:linear-gradient(180deg,rgba(201,168,106,.08),var(--card))}
+.zw-palace.body{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+.zw-palace .zwp-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;padding:0 2px}
+.zw-palace .zwp-name{font-size:11px;color:var(--ink);font-family:var(--serif);font-weight:600}
+.zw-palace .zwp-gz{font-size:9px;color:var(--muted);font-family:var(--serif)}
 .zw-palace .zwp-stars{font-size:12px;color:var(--gold);font-family:var(--serif);line-height:1.3;word-break:break-all}
+.zw-palace .zwp-minor{font-size:10px;color:var(--ink2);line-height:1.3;margin-top:2px;word-break:break-all}
+.zw-palace .zwp-adj{font-size:9px;color:var(--muted);line-height:1.2;margin-top:1px;word-break:break-all}
+.zw-palace .zwp-tag{position:absolute;top:-1px;right:-1px;font-size:8px;padding:1px 4px;border-radius:0 8px 0 8px;color:#fff;font-weight:600;line-height:1.3}
+.zw-palace .zwp-tag.tag-soul{background:var(--gold);color:#1a1410}
+.zw-palace .zwp-tag.tag-body{background:var(--blue)}
 
 /* ===== T3 多盘交叉摘要 ===== */
 .cross-sec{margin-bottom:12px}
@@ -1002,5 +1018,66 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 /* 三传末传视觉弱化，强调初传 */
 .dl-sanchuan .sc-cell:nth-child(5){
   background:linear-gradient(180deg,rgba(106,138,170,.05),var(--card2));
+}
+
+/* ===== 滚轮式日期时间选择器（年/月/日/时/分 五列）===== */
+.dtp{margin:4px 0}
+.dtp-row{display:flex;gap:4px;align-items:stretch}
+.dtp-col{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  background:var(--card2);border:1px solid var(--line);
+  border-radius:8px;padding:4px 0;position:relative;min-width:0;
+}
+.dtp-col-hour,.dtp-col-min{flex:0.85}
+.dtp-col.dtp-disabled{opacity:.4;pointer-events:none}
+.dtp-btn{
+  width:24px;height:22px;border:1px solid var(--line2);
+  background:var(--bg);color:var(--gold);border-radius:4px;
+  font-size:14px;line-height:1;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.dtp-btn:active{background:var(--card2)}
+.dtp-btn:disabled{opacity:.3;cursor:not-allowed}
+.dtp-viewport{
+  height:108px;overflow:hidden;position:relative;width:100%;
+  /* 上下渐隐遮罩，形成"瞄准框"效果 */
+  -webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 30%,#000 70%,transparent 100%);
+  mask-image:linear-gradient(180deg,transparent 0%,#000 30%,#000 70%,transparent 100%);
+}
+/* 中间选中指示线 */
+.dtp-viewport::before,.dtp-viewport::after{
+  content:'';position:absolute;left:8%;right:8%;height:1px;
+  background:var(--gold);opacity:.35;z-index:2;pointer-events:none;
+}
+.dtp-viewport::before{top:36px}
+.dtp-viewport::after{top:72px}
+.dtp-list{
+  list-style:none;margin:0;padding:0;
+  will-change:transform;
+}
+.dtp-item{
+  height:36px;line-height:36px;text-align:center;
+  font-size:15px;color:var(--ink2);font-family:var(--sans);
+  transition:color .15s,font-size .15s;
+}
+.dtp-item.sel{
+  color:var(--gold);font-size:17px;font-weight:600;
+}
+.dtp-col-lbl{
+  font-size:10px;color:var(--muted);margin-top:2px;
+  font-family:var(--serif);letter-spacing:1px;
+}
+/* 年份列：可点击直接输入 */
+.dtp-col-year .dtp-y-edit{
+  cursor:pointer;user-select:none;
+  border-bottom:1px dashed var(--gold);padding:0 4px;
+}
+.dtp-col-year .dtp-y-edit:active{opacity:.6}
+.dtp-btn-y{position:relative}
+/* 长按加速提示角标 */
+.dtp-btn-y[data-hold-fast]::after{
+  content:'⟳';position:absolute;top:-2px;right:-2px;
+  font-size:8px;color:var(--gold);opacity:.5;
 }
 

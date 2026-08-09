@@ -713,18 +713,37 @@
     '太阴':{tend:'宜内敛筹划',opp:'细腻周到、善于储备',risk:'多虑内向、行动不足',do:'幕后规划、稳健执行',dont:'封闭消极'}
   };
   function ziWeiDouShu(birthInfo){
-    if(!window.iztro || !window.iztro.astro || !window.iztro.astro.bySolar)return null;
+    if(!window.iztro || !window.iztro.astro || (!window.iztro.astro.bySolar && !window.iztro.astro.byLunar))return null;
     const info=birthInfo||{};
     let d=info.date;
     if(!d)return null;
     if(!(d instanceof Date))d=new Date(d);
     if(isNaN(d.getTime()))return null;
-    const solarDate=`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    // iztro 的 timeIndex：0=早子(00:00-01:00),1=丑,...,11=亥,12=晚子(23:00-24:00)
+    // 本地 Lunar.getShiChen 的 idx：0=子时(合并早晚子),1=丑,...,11=亥
+    // 修复原 sc.index+1 的系统性错位（曾导致所有紫微排盘按下一时辰排，命宫身宫主星整体错位）
     const sc=Lunar.getShiChen(d);
-    const timeIndex=(sc&&typeof sc.index==='number')?sc.index+1:1;
+    let timeIndex=1; // fallback 丑时
+    if(sc&&typeof sc.index==='number'){
+      const h=d.getHours();
+      if(sc.index===0){
+        timeIndex=(h>=23)?12:0; // 23:00-23:59→晚子(12)；00:00-00:59→早子(0)
+      }else{
+        timeIndex=sc.index;     // 丑(1)…亥(11) 与 iztro 一一对应
+      }
+    }
     const gender=info.gender==='女'?'女':'男';
     try{
-      const astrolabe=window.iztro.astro.bySolar(solarDate,timeIndex,gender,true,'zh-CN');
+      let astrolabe;
+      let solarDate=`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+      // 农历路径：若 info.calendar==='lunar' 且提供 lunarDateStr，走 iztro.byLunar
+      if(info.calendar==='lunar' && window.iztro.astro.byLunar && info.lunarDateStr){
+        // lunarDateStr 格式 "YYYY-M-D"，isLeap=info.isLeapMonth||false
+        astrolabe=window.iztro.astro.byLunar(info.lunarDateStr,timeIndex,gender,!!info.isLeapMonth,'zh-CN');
+        solarDate='农历 '+info.lunarDateStr+(info.isLeapMonth?'(闰)':'');
+      }else{
+        astrolabe=window.iztro.astro.bySolar(solarDate,timeIndex,gender,true,'zh-CN');
+      }
       const soulPalace=astrolabe.palace('命宫');
       const bodyPalace=astrolabe.palace('身宫');
       const majorNames=soulPalace&&soulPalace.majorStars?soulPalace.majorStars.map(s=>s.name).filter(Boolean):[];
