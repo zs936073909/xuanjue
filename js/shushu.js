@@ -532,6 +532,38 @@
     '壬':{'甲':'食神','乙':'伤官','丙':'偏财','丁':'正财','戊':'七杀','己':'正官','庚':'偏印','辛':'正印','壬':'比肩','癸':'劫财'},
     '癸':{'甲':'伤官','乙':'食神','丙':'正财','丁':'偏财','戊':'正官','己':'七杀','庚':'正印','辛':'偏印','壬':'劫财','癸':'比肩'}
   };
+  // ============ 古籍算法查表（《子平真诠》《渊海子平》《滴天髓》《三命通会》）============
+  // 60 甲子纳音表（每纳音管 2 个干支，共 30 纳音；索引 i → NA_YIN[floor(i/2)]）
+  const NA_YIN=['海中金','炉中火','大林木','路旁土','剑锋金','山头火','涧下水','城头土','白蜡金','杨柳木',
+    '泉中水','屋上土','霹雳火','松柏木','长流水','沙中金','山下火','平地木','壁上土','金箔金',
+    '覆灯火','天河水','大驿土','钗钏金','桑柘木','大溪水','沙中土','天上火','石榴木','大海水'];
+  // 由 60 甲子真序号取纳音
+  function naYinByIndex(i){i=((i%60)+60)%60;return NA_YIN[Math.floor(i/2)];}
+  // 由干支序号(ganIdx%10, zhiIdx%12 同奇偶必有解)反推真 60 甲子序号
+  function gz60Index(gi,zi){let i=((gi%10)+10)%10;const z=((zi%12)+12)%12;while(i%12!==z)i+=10;return i%60;}
+  // 天乙贵人（日干起）：甲戊庚→丑未，乙己→子申，丙丁→亥酉，辛→寅午，壬癸→卯巳
+  const GUI_REN={'甲':['丑','未'],'戊':['丑','未'],'庚':['丑','未'],
+    '乙':['子','申'],'己':['子','申'],
+    '丙':['亥','酉'],'丁':['亥','酉'],
+    '辛':['寅','午'],
+    '壬':['卯','巳'],'癸':['卯','巳']};
+  // 文昌（日干起）
+  const WEN_CHANG={'甲':'巳','乙':'午','丙':'申','戊':'申','丁':'酉','己':'酉','庚':'亥','辛':'子','壬':'寅','癸':'卯'};
+  // 驿马（年支起，三合局首支之冲）
+  const YI_MA={'申':'寅','子':'寅','辰':'寅','寅':'申','午':'申','戌':'申','巳':'亥','酉':'亥','丑':'亥','亥':'巳','卯':'巳','未':'巳'};
+  // 桃花（年支起，三合局四正）
+  const TAO_HUA={'申':'酉','子':'酉','辰':'酉','寅':'卯','午':'卯','戌':'卯','巳':'午','酉':'午','丑':'午','亥':'子','卯':'子','未':'子'};
+  // 华盖（年支起，三合局墓库）
+  const HUA_GAI={'申':'辰','子':'辰','辰':'辰','寅':'戌','午':'戌','戌':'戌','巳':'丑','酉':'丑','丑':'丑','亥':'未','卯':'未','未':'未'};
+  // 将星（年支起，三合局旺支）
+  const JIANG_XING={'申':'子','子':'子','辰':'子','寅':'午','午':'午','戌':'午','巳':'酉','酉':'酉','丑':'酉','亥':'卯','卯':'卯','未':'卯'};
+  // 羊刃（日干起，帝旺地支）
+  const YANG_REN={'甲':'卯','乙':'辰','丙':'午','戊':'午','丁':'未','己':'未','庚':'酉','辛':'戌','壬':'子','癸':'丑'};
+  // 五行生克反查（以日主为我）
+  const WX_SHENG_ME={'金':'土','土':'火','火':'木','木':'水','水':'金'}; // 生我者=印
+  const WX_I_SHENG={'金':'水','水':'木','木':'火','火':'土','土':'金'}; // 我生=食伤
+  const WX_I_KE={'金':'木','木':'土','土':'水','水':'火','火':'金'};    // 我克=财
+  const WX_KE_ME={'金':'火','木':'金','土':'木','水':'土','火':'水'};    // 克我=官杀
   // 真太阳时简化实现：根据出生地经度粗略修正平太阳时
   // 中国标准时间为 120°E（UTC+8），每偏东 1° 早 4 分钟
   function parseLongitude(place){
@@ -619,6 +651,174 @@
     const now=new Date();
     const liuNian=Lunar.getBaZi(now).year;
     const liuYue=Lunar.getBaZi(now).month;
+    // ============ 古籍算法补全 ============
+    const birthYear=date.getFullYear();
+    // 真 60 甲子序号（year/day 的 index 已为真序号；monthGz60 上面已算；hour 的 index 非 60 制，需换算）
+    const yearGz60=bz.year.index;
+    const dayGz60=bz.day.index;
+    const hourGz60=unknownHour?null:gz60Index(bz.hour.ganIdx,bz.hour.zhiIdx);
+    const yearZhi=bz.year.zhi,dayZhi=bz.day.zhi,monthZhi=bz.month.zhi;
+
+    // 1. 大运增强：每步补 gan/zhi/ganWx/zhiWx/ganShen/endAge/endYear/ageRange/yearRange/liuNianList
+    const daYunEnriched=daYun.map((dy,i)=>{
+      const g=dy.gz[0],z=dy.gz[1];
+      const zIdx=dy.index%12;
+      const endAge=(i<daYun.length-1)?daYun[i+1].startAge:(dy.startAge+10);
+      const endYear=dy.startYear+Math.round((endAge-dy.startAge));
+      const liuNianList=[];
+      for(let yr=dy.startYear;yr<endYear;yr++){
+        const ly=Lunar.getBaZi(new Date(yr,5,1)).year;
+        liuNianList.push({gz:ly.gz,gan:ly.gan,zhi:ly.zhi,ganShen:SHISHEN[dayGan][ly.gan],year:yr,age:yr-birthYear+1});
+      }
+      return Object.assign({},dy,{
+        gan:g,zhi:z,
+        ganWx:GAN_WX[g],zhiWx:ZHI_WX[zIdx],
+        ganShen:SHISHEN[dayGan][g],
+        endAge,endYear,
+        ageRange:`${dy.startAge}-${endAge}岁`,
+        yearRange:`${dy.startYear}-${endYear}`,
+        liuNianList
+      });
+    });
+
+    // 2. 神煞
+    const guiRen=GUI_REN[dayGan]||[];
+    const wenChang=WEN_CHANG[dayGan];
+    const yiMa=YI_MA[yearZhi];
+    const taoHua=TAO_HUA[yearZhi];
+    const huaGai=HUA_GAI[yearZhi];
+    const jiangXing=JIANG_XING[yearZhi];
+    const yangRen=YANG_REN[dayGan];
+    // 空亡（日柱旬空）：旬首序号 xunShou，空亡为旬首地支后两位
+    const xunShou=Math.floor(dayGz60/10)*10;
+    const kongWang=[Lunar.ZHI[(xunShou%12+10)%12],Lunar.ZHI[(xunShou%12+11)%12]];
+    const shenSha={
+      '天乙贵人':guiRen,'文昌':wenChang,'驿马':yiMa,'桃花':taoHua,
+      '华盖':huaGai,'将星':jiangXing,'羊刃':yangRen,'空亡':kongWang
+    };
+    // 四柱神煞落位（按地支比对，命主相关神煞皆落于地支）
+    const shenShaInPillars=pillars.filter(p=>p.zhi).map(p=>{
+      const hits=[];
+      if(guiRen.includes(p.zhi))hits.push('天乙');
+      if(wenChang===p.zhi)hits.push('文昌');
+      if(yiMa===p.zhi)hits.push('驿马');
+      if(taoHua===p.zhi)hits.push('桃花');
+      if(huaGai===p.zhi)hits.push('华盖');
+      if(jiangXing===p.zhi)hits.push('将星');
+      if(yangRen===p.zhi)hits.push('羊刃');
+      if(kongWang.includes(p.zhi))hits.push('空亡');
+      return{pillar:p.name,shenSha:hits};
+    }).filter(p=>p.shenSha.length>0);
+
+    // 3. 纳音（四柱 60 甲子纳音查表）
+    const naYin={
+      '年柱':naYinByIndex(yearGz60),
+      '月柱':naYinByIndex(monthGz60),
+      '日柱':naYinByIndex(dayGz60),
+      '时柱':unknownHour?'—':naYinByIndex(hourGz60)
+    };
+
+    // 4. 胎元 / 命宫 / 身宫
+    // 胎元：月柱天干进一位、地支进三位
+    const tyGanIdx=(bz.month.ganIdx+1)%10;
+    const tyZhiIdx=(bz.month.zhiIdx+3)%12;
+    const taiYuan={gz:Lunar.GAN[tyGanIdx]+Lunar.ZHI[tyZhiIdx],gan:Lunar.GAN[tyGanIdx],zhi:Lunar.ZHI[tyZhiIdx]};
+    // 命宫/身宫：月数（寅=1）与时支序（子=0，用 ZHI 数组），年干五虎遁定天干
+    const monthNum=(bz.month.zhiIdx-2+12)%12+1;        // 寅=1,...,丑=12
+    const hourZhiOrd=bz.hour.zhiIdx;                   // 子=0
+    const yinGan=((bz.year.ganIdx%5)*2+2)%10;          // 年干起五虎遁之寅月干
+    function gzByWuHu(zhiIdx){return Lunar.GAN[(yinGan+(zhiIdx-2+12)%12)%10]+Lunar.ZHI[zhiIdx];}
+    const mgZhi=((14-monthNum-hourZhiOrd)%12+12)%12;
+    const sgZhi=((monthNum+hourZhiOrd+2)%12+12)%12;
+    const mingGong={gz:gzByWuHu(mgZhi),gan:gzByWuHu(mgZhi)[0],zhi:gzByWuHu(mgZhi)[1]};
+    const shenGong={gz:gzByWuHu(sgZhi),gan:gzByWuHu(sgZhi)[0],zhi:gzByWuHu(sgZhi)[1]};
+
+    // 5. 格局（《子平真诠》月令本气透干定格法）
+    const cangOfMo=CANG_GAN[monthZhi]||[];
+    const ganPos={'年干':bz.year.gan,'月干':bz.month.gan};
+    if(!unknownHour)ganPos['时干']=bz.hour.gan;
+    let matchedGan=null,matchedPos=null,matchedQiIdx=-1;
+    for(let k=0;k<cangOfMo.length;k++){
+      for(const pos in ganPos){
+        if(ganPos[pos]===cangOfMo[k]){matchedGan=cangOfMo[k];matchedPos=pos;matchedQiIdx=k;break;}
+      }
+      if(matchedGan)break;
+    }
+    const benQi=cangOfMo[0];
+    const benQiShen=benQi?SHISHEN[dayGan][benQi]:null;
+    function shenToGeName(shen){
+      if(shen==='比肩')return '建禄格';
+      if(shen==='劫财')return '羊刃格';
+      return shen+'格';
+    }
+    const geJuYongMap={
+      '正官格':'喜财生官、印护官，忌伤官见官','七杀格':'喜食神制杀、印化杀，忌财党杀',
+      '正财格':'喜食伤生财、官护财，忌比劫夺财','偏财格':'喜食伤生财，忌比劫争夺',
+      '正印格':'喜官杀生印，忌财坏印','偏印格':'喜官杀生印，忌食神受夺',
+      '食神格':'喜财养食、官护，忌枭神夺食','伤官格':'喜财泄伤、印制伤，忌官星见伤',
+      '建禄格':'喜财官食伤克泄，忌印比再扶','羊刃格':'喜官杀制刃、食伤泄秀，忌财旺党刃'
+    };
+    let geJuName,geJuMethod;
+    if(matchedGan){
+      const shen=SHISHEN[dayGan][matchedGan];
+      const qiLabel=(matchedQiIdx===0)?'月令本气':(matchedQiIdx===1?'月令中气':'月令余气');
+      geJuName=shenToGeName(shen);
+      geJuMethod=`${qiLabel}${matchedGan}透于${matchedPos}，为日主${dayGan}之${shen}，立${geJuName}`;
+    }else{
+      geJuName=shenToGeName(benQiShen);
+      geJuMethod=`月令${monthZhi}本气${benQi}不透干，以本气十神${benQiShen}定格（杂气格）`;
+    }
+    const geJu={name:geJuName,method:geJuMethod,yongShen:geJuYongMap[geJuName]||('参考用神'+yongShen)};
+
+    // 6. 刑冲合害（四柱地支间）
+    const ZHI_LIST=pillars.map((p,idx)=>({short:['年','月','日','时'][idx],zhi:p.zhi})).filter(p=>p.zhi);
+    const LIU_HE_KEY={'子丑':1,'寅亥':1,'卯戌':1,'辰酉':1,'巳申':1,'午未':1};
+    const LIU_CHONG_KEY={'子午':1,'丑未':1,'寅申':1,'卯酉':1,'辰戌':1,'巳亥':1};
+    const LIU_HAI_KEY={'子未':1,'丑午':1,'寅巳':1,'卯辰':1,'申亥':1,'酉戌':1};
+    const liuHe=[],liuChong=[],liuHai=[],xing=[];
+    const summaryParts=[];
+    for(let i=0;i<ZHI_LIST.length;i++){
+      for(let j=i+1;j<ZHI_LIST.length;j++){
+        const a=ZHI_LIST[i],b=ZHI_LIST[j];
+        const pair=a.zhi+b.zhi,rev=b.zhi+a.zhi;
+        const isHe=!!LIU_HE_KEY[pair]||!!LIU_HE_KEY[rev];
+        const isChong=!!LIU_CHONG_KEY[pair]||!!LIU_CHONG_KEY[rev];
+        const isHai=!!LIU_HAI_KEY[pair]||!!LIU_HAI_KEY[rev];
+        const sumPrefix=`${a.short}${b.short}${a.zhi}${b.zhi}`;
+        if(isHe){liuHe.push({a:`${a.short}支${a.zhi}`,b:`${b.short}支${b.zhi}`});summaryParts.push(sumPrefix+'合');}
+        if(isChong){liuChong.push({a:`${a.short}支${a.zhi}`,b:`${b.short}支${b.zhi}`});summaryParts.push(sumPrefix+'冲');}
+        if(isHai){liuHai.push({a:`${a.short}支${a.zhi}`,b:`${b.short}支${b.zhi}`});summaryParts.push(sumPrefix+'害');}
+        if((a.zhi==='子'&&b.zhi==='卯')||(a.zhi==='卯'&&b.zhi==='子')){xing.push('子卯无礼之刑');summaryParts.push(sumPrefix+'刑');}
+      }
+    }
+    const zhiSet=ZHI_LIST.map(p=>p.zhi);
+    const sanHe=[];
+    [['申','子','辰','水'],['寅','午','戌','火'],['巳','酉','丑','金'],['亥','卯','未','木']].forEach(g=>{
+      const tri=g.slice(0,3),present=tri.filter(z=>zhiSet.includes(z));
+      if(present.length>=3){sanHe.push(`${tri.join('')}合${g[3]}局`);summaryParts.push(`${tri.join('')}合${g[3]}局`);}
+      else if(present.length===2&&present.includes(g[1])){sanHe.push(`${present.join('')}半合${g[3]}局`);summaryParts.push(`${present.join('')}半合${g[3]}局`);}
+    });
+    [['寅','巳','申','寅巳申无恩之刑'],['丑','戌','未','丑戌未恃势之刑']].forEach(g=>{
+      if(g.slice(0,3).every(z=>zhiSet.includes(z))){xing.push(g[3]);summaryParts.push(g[3]);}
+    });
+    const ziCnt={};zhiSet.forEach(z=>{ziCnt[z]=(ziCnt[z]||0)+1;});
+    ['辰','午','酉','亥'].forEach(z=>{if((ziCnt[z]||0)>=2){xing.push(`${z}自刑`);summaryParts.push(`${z}自刑`);}});
+    const xingChong={三合:sanHe,六合:liuHe,三刑:xing,六冲:liuChong,六害:liuHai,summary:summaryParts.join('，')||'四柱地支无明显刑冲合害'};
+
+    // 7. 喜忌神（日主强弱 + 月令调候）
+    const shengMeWx=WX_SHENG_ME[dayWx],iShengWx=WX_I_SHENG[dayWx],iKeWx=WX_I_KE[dayWx],keMeWx=WX_KE_ME[dayWx];
+    let xiSet,jiSet;
+    if(dayStrong){xiSet=[iShengWx,iKeWx,keMeWx];jiSet=[shengMeWx,dayWx];}
+    else{xiSet=[shengMeWx,dayWx];jiSet=[iShengWx,iKeWx,keMeWx];}
+    let tiaoHouWx=null,tiaoHouDesc='';
+    if(['亥','子','丑'].includes(monthZhi)){tiaoHouWx='火';tiaoHouDesc=`冬月${ZHI_WX[bz.month.zhiIdx]}旺，喜火暖局调候`;}
+    else if(['巳','午','未'].includes(monthZhi)){tiaoHouWx='水';tiaoHouDesc=`夏月${ZHI_WX[bz.month.zhiIdx]}旺，喜水润局调候`;}
+    else{tiaoHouDesc=`${monthZhi}月${ZHI_WX[bz.month.zhiIdx]}当令，调候随局中和`;}
+    if(tiaoHouWx){if(!xiSet.includes(tiaoHouWx))xiSet.push(tiaoHouWx);jiSet=jiSet.filter(w=>w!==tiaoHouWx);}
+    const xi=Array.from(new Set(xiSet)),ji=Array.from(new Set(jiSet));
+    const reason=`日主${dayGan}${dayWx}生于${monthZhi}月${dayStrong?'得令偏强':'失令偏弱'}，喜${xi.join('、')}${dayStrong?'克泄耗':'生扶'}，忌${ji.join('、')}`;
+    const xiJi={xi,ji,tiaoHou:tiaoHouDesc,reason};
+
     let note=unknownHour?'时辰未知，本盘时柱仅供参考，子女宫、晚年运势等涉及时柱的判断从略。':'此盘基于真实生辰';
     if(zhenNote)note+='；'+zhenNote;
     const plain={
@@ -628,20 +828,26 @@
       risks:dayStrong?['身强需防过刚易折','注意比劫夺财']:[`身弱需防压力过重`,`注意官杀克身`],
       doAct:[`顺${yongShen}方向决策`,dayStrong?'宜泄宜克宜财':'宜生宜扶'],
       dontAct:dayStrong?['忌再助身(印比)']:['忌耗泄太过'],
-      signals:[`日主${dayGan}${dayWx}`,`强弱：${dayStrong?'强':'弱'}`,`用神：${yongShen}`,`大运起运${daYunStartAge.toFixed(1)}岁`],
+      signals:[`日主${dayGan}${dayWx}`,`强弱：${dayStrong?'强':'弱'}`,`用神：${yongShen}`,`大运起运${daYunStartAge.toFixed(1)}岁`,`格局：${geJu.name}`,`喜忌：喜${xi.join('、')}/忌${ji.join('、')}`],
       env:`月令${bz.month.zhi}(${ZHI_WX[bz.month.zhiIdx]})为令，定日主衰旺`,
       reviewDays:30,
       note:note,
       sources:[
-        {type:'rule',desc:'八字以立春为年界、节令为月界'},
+        {type:'rule',desc:'八字以立春为年界、节令为月界（《渊海子平》）'},
         {type:'rule',desc:'十神以日干为我，论其余干支'},
         {type:'rule',desc:'藏干按地支所藏天干计算'},
         {type:'rule',desc:`日主强弱：${dayStrong?'偏强':'偏弱'}，用神参考${yongShen}`},
         {type:'rule',desc:`大运：${gender==='男'?'男命':'女命'}，年干${bz.year.gan}，${daYunForward?'顺排':'逆排'}`},
+        {type:'rule',desc:`格局（《子平真诠》月令透干定格）：${geJu.name}——${geJu.method}`},
+        {type:'rule',desc:`纳音：年${naYin['年柱']}、月${naYin['月柱']}、日${naYin['日柱']}、时${naYin['时柱']}`},
+        {type:'rule',desc:`神煞：天乙${guiRen.join('/')}、文昌${wenChang}、驿马${yiMa}、桃花${taoHua}、羊刃${yangRen}、空亡${kongWang.join('/')}`},
+        {type:'rule',desc:`胎元${taiYuan.gz}、命宫${mingGong.gz}、身宫${shenGong.gz}（五虎遁定干）`},
+        {type:'rule',desc:`刑冲合害：${xingChong.summary}`},
+        {type:'rule',desc:`喜忌神：${reason}；${tiaoHouDesc}`},
         {type:'rule',desc:note}
       ]
     };
-    return{name:'八字',result:{pillars,dayGan,dayWx,wxCount,wxCountAll,dayStrong,yongShen,wxStr,daYun,daYunStartAge,daYunForward,liuNian,liuYue,unknownHour,note,birthDate:date,zhenTaiyang:!!birthInfo.zhenTaiyang,zhenTaiyangNote:zhenNote||undefined},plain};
+    return{name:'八字',result:{pillars,dayGan,dayWx,wxCount,wxCountAll,dayStrong,yongShen,wxStr,daYun:daYunEnriched,daYunStartAge,daYunForward,liuNian,liuYue,unknownHour,note,birthDate:date,zhenTaiyang:!!birthInfo.zhenTaiyang,zhenTaiyangNote:zhenNote||undefined,shenSha,shenShaInPillars,naYin,taiYuan,mingGong,shenGong,geJu,xingChong,xiJi},plain};
   }
   function computeDaYun(birthDate,gender,yearGan,monthGzIdx){
     // 阳年：甲丙戊庚壬；阴年：乙丁己辛癸
@@ -761,6 +967,95 @@
       doAct.push('重大决定请结合现实信息');
       dontAct.push('不用于医疗、法律、投资等决策');
       dontAct.push('不迷信单一星曜论断');
+
+      // ===== 运限（大限/流年/流月）与四化 =====
+      // 基于"当前时间"查询运限；优先调用 iztro 的 astrolabe.horoscope 接口，
+      // 接口异常或字段缺失时回退到本地规则（五行局起运 + 流年地支定宫）。
+      const nowZW=new Date();
+      const nowStr=`${nowZW.getFullYear()}-${nowZW.getMonth()+1}-${nowZW.getDate()}`;
+      const palacesArr=astrolabe.palaces||[];
+      const majorNamesOf=p=>(p&&p.majorStars?p.majorStars.map(s=>s.name).filter(Boolean):[]);
+
+      // 生年天干（用于生年四化）：优先取八字年干，回退到星盘 chineseDate
+      let birthYearGan='';
+      try{ birthYearGan=((Lunar.getBaZi(d).year)||{}).gan||''; }catch(_){}
+      if(!birthYearGan && astrolabe.rawDates && astrolabe.rawDates.chineseDate && astrolabe.rawDates.chineseDate.yearly){
+        birthYearGan=astrolabe.rawDates.chineseDate.yearly[0]||'';
+      }
+
+      // 生年天干四化表：[化禄,化权,化科,化忌] 对应星名
+      const SIHUA_TABLE={
+        '甲':['廉贞','破军','武曲','太阳'],
+        '乙':['天机','天梁','紫微','太阴'],
+        '丙':['天同','天机','文昌','廉贞'],
+        '丁':['太阴','天同','天机','巨门'],
+        '戊':['贪狼','太阴','右弼','天机'],
+        '己':['武曲','贪狼','天梁','文曲'],
+        '庚':['太阳','武曲','太阴','天同'],
+        '辛':['巨门','太阳','文曲','文昌'],
+        '壬':['天梁','紫微','左辅','武曲'],
+        '癸':['破军','巨门','太阴','贪狼']
+      };
+      const SIHUA_TYPES=['化禄','化权','化科','化忌'];
+      // 星名→所在宫名 索引（主/辅/杂星皆纳入，用于四化落宫查找）
+      const starToPalace={};
+      palacesArr.forEach(p=>{
+        [].concat(p.majorStars||[],p.minorStars||[],p.adjectiveStars||[]).forEach(s=>{
+          if(s&&s.name && !starToPalace[s.name]) starToPalace[s.name]=p.name;
+        });
+      });
+      // 解析五行局起运岁：水二/木三/金四/土五/火六 局
+      const juM=(astrolabe.fiveElementsClass||'').match(/([二三四五六])局/);
+      const juStartAge=juM?({二:2,三:3,四:4,五:5,六:6}[juM[1]]||0):0;
+
+      let decadal=null,yearly=null,monthly=null;
+      // 1) 优先用 iztro horoscope 接口（首参为日期字符串 'YYYY-M-D'）
+      try{
+        if(typeof astrolabe.horoscope==='function'){
+          const h=astrolabe.horoscope(nowStr,'decadal');
+          if(h && h.decadal){
+            const dp=palacesArr[h.decadal.index]||{};
+            const rng=(dp.decadal&&dp.decadal.range)||[null,null];
+            decadal={palaceIndex:h.decadal.index,palaceName:dp.name||'',heavenlyStem:h.decadal.heavenlyStem||'',earthlyBranch:h.decadal.earthlyBranch||'',ageRange:rng,startAge:rng[0],endAge:rng[1],stars:majorNamesOf(dp),juStartAge};
+          }
+          if(h && h.yearly){
+            const yp=palacesArr[h.yearly.index]||{};
+            yearly={palaceIndex:h.yearly.index,palaceName:yp.name||'',heavenlyStem:h.yearly.heavenlyStem||'',earthlyBranch:h.yearly.earthlyBranch||'',yearlyGanZhi:(h.yearly.heavenlyStem||'')+(h.yearly.earthlyBranch||''),stars:majorNamesOf(yp)};
+          }
+          if(h && h.monthly){
+            const mp=palacesArr[h.monthly.index]||{};
+            monthly={palaceIndex:h.monthly.index,palaceName:mp.name||'',heavenlyStem:h.monthly.heavenlyStem||'',earthlyBranch:h.monthly.earthlyBranch||'',stars:majorNamesOf(mp)};
+          }
+        }
+      }catch(_e){ /* 接口异常，走规则回退 */ }
+
+      // 2) 回退：以规则自行计算
+      if(!decadal||!yearly){
+        const nominalAge=nowZW.getFullYear()-d.getFullYear()+1;
+        if(!decadal){
+          const dp=palacesArr.find(p=>p.decadal&&p.decadal.range&&nominalAge>=p.decadal.range[0]&&nominalAge<=p.decadal.range[1]);
+          if(dp) decadal={palaceIndex:dp.index,palaceName:dp.name||'',heavenlyStem:dp.heavenlyStem||'',earthlyBranch:dp.earthlyBranch||'',ageRange:dp.decadal.range,startAge:dp.decadal.range[0],endAge:dp.decadal.range[1],stars:majorNamesOf(dp),juStartAge};
+        }
+        if(!yearly){
+          try{
+            const ly=(Lunar.getBaZi(nowZW).year)||{};
+            const yp=palacesArr.find(p=>p.earthlyBranch===ly.zhi);
+            if(yp) yearly={palaceIndex:yp.index,palaceName:yp.name||'',heavenlyStem:yp.heavenlyStem||'',earthlyBranch:yp.earthlyBranch||'',yearlyGanZhi:(ly.gan||'')+(ly.zhi||''),stars:majorNamesOf(yp)};
+          }catch(_){}
+        }
+      }
+
+      // 3) 四化：iztro majorStars.mutagen 为空时，按生年天干自行推算
+      let siHua=null;
+      if(birthYearGan && SIHUA_TABLE[birthYearGan]){
+        const s4=SIHUA_TABLE[birthYearGan];
+        siHua={
+          生年:birthYearGan,
+          化禄:s4[0],化权:s4[1],化科:s4[2],化忌:s4[3],
+          byPalace:SIHUA_TYPES.map((t,i)=>({palace:starToPalace[s4[i]]||'',star:s4[i],type:t}))
+        };
+      }
+
       const plain={
         state:`紫微斗数排盘：命宫在${palaceName}，主星 ${majorNames.join('、')||'无主星'}；身宫在${bodyName}。五行局 ${astrolabe.fiveElementsClass||'未知'}。`,
         tendency:tendency,
@@ -768,16 +1063,27 @@
         risks:risks,
         doAct:doAct,
         dontAct:dontAct,
-        signals:[`命宫：${palaceName}`,`命主：${astrolabe.soul||'未知'}`,`身主：${astrolabe.body||'未知'}`,`主星：${majorNames.join('、')||'无'}`],
+        signals:[
+          `命宫：${palaceName}`,
+          `命主：${astrolabe.soul||'未知'}`,
+          `身主：${astrolabe.body||'未知'}`,
+          `主星：${majorNames.join('、')||'无'}`,
+          `大限：${decadal?`${decadal.palaceName}(${decadal.heavenlyStem}${decadal.earthlyBranch}) ${decadal.startAge}-${decadal.endAge}岁`:'未知'}`,
+          `流年：${yearly?`${yearly.yearlyGanZhi} ${yearly.palaceName}(${yearly.heavenlyStem}${yearly.earthlyBranch})`:'未知'}`,
+          `四化：${siHua?`化禄${siHua.化禄}·化权${siHua.化权}·化科${siHua.化科}·化忌${siHua.化忌}`:'未知'}`
+        ],
         env:`出生时间 ${solarDate} ${astrolabe.time||''}，${info.zhenTaiyang?'已启用真太阳时校正':''}`,
         reviewDays:60,
         sources:[
           {type:'rule',desc:'紫微斗数以出生年月日时排布十二宫'},
           {type:'rule',desc:'命宫所在地支决定命主，身宫反映后天发展'},
-          {type:'rule',desc:'主星特性提供倾向参考，不做深度断盘'}
+          {type:'rule',desc:'主星特性提供倾向参考，不做深度断盘'},
+          {type:'rule',desc:`大限以五行局定起运岁（${astrolabe.fiveElementsClass||'未知'}${juStartAge?'，'+juStartAge+'岁起运':''}），每限十年，自命宫阳男阴女顺行、阴男阳女逆行`},
+          {type:'rule',desc:'流年以流年地支定所在宫位，流年天干定流年四化'},
+          {type:'rule',desc:`生年四化按生年天干（${birthYearGan||'未知'}）：甲廉破武阳、乙机梁紫阴、丙同机昌廉、丁阴同机巨、戊贪阴右机、己武贪梁曲、庚阳武阴同、辛巨阳曲昌、壬梁紫左武、癸破巨阴贪`}
         ]
       };
-      return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex},plain};
+      return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex,decadal,yearly,monthly,siHua},plain};
     }catch(e){
       return{name:'紫微斗数',result:null,error:String(e.message||e),plain:{state:'紫微斗数排盘失败',tendency:'不可用',opps:[],risks:['排盘异常'],doAct:['请检查出生时间'],dontAct:[],signals:[String(e.message||e)],env:'',reviewDays:0,sources:[]}};
     }

@@ -7,6 +7,7 @@
   const KEY_IMPORTANT='xuanjue_important';
   const KEY_REMIND_STATE='xuanjue_remind_state';
   const KEY_LOCK='xuanjue_lock';
+  const KEY_CHATS='xuanjue_chats'; // AI 多轮对话历史：{ threadId: [{role,content,ts}] }
   let _sessionPin=''; // 解锁后缓存 PIN，用于本地加密解密
 
   function read(k,dft){try{const v=localStorage.getItem(k);return v?JSON.parse(v):dft;}catch(e){return dft;}}
@@ -416,11 +417,44 @@
   function getRemindState(){return read(KEY_REMIND_STATE,{});}
   function setRemindState(patch){write(KEY_REMIND_STATE,Object.assign({},getRemindState(),patch));}
 
+  // ============ AI 多轮对话历史 ============
+  // 结构：{ threadId: [{role:'user'|'assistant'|'system', content:string, ts:number}] }
+  // threadId 规则：命理栏 'bazi_<caseId或日期>' / 'ziwei_<caseId>'，卜筮栏 'bushi_<caseId>'
+  // 读取指定线程的对话历史，无则返回 []
+  function getChat(threadId){
+    if(!threadId)return [];
+    const all=read(KEY_CHATS,{});
+    const arr=all[threadId];
+    return Array.isArray(arr)?arr:[];
+  }
+  // 保存对话历史（覆盖写）
+  function saveChat(threadId,messages){
+    if(!threadId)return false;
+    if(!Array.isArray(messages))messages=[];
+    const all=read(KEY_CHATS,{});
+    all[threadId]=messages;
+    return write(KEY_CHATS,all);
+  }
+  // 清空指定线程
+  function clearChat(threadId){
+    if(!threadId)return false;
+    const all=read(KEY_CHATS,{});
+    if(!(threadId in all))return true;
+    delete all[threadId];
+    return write(KEY_CHATS,all);
+  }
+  // 列出所有线程 id
+  function listChats(){
+    const all=read(KEY_CHATS,{});
+    return Object.keys(all).filter(k=>Array.isArray(all[k])&&all[k].length>0);
+  }
+
   global.Store={
     listCases,getCase,saveCase,deleteCase,genId,addReview,reviewStats,listCasesByFilter,
     getSettings,setSettings,getProfile,setProfile,
     listImportant,getImportant,saveImportant,deleteImportant,
     getRemindState,setRemindState,
+    getChat,saveChat,clearChat,listChats,
     getLockState,setLockState,isLocked,verifyPin,unlock,lockApp,changePin,setAppLock,toggleLocalEncrypt,
     exportBackup,importBackup,storageSizeEstimate,clearAll,clearEverything,
     isAgreed,setAgreed

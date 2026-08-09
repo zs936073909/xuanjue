@@ -1081,3 +1081,244 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
   font-size:8px;color:var(--gold);opacity:.5;
 }
 
+/* ============ 双栏首页：终身命理 / 实时卜筮 ============ */
+.home-columns{
+  display:grid;grid-template-columns:1fr;gap:14px;
+}
+@media(min-width:720px){
+  .home-columns{grid-template-columns:1fr 1fr;align-items:start;}
+}
+.home-column{
+  background:linear-gradient(180deg,rgba(201,168,106,.04),transparent 60%);
+  border:1px solid var(--line);border-radius:14px;padding:12px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.home-column.col-lifetime{border-top:3px solid var(--gold)}
+.home-column.col-realtime{border-top:3px solid var(--blue)}
+.column-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 2px 8px;border-bottom:1px dashed var(--line);
+}
+.column-header h2{
+  margin:0;font-size:18px;letter-spacing:3px;color:var(--gold);
+  font-family:var(--serif);font-weight:400;
+}
+.col-realtime .column-header h2{color:var(--blue)}
+.column-header .col-sub{font-size:11px;color:var(--muted);letter-spacing:1px}
+.home-column .card{margin-bottom:0;width:100%}
+
+/* 命盘档案卡（终身栏） */
+.profile-card{
+  background:linear-gradient(180deg,rgba(201,168,106,.08),var(--card));
+  border:1px solid var(--line);border-radius:10px;padding:12px;
+}
+.profile-card .pc-head{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;
+}
+.profile-card .pc-name{font-size:16px;color:var(--gold);font-family:var(--serif);letter-spacing:1px}
+.profile-card .pc-meta{font-size:12px;color:var(--ink2);line-height:1.6}
+.profile-card .pc-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.profile-card .pc-actions .btn{flex:1;min-width:80px}
+.profile-empty{text-align:center;padding:14px 8px;color:var(--muted);font-size:13px;line-height:1.7}
+
+/* 顾问入口卡 */
+.advisor-card{
+  background:linear-gradient(180deg,rgba(106,138,170,.06),var(--card));
+  border:1px solid var(--line);border-radius:10px;padding:12px;
+}
+.advisor-card.lifetime{
+  background:linear-gradient(180deg,rgba(201,168,106,.1),var(--card));
+  border-color:var(--gold);
+}
+.advisor-card .adv-title{
+  display:flex;align-items:center;gap:6px;
+  font-size:14px;color:var(--gold);font-family:var(--serif);letter-spacing:1px;margin-bottom:6px;
+}
+.advisor-card.realtime .adv-title{color:var(--blue)}
+.advisor-card .adv-desc{font-size:12px;color:var(--ink2);line-height:1.6;margin-bottom:8px}
+.advisor-card .adv-quick{
+  display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;
+}
+.advisor-card .adv-quick .qchip{
+  font-size:11px;padding:4px 9px;border-radius:14px;
+  background:var(--card2);border:1px solid var(--line);color:var(--ink2);
+  cursor:pointer;transition:.15s;
+}
+.advisor-card .adv-quick .qchip:active{transform:scale(.95);background:var(--gold);color:#1a1410}
+
+/* 流年时间轴 */
+.timeline-box{margin-top:8px}
+.timeline-row{
+  display:flex;align-items:center;gap:8px;padding:6px 0;
+  border-bottom:1px dashed var(--line);font-size:12px;
+}
+.timeline-row:last-child{border-bottom:none}
+.timeline-row.cur{color:var(--gold)}
+.timeline-row .tl-gz{
+  flex:0 0 auto;width:42px;font-family:var(--serif);font-size:14px;color:var(--gold);
+}
+.timeline-row .tl-age{flex:0 0 auto;width:62px;color:var(--ink2)}
+.timeline-row .tl-shen{flex:0 0 auto;width:36px;color:var(--ink2);font-size:11px}
+.timeline-row .tl-mark{margin-left:auto;font-size:11px;color:var(--muted)}
+.timeline-row.cur .tl-mark{color:var(--gold)}
+
+/* 紫微十二领域卡 */
+.domain-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px}
+.domain-card{
+  background:var(--card2);border:1px solid var(--line);border-radius:8px;
+  padding:8px 9px;font-size:12px;line-height:1.5;
+}
+.domain-card .dc-name{color:var(--gold);font-family:var(--serif);font-size:13px;margin-bottom:2px}
+.domain-card .dc-star{color:var(--ink);font-size:12px;word-break:break-all}
+.domain-card .dc-bright{color:var(--muted);font-size:10px;margin-top:2px}
+
+/* AI 对话遮罩（覆盖式，深色主题适配） */
+.ai-chat-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;}
+.ai-chat-panel{
+  background:var(--bg);width:100%;max-width:480px;height:90vh;
+  display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;
+  box-shadow:0 -4px 32px rgba(0,0,0,.5);border:1px solid var(--line);
+  animation:aiSlideUp .25s ease;
+}
+@keyframes aiSlideUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.ai-chat-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:11px 14px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--card2),var(--card));
+}
+.ai-chat-title{font-weight:600;font-size:15px;color:var(--gold);font-family:var(--serif);letter-spacing:1px}
+.ai-chat-actions{display:flex;gap:6px}
+.ai-chat-quickbar{
+  padding:8px 10px;border-bottom:1px solid var(--line);
+  background:var(--bg2);overflow-x:auto;-webkit-overflow-scrolling:touch;
+  display:flex;gap:6px;white-space:nowrap;
+}
+.ai-chat-quickbar .qchip{
+  flex:0 0 auto;font-size:12px;padding:5px 11px;border-radius:14px;
+  background:var(--card2);border:1px solid var(--line);color:var(--ink2);
+  cursor:pointer;transition:.15s;
+}
+.ai-chat-quickbar .qchip:active{transform:scale(.95);background:var(--gold);color:#1a1410;border-color:var(--gold)}
+.ai-chat-messages{flex:1;overflow-y:auto;padding:12px;background:var(--bg)}
+.ai-chat-bubble{max-width:84%;margin:8px 0;padding:10px 12px;border-radius:12px;}
+.ai-chat-bubble.user{margin-left:auto;background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1410;border:1px solid var(--gold);}
+.ai-chat-bubble.ai{margin-right:auto;background:var(--card);color:var(--ink);border:1px solid var(--line);}
+.ai-chat-bubble .ai-chat-role{font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:1px}
+.ai-chat-bubble.user .ai-chat-role{color:rgba(26,20,16,.6)}
+.ai-chat-bubble .ai-chat-body{font-size:14px;line-height:1.6;word-break:break-word}
+.ai-chat-bubble .ai-chat-body.ai-pending{color:var(--muted)}
+.ai-chat-bubble .ai-chat-body .ai-warn{margin-top:6px;color:var(--warn);font-size:12px}
+.ai-chat-input{
+  display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:var(--card);
+  padding-bottom:calc(10px + env(safe-area-inset-bottom));
+}
+.ai-chat-input textarea{
+  flex:1;resize:none;border:1px solid var(--line);border-radius:9px;
+  padding:9px 11px;font-size:14px;background:var(--bg);color:var(--ink);
+  font-family:var(--sans);line-height:1.5;max-height:96px;
+}
+.ai-chat-input .btn{align-self:stretch;padding:0 16px}
+
+/* 顾问入口大按钮 */
+.btn-advisor{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:12px 14px;border-radius:10px;cursor:pointer;
+  background:linear-gradient(180deg,rgba(201,168,106,.15),var(--card));
+  border:1px solid var(--gold);color:var(--gold);
+  font-family:var(--serif);font-size:14px;letter-spacing:1px;
+  transition:.15s;
+}
+.btn-advisor.realtime{
+  background:linear-gradient(180deg,rgba(106,138,170,.15),var(--card));
+  border-color:var(--blue);color:var(--blue);
+}
+.btn-advisor:active{transform:scale(.98)}
+.btn-advisor .ba-ico{font-size:18px}
+.btn-advisor .ba-text{flex:1;text-align:left}
+.btn-advisor .ba-sub{display:block;font-size:11px;color:var(--ink2);font-family:var(--sans);letter-spacing:0;margin-top:2px}
+
+/* 终身/实时小节标题 */
+.section-mini{
+  font-size:12px;color:var(--muted);letter-spacing:2px;
+  margin:6px 0 4px;font-family:var(--serif);
+}
+/* 移除底部空隙 */
+.home-column .card:last-child{margin-bottom:0}
+
+/* ============ 今日宜忌卡（终身栏核心延伸）============ */
+.daily-yiji-card{
+  background:linear-gradient(180deg,rgba(201,168,106,.06),var(--card) 40%);
+  border:1px solid var(--line2);
+}
+.daily-yiji-card h3 .h-sub{
+  font-size:11px;color:var(--gold);font-weight:400;letter-spacing:2px;margin-left:6px;
+}
+.dy-date{
+  font-size:12px;color:var(--ink2);margin-bottom:8px;letter-spacing:1px;
+  padding-bottom:8px;border-bottom:1px dashed var(--line);
+}
+.dy-body{
+  font-size:14px;line-height:1.7;color:var(--ink);min-height:40px;
+  max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.dy-body .dy-empty{
+  font-size:12px;color:var(--muted);line-height:1.6;padding:6px 0;
+}
+.dy-body .ai-pending{color:var(--gold);font-size:13px}
+.dy-body .ai-error{color:var(--red);font-size:13px}
+.dy-body .ai-warn{
+  display:block;margin-top:8px;font-size:11px;color:var(--warn);
+  background:rgba(230,81,0,.08);padding:6px 8px;border-radius:6px;
+}
+.dy-body h4{color:var(--gold);font-size:13px;margin:10px 0 4px}
+.dy-body ul,.dy-body ol{margin:4px 0;padding-left:20px}
+.dy-body li{margin:2px 0;font-size:13px}
+.dy-body table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.dy-body th,.dy-body td{border:1px solid var(--line);padding:5px 7px;text-align:left}
+.dy-body th{background:var(--card2);color:var(--gold)}
+.dy-actions{
+  display:flex;gap:8px;margin-top:10px;padding-top:8px;
+  border-top:1px solid var(--line);
+}
+
+/* ============ 决策对比助手（实时栏核心延伸）============ */
+.decision-compare-card{
+  background:linear-gradient(180deg,rgba(106,138,170,.06),var(--card) 40%);
+  border:1px solid var(--line2);
+}
+.decision-compare-card h3 .h-sub{
+  font-size:11px;color:var(--blue);font-weight:400;letter-spacing:2px;margin-left:6px;
+}
+.dc-desc{font-size:12px;color:var(--ink2);line-height:1.6;margin-bottom:10px}
+/* A/B 选项并排 */
+.dc-opt-row{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+}
+/* modal 内决策对比结果 */
+.dc-result{padding:2px 0}
+.dc-bg{
+  font-size:12px;color:var(--ink2);line-height:1.6;margin-bottom:10px;
+  padding:8px 10px;background:var(--card2);border-radius:8px;
+  border-left:2px solid var(--blue);
+}
+.dc-output{
+  font-size:14px;line-height:1.7;color:var(--ink);
+  max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.dc-output .ai-pending{color:var(--gold);font-size:13px}
+.dc-output .ai-error{color:var(--red);font-size:13px}
+.dc-output .ai-warn{
+  display:block;margin-top:8px;font-size:11px;color:var(--warn);
+  background:rgba(230,81,0,.08);padding:6px 8px;border-radius:6px;
+}
+.dc-output h4{color:var(--blue);font-size:13px;margin:10px 0 4px}
+.dc-output ul,.dc-output ol{margin:4px 0;padding-left:20px}
+.dc-output li{margin:2px 0;font-size:13px}
+.dc-output table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.dc-output th,.dc-output td{border:1px solid var(--line);padding:5px 7px;text-align:left}
+.dc-output th{background:var(--card2);color:var(--blue)}
+.dc-actions{
+  display:flex;gap:8px;margin-top:12px;padding-top:10px;
+  border-top:1px solid var(--line);flex-wrap:wrap;
+}
+
