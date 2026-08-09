@@ -511,6 +511,26 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ai-error{color:var(--red);font-size:13px;line-height:1.6;padding:8px;border:1px solid var(--red);border-radius:6px;background:rgba(196,90,74,.08)}
 .ai-warn{margin-top:10px;padding:6px 10px;font-size:12px;color:var(--red);background:rgba(196,90,74,.08);border-radius:6px;border-left:3px solid var(--red)}
 
+/* ===== 解读后追问区（AI 解读与顾问合一）===== */
+.ai-followup{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line2)}
+.ai-fu-divider{text-align:center;font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:10px}
+.ai-fu-messages{max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px}
+.ai-fu-msg{margin:8px 0;padding:8px 10px;border-radius:10px;font-size:13px;line-height:1.6;animation:cardIn .25s ease}
+.ai-fu-msg.user{background:var(--card2);margin-left:32px;border:1px solid var(--line)}
+.ai-fu-msg.assistant{background:rgba(201,168,106,.05);margin-right:32px;border:1px solid var(--line2)}
+.ai-fu-role{display:inline-block;font-size:10px;color:var(--muted);margin-right:6px;vertical-align:top;font-family:var(--serif)}
+.ai-fu-content{display:inline}
+.ai-fu-content h4{color:var(--gold);font-size:13px;margin:6px 0 3px}
+.ai-fu-content p{margin:4px 0}
+.ai-fu-content li{margin:2px 0 2px 14px;list-style:square}
+.ai-fu-input-row{display:flex;gap:8px;align-items:center}
+.ai-fu-input{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font-size:13px;font-family:var(--sans)}
+.ai-fu-input:focus{outline:none;border-color:var(--gold)}
+.ai-fu-input:disabled{opacity:.5}
+.ai-fu-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ai-fu-chip{font-size:11px;padding:4px 9px;border-radius:14px;background:var(--card2);border:1px solid var(--line);color:var(--ink2);cursor:pointer;transition:.15s}
+.ai-fu-chip:active{background:var(--card);transform:scale(.96)}
+
 /* ===== 信息补充与依据来源 ===== */
 .yao-roll{display:flex;flex-direction:column;gap:6px;margin:10px 0}
 .yao-roll-item{display:flex;align-items:center;gap:8px;padding:8px;background:var(--card);border-radius:6px;font-family:var(--serif)}

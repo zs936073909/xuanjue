@@ -345,23 +345,21 @@
   }
 
   function renderTab(){
+    // 切页前先把 AI 配置表单当前输入同步到 Store，避免"输入了未失焦"导致密钥丢失
+    try{flushAIFormToStore&&flushAIFormToStore();}catch(e){}
     if(state.clockInterval){clearInterval(state.clockInterval);state.clockInterval=null;}
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
     const c=$('#page-container');
     if(state.tab==='home')c.innerHTML=pageHome();
     else if(state.tab==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
-    else if(state.tab==='board')c.innerHTML=pageBoardCenter();
     else if(state.tab==='classics')c.innerHTML=pageClassics();
-    else if(state.tab==='case')c.innerHTML=pageCaseList();
     else if(state.tab==='me')c.innerHTML=pageMe();
     bindTab();
   }
   function bindTab(){
     if(state.tab==='home')bindHome();
     else if(state.tab==='ask')bindAsk();
-    else if(state.tab==='board')bindBoardCenter();
     else if(state.tab==='classics')bindClassics();
-    else if(state.tab==='case')bindCaseList();
     else if(state.tab==='me')bindMe();
   }
 
@@ -570,7 +568,10 @@
       tick();
       state.clockInterval=setInterval(tick,1000);
     }
-    $('#btnViewBoard').onclick=()=>{state.tab='board';renderTab();};
+    $('#btnViewBoard').onclick=()=>{
+      const comp=computeDaliuren(new Date(),state.ask&&state.ask.bg.questionType||'其他');
+      state.currentKe=comp;showDaliurenBoard(comp);
+    };
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
       state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
     });
@@ -615,12 +616,12 @@
     });
     // 命理趣玩
     document.querySelectorAll('.game-item').forEach(e=>e.onclick=()=>openFortuneGame(e.dataset.game));
-    document.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.case;state.tab='case';renderTab();setTimeout(openCaseDetail,30);});
-    document.querySelectorAll('[data-review]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.review;state.tab='case';renderTab();setTimeout(()=>openReview(e.dataset.review),30);});
+    document.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.case;state.tab='me';state.subPage='case';renderTab();setTimeout(openCaseDetail,30);});
+    document.querySelectorAll('[data-review]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.review;state.tab='me';state.subPage='case';renderTab();setTimeout(()=>openReview(e.dataset.review),30);});
     // 待复盘"查看全部"：跳转案例列表并自动筛选未复盘
     const dueMore=$('#dueMore');
     if(dueMore)dueMore.onclick=()=>{
-      state.tab='case';renderTab();
+      state.tab='me';state.subPage='case';renderTab();
       setTimeout(()=>{
         const r=$('#fResult');if(r){r.value='未复盘';renderCaseListBody();}
       },30);
@@ -1451,7 +1452,6 @@
       h+=renderShuShuResult(c.shushu);
       h+=`<div class="card"><h3>操作</h3>`;
       h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
-      h+=`<button class="btn block mt8" id="btnExportBoard">导出盘面（文本）</button>`;
       h+=`</div>`;
       setTimeout(()=>bindResult(a),20);
       return h;
@@ -1496,15 +1496,8 @@
     h+=`<div class="card"><h3>操作</h3>`;
     h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
     if(c.comp||Object.keys(c.shushuResults||{}).length){
-      h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 深度解读</button>`;
+      h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 解读与对话</button>`;
     }
-    if(c.comp||Object.keys(c.shushuResults||{}).length){
-      h+=`<button class="btn primary block mt8" id="btnAIChat">AI 顾问对话（多轮）</button>`;
-    }
-    if(c.comp||Object.keys(c.shushuResults||{}).length){
-      h+=`<button class="btn block mt8" id="btnCopyPrompt">复制 AI 提示词</button>`;
-    }
-    h+=`<button class="btn block mt8" id="btnExportBoard">导出盘面（文本）</button>`;
     if(mainPlain){
       h+=`<div class="section-note">复盘提醒：约 ${mainPlain.reviewDays} 日后（系统将出现在首页与案例库）</div>`;
     }
@@ -1571,10 +1564,10 @@
     let h=`<div class="card"><h3>依据来源</h3>`;
     if(rules.length){
       h+=`<div class="source-sec"><div class="source-sec-title">盘面规则</div>`;
-      rules.forEach(r=>{h+=`<div class="source-item"><span class="source-tag rule">规则</span><span>${r.text||r.content||r.name||''}</span></div>`;});
+      rules.forEach(r=>{h+=`<div class="source-item"><span class="source-tag rule">规则</span><span>${r.text||r.desc||r.content||r.name||''}</span></div>`;});
       h+=`</div>`;
     }
-    h+=`<div class="source-sec"><div class="source-sec-title">AI 推断说明</div><div class="source-item"><span class="source-tag ai">AI</span>本解读由离线规则引擎结合问题背景生成，未调用远程模型时仅作参考，不构成确定性预测。</div></div>`;
+    h+=`<div class="source-sec"><div class="source-sec-title">AI 推断</div><div class="source-item"><span class="source-tag ai">AI</span>以上为离线规则引擎基于盘面生成。如需 AI 深度解读与多轮追问，请点击下方「AI 解读与对话」。</div></div>`;
     // 古籍引用：优先使用传入的 ragPassages，其次取全局 state.currentRagPassages
     const classics=(ragPassages||state.currentRagPassages||[]);
     if(classics.length){
@@ -1994,70 +1987,9 @@
     const tg=document.querySelectorAll('.mode-toggle button');
     if(tg.length)tg.forEach(b=>b.onclick=()=>{state.boardMode=b.dataset.mode;renderTab();});
     const btnSave=$('#btnSaveCase');if(btnSave)btnSave.onclick=()=>saveCurrentAsCase(a);
-    const btnCopy=$('#btnCopyPrompt');
-    if(btnCopy)btnCopy.onclick=()=>{
-      // 优先用大六壬主盘构建提示词；无主盘时用多术数融合提示词
-      let txt='';
-      if(comp){
-        txt=AI.buildPrompt(comp.ke,comp.plain,a.bg,Store.getSettings());
-      }else{
-        const sys=AI.buildSystemPrompt(Store.getSettings());
-        const usr=AI.buildMultiShuUserPrompt(c.comp,c.shushuResults,a.bg,Store.getSettings());
-        txt=sys+'\n\n---\n\n'+usr;
-      }
-      copyText(txt);toast('AI 提示词已复制到剪贴板，可粘贴到外部 AI 工具解读');
-    };
-    const btnExp=$('#btnExportBoard');
-    if(btnExp)btnExp.onclick=()=>{
-      if(comp)exportBoardText(comp);
-      else if(c.shushuResults){
-        const firstName=a.shushu.find(s=>c.shushuResults[s]);
-        if(firstName)exportShuShuText(c.shushuResults[firstName]);
-      }
-    };
-    // AI 深度解读
+    // AI 深度解读（解读完成后底部直接变对话区，可继续追问）
     const btnAI=$('#btnAIDeep');
     if(btnAI)btnAI.onclick=()=>runAIDeepRead(a);
-    // AI 顾问对话（多轮）：根据术数类型开启对应顾问
-    const btnAIChat=$('#btnAIChat');
-    if(btnAIChat)btnAIChat.onclick=()=>{
-      const cfg=Store.getSettings();
-      if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
-      if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-        modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用 AI 顾问。',null,true,'知道了');
-        return;
-      }
-      // 判断顾问类型：八字/紫微 → 终身顾问；其它 → 实时顾问
-      const shushuList=a.shushu||[];
-      const sr=c.shushuResults||{};
-      if(shushuList.includes('八字')&&sr['八字']){
-        const r=sr['八字'];
-        const tid='lifetime_bazi_'+(r.birthDate?String(r.birthDate).replace(/[:T-]/g,'').slice(0,8):'cur');
-        renderAIChat(tid,'八字 · 趋吉避凶顾问',r.result||r,'bazi',{
-          advisorType:'lifetime',
-          quickQuestions:Object.keys(AI.getLifetimeDomains()).map(k=>({key:k,label:k})),
-          quickResolver:(k)=>{const d=AI.getLifetimeDomains()[k];return d?d.prompt:null;}
-        });
-      }else if(shushuList.includes('紫微斗数')&&sr['紫微斗数']){
-        const r=sr['紫微斗数'];
-        const tid='lifetime_ziwei_'+(r.solarDate?String(r.solarDate).replace(/[:T-]/g,'').slice(0,8):'cur');
-        renderAIChat(tid,'紫微 · 命运推演顾问',r.result||r,'ziwei',{
-          advisorType:'lifetime',
-          quickQuestions:Object.keys(AI.getLifetimeDomains()).map(k=>({key:k,label:k})),
-          quickResolver:(k)=>{const d=AI.getLifetimeDomains()[k];return d?d.prompt:null;}
-        });
-      }else{
-        // 实时卜筮顾问：用当前 comp 或第一个术数结果
-        const ctx=c.comp||((sr[shushuList[0]])||null);
-        if(!ctx){toast('暂无可用的盘面上下文');return;}
-        const tid='realtime_'+fmtDate(new Date()).replace(/[- :]/g,'').slice(0,8);
-        renderAIChat(tid,'实时决策顾问',ctx,'bushi',{
-          advisorType:'realtime',
-          quickQuestions:Object.keys(AI.getRealtimeTopics()).map(k=>({key:k,label:k})),
-          quickResolver:(k)=>{const t=AI.getRealtimeTopics()[k];return t?t.prompt:null;}
-        });
-      }
-    };
     // 底部操作按钮（重试 / 返回）
     const btnRetry2=$('#btnDlRetry2');
     if(btnRetry2)btnRetry2.onclick=()=>{
@@ -2193,6 +2125,13 @@
       }else{
         a.aiReading=txt;
       }
+      // 建立多轮对话线程，把解读结果注入为 assistant 上下文，使后续追问可基于解读继续
+      const threadId='result_'+(a.savedCaseId||Date.now().toString(36));
+      AI.startChat(threadId,AI.buildSystemPrompt(cfg),userPrompt);
+      AI.injectAssistant(threadId,txt);
+      a._chatThreadId=threadId;
+      // 解读完成后，在卡片底部显示追问输入区（AI 解读与顾问合一）
+      showFollowupInput(card,threadId,a);
     }catch(e){
       if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
         // 被取消不显示错误
@@ -2234,6 +2173,110 @@
       out.appendChild(retryBox);
     }finally{
       _aiAbort=null;
+    }
+  }
+  // ---------- 解读后追问区（AI 解读与顾问合一）----------
+  // 在 AI 解读输出卡片底部插入一个内嵌对话区：用户可直接输入追问，流式渲染回复。
+  // 复用 AI.chat 多轮线程（解读结果已作为 assistant 上下文注入）。
+  function showFollowupInput(card,threadId,a){
+    if(!card||!threadId)return;
+    // 移除旧的追问区（重新解读时）
+    const old=card.querySelector('.ai-followup');
+    if(old)old.remove();
+    const cfg=Store.getSettings();
+    const fu=document.createElement('div');
+    fu.className='ai-followup';
+    fu.innerHTML=
+      '<div class="ai-fu-divider">— 以上为 AI 解读，下方可继续追问 —</div>'
+      +'<div class="ai-fu-messages" id="aiFuMsgs"></div>'
+      +(cfg.offlineMode?'<div class="section-note">离线模式，无法追问</div>':
+        '<div class="ai-fu-input-row">'
+        +'<input type="text" id="aiFuInput" class="ai-fu-input" placeholder="输入追问，如「这件事什么时候能有结果？」">'
+        +'<button class="btn primary sm" id="aiFuSend">发送</button>'
+        +'</div>'
+        +'<div class="ai-fu-quick" id="aiFuQuick"></div>');
+    card.appendChild(fu);
+    if(cfg.offlineMode)return;
+    // 快捷问题：根据术数类型提供
+    const shushuList=a.shushu||[];
+    const quickBox=$('#aiFuQuick');
+    if(quickBox){
+      let quicks=[];
+      if(shushuList.includes('八字')||shushuList.includes('紫微斗数')){
+        quicks=Object.keys(AI.getLifetimeDomains());
+      }else{
+        quicks=Object.keys(AI.getRealtimeTopics());
+      }
+      quicks.slice(0,4).forEach(k=>{
+        const chip=el('span','ai-fu-chip');
+        chip.textContent=k;
+        chip.onclick=()=>{
+          const inp=$('#aiFuInput');
+          if(inp){const dmap=shushuList.includes('八字')||shushuList.includes('紫微斗数')?AI.getLifetimeDomains():AI.getRealtimeTopics();inp.value=dmap[k]?dmap[k].prompt:k;}
+          $('#aiFuInput').focus();
+        };
+        quickBox.appendChild(chip);
+      });
+    }
+    const sendBtn=$('#aiFuSend');
+    const input=$('#aiFuInput');
+    const doSend=async()=>{
+      const msg=input.value.trim();
+      if(!msg)return;
+      input.value='';
+      input.disabled=true;
+      if(sendBtn){sendBtn.disabled=true;sendBtn.textContent='…';}
+      const msgs=$('#aiFuMsgs');
+      // 用户气泡
+      const ub=el('div','ai-fu-msg user');
+      ub.innerHTML='<span class="ai-fu-role">我</span>'+esc(msg);
+      msgs.appendChild(ub);
+      // AI 气泡（占位）
+      const ab=el('div','ai-fu-msg assistant');
+      ab.innerHTML='<span class="ai-fu-role">AI</span><span class="ai-fu-content">思考中…</span>';
+      msgs.appendChild(ab);
+      const contentEl=ab.querySelector('.ai-fu-content');
+      msgs.scrollTop=msgs.scrollHeight;
+      if(_aiAbort){try{_aiAbort.abort();}catch(e){}}
+      _aiAbort=new AbortController();
+      try{
+        const cfg2=Store.getSettings();
+        let first=true,lastTime=0;
+        const reply=await AI.chat(threadId,msg,{
+          stream:cfg2.aiStream!==false,
+          signal:_aiAbort.signal,
+          onDelta:(delta,full)=>{
+            if(first){contentEl.textContent='';first=false;}
+            const t=Date.now();
+            if(t-lastTime<80)return;
+            lastTime=t;
+            contentEl.innerHTML=AI.renderMarkdown(full);
+            msgs.scrollTop=msgs.scrollHeight;
+          }
+        });
+        contentEl.innerHTML=AI.renderMarkdown(reply);
+        const forb=AI.hasForbidden(reply);
+        if(forb.length){
+          const w=el('div','ai-warn');
+          w.textContent='检测到 '+forb.length+' 处绝对化措辞，请理性参考。';
+          ab.appendChild(w);
+        }
+        msgs.scrollTop=msgs.scrollHeight;
+      }catch(e){
+        if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
+          contentEl.textContent='（已取消）';
+        }else{
+          contentEl.innerHTML='<span class="ai-error">✗ '+esc(e.message)+'</span>';
+        }
+      }finally{
+        input.disabled=false;
+        if(sendBtn){sendBtn.disabled=false;sendBtn.textContent='发送';}
+        _aiAbort=null;
+      }
+    };
+    if(sendBtn)sendBtn.onclick=doSend;
+    if(input){
+      input.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();doSend();}});
     }
   }
   // ---------- AI 多轮对话界面（命盘长期记忆 + 顾问角色 + 快捷问题）----------
@@ -3024,7 +3067,7 @@
     // 若含八字，将出生信息回写到个人信息（便于下次自动带入）
     if(a.shushu&&a.shushu.includes('八字')&&a.extra&&a.extra.birth){syncProfileFromBirth(a.extra.birth);}
     toast('案例已保存');
-    state.viewCaseId=obj.id;state.tab='case';renderTab();setTimeout(openCaseDetail,30);
+    state.viewCaseId=obj.id;state.tab='me';state.subPage='case';renderTab();setTimeout(openCaseDetail,30);
   }
   function serializeShu(res){return{name:res.name,result:res.result};}
   function serializeShuResults(rs){const o={};Object.keys(rs).forEach(k=>{o[k]={name:rs[k].name,result:rs[k].result,plain:rs[k].plain};});return o;}
@@ -3267,7 +3310,7 @@
     state.ask={bg:{questionType:'其他'},computed:{shushuResults:{[res.name]:res},shushu:[res.name]},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true};
     state.tab='ask';renderTab();
     setTimeout(()=>bindResult(state.ask),30);
-    navEnter(()=>{state.ask=null;state.tab='board';renderTab();},'shushuBoard');
+    navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'shushuBoard');
   }
   function showDaliurenBoard(comp){
     // 用一个临时 ask bg（标记 _placeholder 以便用户主动点「问事」Tab 时重置）
@@ -3276,7 +3319,7 @@
     // 保持 boardMode
     setTimeout(()=>bindResult(state.ask),30);
     // 注册返回动作：硬件返回键 / 应用内返回按钮均回到盘面 Tab（重新起课时原地替换，不累加历史）
-    navEnter(()=>{state.ask=null;state.tab='board';renderTab();},'boardResult');
+    navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'boardResult');
   }
 
   // ================= 案例 =================
@@ -3296,7 +3339,7 @@
     const typeOpts=Array.from(new Set(cases.map(c=>c.questionType).filter(Boolean)));
     // 标签下拉项：预定义 + 自定义
     const tagOpts=getAllReviewTags();
-    let h=`<div class="phead"><div class="ptitle">案例</div><div class="psub">共 ${cases.length} 条</div></div>`;
+    let h=`<div class="phead"><div><div class="ptitle">案例库</div><div class="psub">共 ${cases.length} 条</div></div><button class="btn ghost sm" id="backMe">返回</button></div>`;
     // 统计入口
     h+=`<div class="card"><div class="review-stat" id="miniStat"></div><button class="btn block" id="btnStat">复盘统计</button></div>`;
     // 筛选栏
@@ -3359,6 +3402,7 @@
   function bindCaseList(){
     // 子页面：复盘统计独立页绑定
     if(state.subPage==='stats'){bindStats();return;}
+    const back=$('#backMe');if(back)back.onclick=()=>{state.subPage=null;renderTab();};
     const apply=$('#btnApplyFilter');if(apply)apply.onclick=()=>renderCaseListBody();
     const clear=$('#btnClearFilter');
     if(clear)clear.onclick=()=>{
@@ -3376,7 +3420,7 @@
     const c=Store.getCase(id);if(!c){toast('案例不存在');return;}
     state.viewCaseId=id;
     // 注册返回动作：硬件返回键 / 应用内返回均回到案例列表
-    navEnter(()=>{state.viewCaseId=null;state.tab='case';renderTab();},'caseDetail');
+    navEnter(()=>{state.viewCaseId=null;state.tab='me';state.subPage='case';renderTab();},'caseDetail');
     const container=$('#page-container');
     // 到期未复盘提示条
     const dueNow=!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue;
@@ -3544,7 +3588,7 @@
   function openStats(){
     state.subPage='stats';
     renderTab();
-    navEnter(()=>{state.subPage='';state.tab='case';renderTab();},'stats');
+    navEnter(()=>{state.subPage='';state.tab='me';state.subPage='case';renderTab();},'stats');
   }
   function pageStats(){
     const st=Store.reviewStats();
@@ -3637,10 +3681,14 @@
   // ================= 我的 =================
   function pageMe(){
     if(state.subPage==='important')return pageImportant();
+    if(state.subPage==='case')return pageCaseList();
     const s=Store.getSettings(),p=Store.getProfile();
     let h=`<div class="phead"><div class="ptitle">我的</div></div>`;
     h+=`<div class="card"><div class="detail-row"><span class="dk">昵称</span><span>${p.nick||'未设置'}</span></div><div class="detail-row"><span class="dk">出生</span><span>${p.birth||'—'}</span></div></div>`;
     h+=`<div class="card set-group"><div class="sg-t">个人信息</div><button class="btn block" id="btnProfile">编辑个人信息</button></div>`;
+    // 案例库入口（原案例 Tab 合并到此）
+    const caseCount=Store.listCases().length;
+    h+=`<div class="card set-group"><div class="sg-t">案例库</div><div class="detail-row"><span class="dk">已记录</span><span>${caseCount} 条案例</span></div><button class="btn primary block" id="btnCaseList">查看全部案例</button></div>`;
     h+=`<div class="card set-group"><div class="sg-t">术数设置</div>`;
     h+=selectRow('大六壬贵人','dlGuiRen',['昼夜贵人','夜贵人','甲戊庚牛羊']);
     h+=selectRow('涉害取法','dlSheHai',['涉害取深','涉害取孟仲季']);
@@ -3683,7 +3731,7 @@
     h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
     h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.4</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.6</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
   // 重要日期管理子页
@@ -3816,6 +3864,18 @@
       if(inp.type==='password'){inp.type='text';toggle.textContent='隐藏';}
       else{inp.type='password';toggle.textContent='显示';}
     };
+    // API Key 防抖自动保存：输入后 400ms 自动写入 Store，无需失焦
+    const keyInp=$('#aiApiKey');
+    if(keyInp){
+      let keyTimer=null;
+      keyInp.addEventListener('input',()=>{
+        clearTimeout(keyTimer);
+        keyTimer=setTimeout(()=>{
+          const v=keyInp.value.trim();
+          if(v){Store.setSettings({aiApiKey:v});}
+        },400);
+      });
+    }
     const testBtn=$('#btnTestAI');
     if(testBtn)testBtn.onclick=async()=>{
       const r=$('#aiTestResult');
@@ -3841,7 +3901,10 @@
   }
   function bindMe(){
     if(state.subPage==='important'){bindImportant();return;}
+    if(state.subPage==='case'){bindCaseList();return;}
     $('#btnProfile').onclick=()=>openProfile();
+    const btnCaseList=$('#btnCaseList');
+    if(btnCaseList)btnCaseList.onclick=()=>{state.subPage='case';renderTab();};
     document.querySelectorAll('[data-set]').forEach(e=>e.onchange=ev=>{
       const k=ev.target.dataset.set;
       // aiProvider / aiTemperature / notificationEnabled 由专用 handler 处理

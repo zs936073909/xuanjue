@@ -346,6 +346,14 @@
         lastErr=e;
         // 主动取消不重试
         if(e.name==='AbortError'&&opts.signal&&opts.signal.aborted)throw e;
+        // 流式空响应：自动降级为非流式重试（部分中转站/模型流式返回空但非流式正常）
+        if(/为空/.test(e.message||'')&&opts.stream&&opts._fallback!==true){
+          try{return await _doFetch(messages,Object.assign({},opts,{stream:false,_fallback:true}),cfg);}
+          catch(e2){
+            // 降级也失败则抛降级错误
+            throw e2;
+          }
+        }
         // 仅对 429/5xx 重试，其他错误直接抛出
         const retryable = /429|服务端错误|HTTP 5\d\d/.test(e.message||'');
         if(!retryable||attempt>=maxRetries)throw e;
@@ -945,6 +953,19 @@
   function clearChat(threadId){
     return Store.clearChat(threadId);
   }
+  // 将一条 assistant 消息注入线程历史（用于把"深度解读"结果作为对话上下文，
+  // 使后续追问能基于解读内容继续）。会移除 startChat 自动追加的占位 assistant。
+  function injectAssistant(threadId, content){
+    if(!threadId||!content)return;
+    let messages=Store.getChat(threadId);
+    if(!messages.length)messages=[];
+    messages=messages.slice();
+    if(messages.length&&messages[messages.length-1].role==='assistant'&&/已收到命盘|已收到.*上下文/.test(messages[messages.length-1].content)){
+      messages.pop();
+    }
+    messages.push({role:'assistant',content:content,ts:Date.now()});
+    Store.saveChat(threadId,messages);
+  }
 
   global.AI={
     FORBIDDEN,SENSITIVE,DISCLAIMER,TONES,PROVIDERS,
@@ -957,6 +978,6 @@
     buildBaziContext,buildZiweiContext,
     buildLifetimeAdvisorPrompt,buildRealtimeAdvisorPrompt,getLifetimeDomains,getRealtimeTopics,
     buildDailyYiJiPrompt,buildDecisionComparePrompt,
-    startChat,chat,getChatHistory,clearChat
+    startChat,chat,getChatHistory,clearChat,injectAssistant
   };
 })(window);
