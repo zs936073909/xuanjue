@@ -117,8 +117,9 @@
     const m=lunar?lunar.month:date.getMonth()+1;
     const d=lunar?lunar.day:date.getDate();
     const t=baZi.hour.zhiIdx+1;
-    const upIdx=(yZhi+m+d)%8; // 上卦
-    const dnIdx=(yZhi+m+d+t)%8; // 下卦
+    // 先天八卦：余 0 对应坤（第 8），余 1-7 依次乾…巽；BAGUA 索引 0=乾,7=坤
+    const upIdx=((yZhi+m+d-1)%8+8)%8; // 上卦
+    const dnIdx=((yZhi+m+d+t-1)%8+8)%8; // 下卦
     const dong=(yZhi+m+d+t)%6; // 动爻 1-6（0→6）
     const dongLine=dong===0?6:dong;
     return buildMeiHua(upIdx,dnIdx,dongLine,{year:yZhi,month:m,day:d,time:t});
@@ -177,14 +178,14 @@
       const nums=String(input).split(/[,，\s]/).filter(x=>x!=='').map(x=>parseInt(x)).filter(x=>!isNaN(x));
       let n1=nums[0]||0,n2=nums[1];
       if(n2===undefined)n2=n1+7; // 单数时以 n+7 为第二数
-      upIdx=n1%8;
-      dnIdx=n2%8;
+      upIdx=((n1%8)+7)%8; // 先天八卦：1→乾(0)…0→坤(7)
+      dnIdx=((n2%8)+7)%8;
       dongLine=((n1+n2)%6)||6;
       numbers={type:'number',n1,n2,dong:dongLine};
     }else if(inputType==='hanzi'){
       let code=0;for(let i=0;i<String(input).length;i++)code+=String(input).charCodeAt(i);
-      upIdx=code%8;
-      dnIdx=(code*7)%8;
+      upIdx=((code%8)+7)%8;
+      dnIdx=(((code*7)%8)+7)%8;
       dongLine=(code%6)||6;
       numbers={type:'hanzi',code,dong:dongLine};
     }else{
@@ -723,9 +724,9 @@
     const tyGanIdx=(bz.month.ganIdx+1)%10;
     const tyZhiIdx=(bz.month.zhiIdx+3)%12;
     const taiYuan={gz:Lunar.GAN[tyGanIdx]+Lunar.ZHI[tyZhiIdx],gan:Lunar.GAN[tyGanIdx],zhi:Lunar.ZHI[tyZhiIdx]};
-    // 命宫/身宫：月数（寅=1）与时支序（子=0，用 ZHI 数组），年干五虎遁定天干
+    // 命宫/身宫：月数（寅=1）与时支序（子=1,...,亥=12），年干五虎遁定天干
     const monthNum=(bz.month.zhiIdx-2+12)%12+1;        // 寅=1,...,丑=12
-    const hourZhiOrd=bz.hour.zhiIdx;                   // 子=0
+    const hourZhiOrd=bz.hour.zhiIdx+1;                 // 子=1,...,亥=12
     const yinGan=((bz.year.ganIdx%5)*2+2)%10;          // 年干起五虎遁之寅月干
     function gzByWuHu(zhiIdx){return Lunar.GAN[(yinGan+(zhiIdx-2+12)%12)%10]+Lunar.ZHI[zhiIdx];}
     const mgZhi=((14-monthNum-hourZhiOrd)%12+12)%12;

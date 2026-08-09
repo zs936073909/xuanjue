@@ -1,7 +1,7 @@
 // jsdom 测试：验证大六壬盘面与各界面的退出/重试通道
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('/tmp/node_modules/jsdom');
+const { JSDOM } = require('jsdom');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 

@@ -3,15 +3,27 @@
   const KEY_CASES='xuanjue_cases';
   const KEY_SETTINGS='xuanjue_settings';
   const KEY_AGREE='xuanjue_agreed';
-    const KEY_PROFILE='xuanjue_profile';
+  const KEY_PROFILE='xuanjue_profile';
   const KEY_IMPORTANT='xuanjue_important';
   const KEY_REMIND_STATE='xuanjue_remind_state';
   const KEY_LOCK='xuanjue_lock';
   const KEY_CHATS='xuanjue_chats'; // AI 多轮对话历史：{ threadId: [{role,content,ts}] }
   let _sessionPin=''; // 解锁后缓存 PIN，用于本地加密解密
 
-  function read(k,dft){try{const v=localStorage.getItem(k);return v?JSON.parse(v):dft;}catch(e){return dft;}}
-  function write(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}
+  // localStorage 兜底：在 Node/jsdom 等无 localStorage 环境使用内存存储，保证测试与异常场景不崩溃
+  const _memStore=new Map();
+  const _ls=(function(){
+    try{if(typeof localStorage!=='undefined' && localStorage.getItem)return localStorage;}catch(e){}
+    return {
+      getItem(k){return _memStore.has(k)?_memStore.get(k):null;},
+      setItem(k,v){_memStore.set(String(k),String(v));},
+      removeItem(k){_memStore.delete(k);},
+      clear(){_memStore.clear();}
+    };
+  })();
+
+  function read(k,dft){try{const v=_ls.getItem(k);return v?JSON.parse(v):dft;}catch(e){return dft;}}
+  function write(k,v){try{_ls.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}
 
   // 案例
   function listCases(){
@@ -226,7 +238,7 @@
         write(KEY_PROFILE+'_enc',xorObfuscate(decP,newKey));
       }else{
         write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(curP),newKey));
-        localStorage.removeItem(KEY_PROFILE);
+        _ls.removeItem(KEY_PROFILE);
       }
     }
     setLockState({pinHash:pinHash(newPin)});
@@ -257,7 +269,7 @@
       }
       write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(curP),key));
       // 清除明文 profile
-      localStorage.removeItem(KEY_PROFILE);
+      _ls.removeItem(KEY_PROFILE);
     }else{
       if(curS.aiApiKey && String(curS.aiApiKey).startsWith('enc:')){
         curS.aiApiKey=xorDeobfuscate(curS.aiApiKey,key);
@@ -265,7 +277,7 @@
       const encP=read(KEY_PROFILE+'_enc','');
       if(encP){
         try{write(KEY_PROFILE,JSON.parse(xorDeobfuscate(encP,key)));}catch(e){write(KEY_PROFILE,{});}
-        localStorage.removeItem(KEY_PROFILE+'_enc');
+        _ls.removeItem(KEY_PROFILE+'_enc');
       }
     }
     write(KEY_SETTINGS,curS);
@@ -289,10 +301,14 @@
   }
   function setSettings(s){
     const lock=getLockState();
-    if(s.aiApiKey!==undefined && lock.localEncrypt && lock.appLock && _sessionPin){
-      s.aiApiKey=xorObfuscate(s.aiApiKey,pinHash(_sessionPin));
+    const merged=Object.assign(getSettings(),s);
+    // 只要开启本地加密，就确保落盘的 aiApiKey 是密文（修复修改非 key 字段导致明文回写）
+    if(lock.localEncrypt && lock.appLock && _sessionPin){
+      if(merged.aiApiKey && !String(merged.aiApiKey).startsWith('enc:')){
+        merged.aiApiKey=xorObfuscate(merged.aiApiKey,pinHash(_sessionPin));
+      }
     }
-    write(KEY_SETTINGS,Object.assign(getSettings(),s));
+    write(KEY_SETTINGS,merged);
   }
   function getProfile(){
     const lock=getLockState();
@@ -309,10 +325,10 @@
     const merged=Object.assign(getProfile(),p);
     if(lock.localEncrypt && lock.appLock && _sessionPin){
       write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(merged),pinHash(_sessionPin)));
-      localStorage.removeItem(KEY_PROFILE);
+      _ls.removeItem(KEY_PROFILE);
     }else{
       write(KEY_PROFILE,merged);
-      localStorage.removeItem(KEY_PROFILE+'_enc');
+      _ls.removeItem(KEY_PROFILE+'_enc');
     }
   }
 
@@ -346,25 +362,28 @@
   function importBackup(obj){
     if(!obj||obj.app!=='玄决')throw new Error('备份文件格式不正确');
     if(!Array.isArray(obj.cases))throw new Error('备份文件 cases 字段缺失或非数组');
+    // 案例 id 校验：防止原型污染与非法键
+    function isValidCaseId(id){
+      if(typeof id!=='string'||id.length===0||id.length>64)return false;
+      return !['__proto__','constructor','prototype'].includes(id);
+    }
     // 案例按 id 合并：保留现有 + 覆盖同 id + 追加新 id
     const cur=read(KEY_CASES,[]);
-    const curMap={};
-    cur.forEach(c=>{if(c&&c.id)curMap[c.id]=c;});
     let added=0,updated=0;
     obj.cases.forEach(c=>{
-      if(!c||!c.id)return; // 跳过无效案例
-      if(curMap[c.id]){updated++;}else{added++;}
-      curMap[c.id]=c; // 覆盖或新增
+      if(!c||!isValidCaseId(c.id))return; // 跳过无效案例
+      const idx=cur.findIndex(x=>x&&x.id===c.id);
+      if(idx>=0){cur[idx]=c;updated++;}else{cur.push(c);added++;}
     });
-    const merged=Object.keys(curMap).map(k=>curMap[k]);
-    write(KEY_CASES,merged);
-    if(obj.profile)write(KEY_PROFILE,obj.profile);
+    write(KEY_CASES,cur);
+    if(obj.profile)setProfile(obj.profile);
     if(Array.isArray(obj.important))write(KEY_IMPORTANT,obj.important);
     if(obj.settings){
       const curS=getSettings();
-      // 仅白名单字段导入；apiKey 字符串校验
+      // 仅白名单字段导入；安全开关不通过备份恢复
       const mergedS=Object.assign({},curS);
       SETTINGS_WHITELIST.forEach(k=>{
+        if(['appLock','bioLock','localEncrypt'].includes(k))return;
         if(obj.settings[k]!==undefined){
           let v=obj.settings[k];
           // 字符串字段做基础字符过滤（防 HTML/JS 注入）
@@ -376,9 +395,10 @@
       });
       // 若备份不含 apiKey（默认导出），保留当前 apiKey
       if(!obj.settings.aiApiKey&&curS.aiApiKey)mergedS.aiApiKey=curS.aiApiKey;
-      write(KEY_SETTINGS,mergedS);
+      // 统一走 setSettings，确保 localEncrypt 开启时 key 被加密
+      setSettings(mergedS);
     }
-    return{added,updated,total:merged.length};
+    return{added,updated,total:cur.length};
   }
   // 存储占用估算：基于 JSON.stringify 字符数 × 2（UTF-16 编码近似字节数）
   // 返回 {caseCount, sizeBytes, sizeText}：sizeText 友好显示
@@ -392,12 +412,12 @@
     else{sizeText=(sizeBytes/1048576).toFixed(1)+' MB';}
     return{caseCount:cases.length,sizeBytes,sizeText};
   }
-  function clearAll(){localStorage.removeItem(KEY_CASES);}
-  function clearEverything(){localStorage.removeItem(KEY_CASES);localStorage.removeItem(KEY_SETTINGS);localStorage.removeItem(KEY_PROFILE);}
+  function clearAll(){_ls.removeItem(KEY_CASES);}
+  function clearEverything(){_ls.removeItem(KEY_CASES);_ls.removeItem(KEY_SETTINGS);_ls.removeItem(KEY_PROFILE);}
 
   // 同意声明
-  function isAgreed(){return localStorage.getItem(KEY_AGREE)==='1';}
-  function setAgreed(){localStorage.setItem(KEY_AGREE,'1');}
+  function isAgreed(){return _ls.getItem(KEY_AGREE)==='1';}
+  function setAgreed(){_ls.setItem(KEY_AGREE,'1');}
 
   // 重要日期（生日、约定日、事务节点等）
   function listImportant(){return read(KEY_IMPORTANT,[]).sort((a,b)=>a.date.localeCompare(b.date));}

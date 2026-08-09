@@ -1,7 +1,7 @@
 // 视觉验证：检查新增的旺相休囚标识与课体格局详解卡是否正确渲染
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('/tmp/node_modules/jsdom');
+const { JSDOM } = require('jsdom');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const cleanHtml = html.replace(/<script[^>]*src=[^>]*><\/script>/g, '');

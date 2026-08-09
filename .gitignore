@@ -9,6 +9,7 @@ android/app/build/
 android/local.properties
 android/captures/
 android/*.iml
+android/*.jks
 .idea/
 
 # 备份

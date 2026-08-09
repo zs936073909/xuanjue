@@ -4,6 +4,7 @@
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
   const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null};
   let remindTimeout=null, remindInterval=null;
+  let _aiAbort=null; // AI 请求取消控制器（全局，供 ask/result/追问共用）
 
   // ---------- 返回键 / 导航栈 ----------
   // 用于支持 Android 硬件返回键与浏览器后退：进入子界面时压栈一个「返回动作」，
@@ -126,7 +127,7 @@
     const root=$('#modal-root');root.innerHTML='';
     const mask=el('div','modal-mask');
     const m=el('div','modal');
-    m.innerHTML=`<h3>${title}</h3><div class="modal-body">${bodyHtml}</div>`;
+    m.innerHTML=`<h3>${esc(title)}</h3><div class="modal-body">${bodyHtml}</div>`;
     const btns=el('div','flex-between mt12');
     // 取消按钮（关闭弹窗）
     if(onCancel){const b=el('button','btn ghost','取消');b.onclick=()=>{root.innerHTML='';};btns.appendChild(b);}
@@ -456,7 +457,7 @@
     if(lifetimeCases.length){
       h+=`<div class="section-mini">命盘历史</div>`;
       h+=`<div class="card"><h3>命盘案例</h3>`;
-      lifetimeCases.forEach(c=>{h+=`<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?'已复盘':'待复盘'}</div></div>`;});
+      lifetimeCases.forEach(c=>{h+=`<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?'已复盘':'待复盘'}</div></div>`;});
       h+=`</div>`;
     }
     h+=`</div>`; // end 左栏
@@ -506,7 +507,7 @@
 
     // 最近案例（首页唯一下方区块，保持简洁）
     h+=`<div class="card"><h3>最近案例</h3>`;
-    if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(c.review.result||'已复盘'):'待复盘'}</div></div>`;});}
+    if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.questionType)} · ${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(esc(c.review.result)||'已复盘'):'待复盘'}</div></div>`;});}
     else h+=`<div class="empty">暂无案例，去“问事”起一课吧</div>`;
     h+=`</div>`;
     return h;
@@ -661,14 +662,14 @@
   function askStep2(a){
     const b=a.bg;
     let h='';
-    h+=`<div class="field"><label>问题标题 <span class="req">*</span></label><input type="text" id="fTitle" value="${b.title}" placeholder="如：这段关系要不要继续"></div>`;
-    h+=`<div class="field"><label>问题描述</label><textarea id="fDesc" placeholder="补充背景…">${b.desc}</textarea></div>`;
+    h+=`<div class="field"><label>问题标题 <span class="req">*</span></label><input type="text" id="fTitle" value="${escAttr(b.title)}" placeholder="如：这段关系要不要继续"></div>`;
+    h+=`<div class="field"><label>问题描述</label><textarea id="fDesc" placeholder="补充背景…">${esc(b.desc)}</textarea></div>`;
     h+=`<div class="field"><label>当前情绪</label><div class="chips">${MOODS.map(m=>`<span class="chip ${b.mood===m?'on':''}" data-mood="${m}">${m}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>紧急程度</label><div class="chips">${URGENT.map(u=>`<span class="chip ${b.urgent===u?'on':''}" data-urgent="${u}">${u}</span>`).join('')}</div></div>`;
     h+=`<div class="switch"><span>是否有明确选项</span><input type="checkbox" id="fHasOpt" ${b.hasOption?'checked':''}></div>`;
-    h+=`<div id="optBox" style="${b.hasOption?'':'display:none'}"><div class="field"><label>选项 A</label><input type="text" id="fOptA" value="${b.optA}"></div><div class="field"><label>选项 B</label><input type="text" id="fOptB" value="${b.optB}"></div></div>`;
-    h+=`<div class="field"><label>涉及人物</label><input type="text" id="fPersons" value="${b.persons}" placeholder="如：伴侣/同事"></div>`;
-    h+=`<div class="field"><label>对方信息（可选，用于合盘）</label><input type="text" id="fOther" value="${b.other}" placeholder="出生日期时间"></div>`;
+    h+=`<div id="optBox" style="${b.hasOption?'':'display:none'}"><div class="field"><label>选项 A</label><input type="text" id="fOptA" value="${escAttr(b.optA)}"></div><div class="field"><label>选项 B</label><input type="text" id="fOptB" value="${escAttr(b.optB)}"></div></div>`;
+    h+=`<div class="field"><label>涉及人物</label><input type="text" id="fPersons" value="${escAttr(b.persons)}" placeholder="如：伴侣/同事"></div>`;
+    h+=`<div class="field"><label>对方信息（可选，用于合盘）</label><input type="text" id="fOther" value="${escAttr(b.other)}" placeholder="出生日期时间"></div>`;
     h+=`<div class="field"><label>希望得到的建议类型</label><div class="chips">${['行动建议','风险提示','关系建议','时机建议'].map(t=>`<span class="chip ${b.adviceType.includes(t)?'on':''}" data-adv="${t}">${t}</span>`).join('')}</div></div>`;
     h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">下一步</button></div>`;
     return h;
@@ -686,9 +687,9 @@
       h+=`<div class="field"><label>大六壬起课方式</label><div class="chips">`;
       h+=QIKE_METHODS.map(m=>`<span class="chip ${a.method===m[0]?'on':''}" data-qike-method="${m[0]}">${m[1]}</span>`).join('');
       h+=`</div></div>`;
-      if(a.method==='manual')h+=`<div class="field"><label>起课时间</label><input type="datetime-local" id="fTime" value="${a.methodTime||fmtLocalDT(new Date())}"></div>`;
-      if(['number','baoshu'].includes(a.method))h+=`<div class="field"><label>输入数字（多个用逗号）</label><input type="text" id="fNum" value="${a.methodInput}" placeholder="如 3,8"></div>`;
-      if(a.method==='hanzi')h+=`<div class="field"><label>输入汉字</label><input type="text" id="fHan" value="${a.methodInput}" placeholder="如 玄"></div>`;
+      if(a.method==='manual')h+=`<div class="field"><label>起课时间</label><input type="datetime-local" id="fTime" value="${escAttr(a.methodTime||fmtLocalDT(new Date()))}"></div>`;
+      if(['number','baoshu'].includes(a.method))h+=`<div class="field"><label>输入数字（多个用逗号）</label><input type="text" id="fNum" value="${escAttr(a.methodInput)}" placeholder="如 3,8"></div>`;
+      if(a.method==='hanzi')h+=`<div class="field"><label>输入汉字</label><input type="text" id="fHan" value="${escAttr(a.methodInput)}" placeholder="如 玄"></div>`;
       h+=`<div class="section-note">说明：大六壬以时间起课，数字/汉字/硬币方式将折算为占时。</div>`;
     }
     h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">${a.shushu.some(s=>INFO_SHU.includes(s))?'下一步':'生成结果'}</button></div>`;
@@ -1170,11 +1171,8 @@
     if(btnDlRetry)btnDlRetry.onclick=()=>{
       if(_aiAbort){try{_aiAbort.abort();}catch(e){}_aiAbort=null;}
       if(a._placeholder||a._shushuOnly){
-        // 盘面入口：直接重新计算此刻起课（同屏刷新，navEnter 原地替换返回动作）
-        const comp=computeDaliuren(new Date(),a.bg?a.bg.questionType:'其他');
-        state.currentKe=comp;
-        showDaliurenBoard(comp);
-        toast('已重新起课');
+        // 盘面入口：按原术数类型重新起课（同屏刷新）
+        recomputeCurrentBoard(a);
       }else{
         // 问事向导：回到术数选择步骤；同步消费结果页历史记录
         if(state.navStack.length>0){
@@ -1415,7 +1413,7 @@
     const sensitive=AI.detectSensitive(a.bg.title+' '+a.bg.desc);
     let h='';
     if(sensitive){
-      h+=`<div class="card"><div class="warn-text">检测到敏感关键词「${sensitive.keyword}」。</div><div class="section-note">${sensitiveHint(sensitive.cat)}</div></div>`;
+      h+=`<div class="card"><div class="warn-text">检测到敏感关键词「${esc(sensitive.keyword)}」。</div><div class="section-note">${sensitiveHint(sensitive.cat)}</div></div>`;
     }
     // 盘面中心入口：单一术数结果对象（兼容旧数据结构）
     if(c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name && !c.comp){
@@ -1951,6 +1949,25 @@
     state.tab='classics';
     renderTab();
   }
+  // 根据当前 ask 的术数类型重新起课并刷新结果页
+  function recomputeCurrentBoard(a){
+    const name=(a.shushu&&a.shushu[0])||'大六壬';
+    if(name==='大六壬'){
+      const comp=computeDaliuren(new Date(),a.bg?a.bg.questionType:'其他');
+      state.currentKe=comp;
+      a.computed={comp};
+      a.shushu=['大六壬'];
+    }else{
+      const res=ShuShu.compute(name,new Date());
+      if(!res){toast(name+' 暂不可用');return;}
+      a.computed={shushuResults:{[name]:res},shushu:[name]};
+      a.shushu=[name];
+    }
+    a.step=5;
+    renderTab();
+    setTimeout(()=>bindResult(a),30);
+    toast('已重新起课');
+  }
   function bindResult(a){
     const c=a.computed;const comp=c.comp;
     // 模式切换
@@ -1965,10 +1982,7 @@
     if(btnRetry2)btnRetry2.onclick=()=>{
       if(_aiAbort){try{_aiAbort.abort();}catch(e){}_aiAbort=null;}
       if(a._placeholder||a._shushuOnly){
-        const nc=computeDaliuren(new Date(),a.bg?a.bg.questionType:'其他');
-        state.currentKe=nc;
-        showDaliurenBoard(nc);
-        toast('已重新起课');
+        recomputeCurrentBoard(a);
       }else{
         // 问事向导：回到术数选择步骤；同步消费结果页历史记录
         if(state.navStack.length>0){
@@ -2020,7 +2034,6 @@
   }
   // 调用 LLM 生成 AI 深度解读（流式 / 非流式统一处理）
   // 切页/重复触发时取消上一次请求，避免内存泄漏与离屏 DOM 写入
-  let _aiAbort=null;
   async function runAIDeepRead(a){
     const c=a.computed;
     const cfg=Store.getSettings();
@@ -3316,10 +3329,10 @@
     h+=`<div class="card filter-bar">`;
     h+=`<div class="filter-row"><label>关键词</label><input type="text" class="filter-select" id="fKeyword" placeholder="搜索标题 / 描述 / 术数…"></div>`;
     h+=`<div class="filter-row"><label>术数</label><select class="filter-select" id="fShu"><option value="全部">全部</option>${REVIEW_SHU_OPTS.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>`;
-    h+=`<div class="filter-row"><label>问题类型</label><select class="filter-select" id="fType"><option value="全部">全部</option>${typeOpts.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>`;
+    h+=`<div class="filter-row"><label>问题类型</label><select class="filter-select" id="fType"><option value="全部">全部</option>${typeOpts.map(t=>`<option value="${escAttr(t)}">${esc(t)}</option>`).join('')}</select></div>`;
     h+=`<div class="filter-row"><label>应验程度</label><select class="filter-select" id="fResult"><option value="全部">全部</option><option value="已复盘">已复盘</option><option value="未复盘">未复盘</option><option value="到期待复盘">到期待复盘</option><option value="应验">应验</option><option value="部分应验">部分应验</option><option value="未应验">未应验</option><option value="无法判断">无法判断</option></select></div>`;
     h+=`<div class="filter-row"><label>起讫时间</label><div class="filter-date-row"><input type="date" class="filter-select" id="fDateFrom"><input type="date" class="filter-select" id="fDateTo"></div></div>`;
-    h+=`<div class="filter-row"><label>标签</label><select class="filter-select" id="fTag"><option value="">全部</option>${tagOpts.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>`;
+    h+=`<div class="filter-row"><label>标签</label><select class="filter-select" id="fTag"><option value="">全部</option>${tagOpts.map(t=>`<option value="${escAttr(t)}">${esc(t)}</option>`).join('')}</select></div>`;
     h+=`<div class="filter-row"><label>收藏</label><select class="filter-select" id="fFavor"><option value="全部">全部</option><option value="已收藏">已收藏</option><option value="未收藏">未收藏</option></select></div>`;
     h+=`<div class="filter-actions"><button class="btn primary sm" id="btnApplyFilter" type="button">应用筛选</button><button class="btn ghost sm" id="btnClearFilter" type="button">清空</button></div>`;
     h+=`</div>`;
@@ -3361,7 +3374,7 @@
         const dueTag=due?'<span class="due-dot"></span><span class="due-badge">到期</span>':'';
         const favorTag=c.favor?'<span class="favor-star on">★</span>':'';
         const right=c.reviewed?(c.review.result||'已复盘'):'待复盘';
-        return `<div class="recent-item" data-case="${c.id}"><div><div class="ri-t">${favorTag}${dueTag}${c.title}</div><div class="ri-m">${c.questionType} · ${c.shushu} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${right}</div></div>`;
+        return `<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${favorTag}${dueTag}${esc(c.title)}</div><div class="ri-m">${esc(c.questionType)} · ${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${esc(right)}</div></div>`;
       }).join('');
       body.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>openCaseDetail(e.dataset.case));
     }
@@ -3396,14 +3409,14 @@
     const dueNow=!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue;
     let h=`<div class="phead"><div><div class="ptitle">案例详情</div><div class="psub">${fmtDate(new Date(c.createdAt))}</div></div><button class="btn ghost sm" id="backList">返回</button></div>`;
     if(dueNow){h+=`<div class="due-banner">本案例已到复盘时间，建议尽快复盘</div>`;}
-    h+=`<div class="card detail-sec"><h3>${c.title}</h3>`;
-    h+=`<div class="detail-row"><span class="dk">类型</span><span>${c.questionType}</span></div>`;
-    if(c.desc)h+=`<div class="detail-row"><span class="dk">描述</span><span style="text-align:right;max-width:70%">${c.desc}</span></div>`;
-    h+=`<div class="detail-row"><span class="dk">情绪</span><span>${c.mood||'—'}</span></div>`;
-    h+=`<div class="detail-row"><span class="dk">紧急</span><span>${c.urgent||'—'}</span></div>`;
-    if(c.hasOption){h+=`<div class="detail-row"><span class="dk">选项A</span><span>${c.optA||'—'}</span></div><div class="detail-row"><span class="dk">选项B</span><span>${c.optB||'—'}</span></div>`;}
-    if(c.persons)h+=`<div class="detail-row"><span class="dk">人物</span><span>${c.persons}</span></div>`;
-    h+=`<div class="detail-row"><span class="dk">术数</span><span>${c.shushu}</span></div>`;
+    h+=`<div class="card detail-sec"><h3>${esc(c.title)}</h3>`;
+    h+=`<div class="detail-row"><span class="dk">类型</span><span>${esc(c.questionType)}</span></div>`;
+    if(c.desc)h+=`<div class="detail-row"><span class="dk">描述</span><span style="text-align:right;max-width:70%">${esc(c.desc)}</span></div>`;
+    h+=`<div class="detail-row"><span class="dk">情绪</span><span>${esc(c.mood)||'—'}</span></div>`;
+    h+=`<div class="detail-row"><span class="dk">紧急</span><span>${esc(c.urgent)||'—'}</span></div>`;
+    if(c.hasOption){h+=`<div class="detail-row"><span class="dk">选项A</span><span>${esc(c.optA)||'—'}</span></div><div class="detail-row"><span class="dk">选项B</span><span>${esc(c.optB)||'—'}</span></div>`;}
+    if(c.persons)h+=`<div class="detail-row"><span class="dk">人物</span><span>${esc(c.persons)}</span></div>`;
+    h+=`<div class="detail-row"><span class="dk">术数</span><span>${esc(c.shushu)}</span></div>`;
     h+=`<div class="detail-row"><span class="dk">起课</span><span>${fmtDateTime(new Date(c.qikeTime))}</span></div>`;
     h+=`</div>`;
     // 盘面
@@ -3416,10 +3429,10 @@
     if(c.shushuBoard){
       const sb=c.shushuBoard;
       if(sb.name){
-        h+=`<div class="card detail-sec"><h4>盘面 · ${sb.name}</h4><div class="plain-card"><div class="pc-t">盘面摘要</div><div class="pc-c">${shuBoardSummary(sb)}</div></div></div>`;
+        h+=`<div class="card detail-sec"><h4>盘面 · ${esc(sb.name)}</h4><div class="plain-card"><div class="pc-t">盘面摘要</div><div class="pc-c">${esc(shuBoardSummary(sb))}</div></div></div>`;
       }else{
         Object.keys(sb).forEach(k=>{
-          h+=`<div class="card detail-sec"><h4>盘面 · ${sb[k].name}</h4><div class="plain-card"><div class="pc-t">盘面摘要</div><div class="pc-c">${shuBoardSummary(sb[k])}</div></div></div>`;
+          h+=`<div class="card detail-sec"><h4>盘面 · ${esc(sb[k].name)}</h4><div class="plain-card"><div class="pc-t">盘面摘要</div><div class="pc-c">${esc(shuBoardSummary(sb[k]))}</div></div></div>`;
         });
       }
     }
@@ -3427,30 +3440,30 @@
     if(c.plain){
       const p=c.plain;
       h+=`<div class="card detail-sec"><h4>白话解读</h4>`;
-      h+=`<div class="plain-card"><div class="pc-t">状态/倾向</div><div class="pc-c">${p.state}（${p.tendency}）</div></div>`;
-      if(p.risks.length)h+=`<div class="plain-card"><div class="pc-t">风险</div><div class="pc-c">${p.risks.join('；')}</div></div>`;
+      h+=`<div class="plain-card"><div class="pc-t">状态/倾向</div><div class="pc-c">${esc(p.state)}（${esc(p.tendency)}）</div></div>`;
+      if(p.risks.length)h+=`<div class="plain-card"><div class="pc-t">风险</div><div class="pc-c">${p.risks.map(x=>esc(x)).join('；')}</div></div>`;
       h+=`</div>`;
     }
     // 我的判断
     h+=`<div class="card detail-sec"><h4>我的判断与行动</h4>`;
-    h+=`<div class="field"><label>我的判断</label><textarea id="myJudge">${c.myJudge||''}</textarea></div>`;
+    h+=`<div class="field"><label>我的判断</label><textarea id="myJudge">${esc(c.myJudge)}</textarea></div>`;
     h+=`</div>`;
     // 复盘
     h+=`<div class="card detail-sec"><h4>复盘</h4>`;
     if(c.reviewed){
       const r=c.review||{};
-      h+=`<div class="detail-row"><span class="dk">实际结果</span><span style="text-align:right;max-width:70%">${r.actual||'—'}</span></div>`;
-      h+=`<div class="detail-row"><span class="dk">应验程度</span><span>${r.result||'—'}</span></div>`;
+      h+=`<div class="detail-row"><span class="dk">实际结果</span><span style="text-align:right;max-width:70%">${esc(r.actual)||'—'}</span></div>`;
+      h+=`<div class="detail-row"><span class="dk">应验程度</span><span>${esc(r.result)||'—'}</span></div>`;
       // 准确度评分（星显示）
       if(r.score!=null&&Number(r.score)>=1&&Number(r.score)<=5){
         h+=`<div class="detail-row"><span class="dk">评分</span><span>${renderStars(Number(r.score))}</span></div>`;
       }
-      if(r.reviewTime)h+=`<div class="detail-row"><span class="dk">复盘日期</span><span>${r.reviewTime}</span></div>`;
-      if(r.unhit)h+=`<div class="detail-row"><span class="dk">未应验点</span><span>${r.unhit}</span></div>`;
-      if(r.reflect)h+=`<div class="detail-row"><span class="dk">反思</span><span>${r.reflect}</span></div>`;
+      if(r.reviewTime)h+=`<div class="detail-row"><span class="dk">复盘日期</span><span>${esc(r.reviewTime)}</span></div>`;
+      if(r.unhit)h+=`<div class="detail-row"><span class="dk">未应验点</span><span>${esc(r.unhit)}</span></div>`;
+      if(r.reflect)h+=`<div class="detail-row"><span class="dk">反思</span><span>${esc(r.reflect)}</span></div>`;
       // 复盘标签 chips
       if(Array.isArray(r.tags)&&r.tags.length){
-        h+=`<div class="review-tags">${r.tags.map(t=>`<span class="review-tag on">${t}</span>`).join('')}</div>`;
+        h+=`<div class="review-tags">${r.tags.map(t=>`<span class="review-tag on">${esc(t)}</span>`).join('')}</div>`;
       }
       h+=`<button class="btn block mt8" id="btnReviewAgain">重新复盘</button>`;
     }else{
@@ -3654,7 +3667,7 @@
     if(state.subPage==='case')return pageCaseList();
     const s=Store.getSettings(),p=Store.getProfile();
     let h=`<div class="phead"><div class="ptitle">我的</div></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">昵称</span><span>${p.nick||'未设置'}</span></div><div class="detail-row"><span class="dk">出生</span><span>${p.birth||'—'}</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">昵称</span><span>${esc(p.nick)||'未设置'}</span></div><div class="detail-row"><span class="dk">出生</span><span>${esc(p.birth)||'—'}</span></div></div>`;
     h+=`<div class="card set-group"><div class="sg-t">个人信息</div><button class="btn block" id="btnProfile">编辑个人信息</button></div>`;
     // 案例库入口（原案例 Tab 合并到此）
     const caseCount=Store.listCases().length;
@@ -3701,7 +3714,7 @@
     h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
     h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.6</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.7</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
   // 重要日期管理子页
@@ -3772,7 +3785,7 @@
     const curModels=P[s.aiProvider]&&P[s.aiProvider].models&&P[s.aiProvider].models.length
       ?P[s.aiProvider].models:['(请直接输入模型名)'];
     // 密钥不直接落 DOM（防截图/审查泄露）；只显示掩码提示
-    const keyMasked=s.aiApiKey?(s.aiApiKey.slice(0,4)+'****'+s.aiApiKey.slice(-4)):'';
+    const keyMasked=s.aiApiKey?(s.aiApiKey.length>=9?(s.aiApiKey.slice(0,4)+'****'+s.aiApiKey.slice(-4)):'已设置'):'';
     let h=`<div class="card set-group" id="aiConfigCard"><div class="sg-t">AI 模型配置</div>`;
     h+=`<div class="section-note">用户自带 Key，应用不内置密钥。兼容 OpenAI/DeepSeek/通义/Kimi/智谱/Ollama/中转站等。请求仅在用户主动调用 AI 解读时发起。</div>`;
     h+=`<div class="field"><label>提供商</label><select id="aiProvider" data-set="aiProvider">${provOpts}</select></div>`;
@@ -3922,7 +3935,7 @@
     $('#btnAbout').onclick=()=>modal('关于玄决',aboutHtml(),null,true,'关闭');
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.4</span></p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.7</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
     <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
@@ -3932,7 +3945,7 @@
   }
   function openProfile(){
     const p=Store.getProfile();
-    const body=`<div class="field"><label>昵称</label><input type="text" id="pNick" value="${p.nick}"></div><div class="field"><label>出生日期时间</label><input type="datetime-local" id="pBirth" value="${p.birth||''}"></div><div class="field"><label>性别</label><select id="pGender"><option ${p.gender==='男'?'selected':''}>男</option><option ${p.gender==='女'?'selected':''}>女</option></select></div><div class="field"><label>常用地点</label><input type="text" id="pPlace" value="${p.place}"></div><div class="field"><label>年命（干支，可选）</label><input type="text" id="pNian" value="${p.nianming}"></div>`;
+    const body=`<div class="field"><label>昵称</label><input type="text" id="pNick" value="${escAttr(p.nick)}"></div><div class="field"><label>出生日期时间</label><input type="datetime-local" id="pBirth" value="${escAttr(p.birth||'')}"></div><div class="field"><label>性别</label><select id="pGender"><option ${p.gender==='男'?'selected':''}>男</option><option ${p.gender==='女'?'selected':''}>女</option></select></div><div class="field"><label>常用地点</label><input type="text" id="pPlace" value="${escAttr(p.place)}"></div><div class="field"><label>年命（干支，可选）</label><input type="text" id="pNian" value="${escAttr(p.nianming)}"></div>`;
     modal('个人信息',body,m=>{
       Store.setProfile({nick:$('#pNick').value,birth:$('#pBirth').value,gender:$('#pGender').value,place:$('#pPlace').value,nianming:$('#pNian').value});
       closeModal();toast('已保存');renderTab();

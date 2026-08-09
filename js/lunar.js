@@ -102,7 +102,8 @@
   function solarToLunar(date){
     let y=date.getFullYear();
     if(y<1900||y>2100)return null;
-    let offset=Math.floor((date-new Date(y,0,0))/86400000);
+    // 历元：1900-01-31（农历 1900 正月初一），与 lYearDays/leapMonth 匹配
+    let offset=Math.floor((date-new Date(1900,0,31))/86400000);
     let i,leap=0,temp=0;
     for(i=1900;i<2100&&offset>0;i++){
       temp=lYearDays(i);offset-=temp;

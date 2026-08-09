@@ -61,7 +61,8 @@
   function getShiChenJiXiong(monthZhiIdx,dayZhiIdx){
     const result=[];
     for(let i=0;i<12;i++){
-      const jc=JIANCHU[jcnOf(i,dayZhiIdx)];
+      // 建除十二神以月建为基准，而非日支
+      const jc=JIANCHU[jcnOf(i,monthZhiIdx)];
       const hh=getDayZhiShen(monthZhiIdx,i); // 用日支起青龙近似
       // 时辰黄黑道需以日干起，这里用建除+值神吉凶综合
       const good=['建','满','平','定','成','开'].includes(jc);

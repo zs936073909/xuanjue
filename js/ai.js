@@ -371,17 +371,21 @@
     const headers=buildHeaders(cfg);
     const body=buildBody(cfg,messages,{stream:opts.stream});
 
-    // 超时控制（opts.signal 优先；否则内部 AbortController）
+    // 超时控制：始终创建内部 AbortController 用于超时，同时尊重外部 opts.signal 的取消请求
     // 区分"用户主动取消"与"内部超时"：内部超时用独立标记
-    let controller=null,timer=null,internalTimeout=false;
-    let signal;
+    let controller=new AbortController();
+    let timer=null,internalTimeout=false;
     if(opts.signal){
-      signal=opts.signal;
-    }else{
-      controller=new AbortController();
-      timer=setTimeout(()=>{internalTimeout=true;controller.abort();},(Number(cfg.aiTimeout)||60)*1000);
-      signal=controller.signal;
+      // 外部 signal 触发时，同步触发内部 controller，使 fetch 真正取消
+      const onExternalAbort=()=>controller.abort();
+      if(opts.signal.aborted){
+        onExternalAbort();
+      }else{
+        opts.signal.addEventListener('abort',onExternalAbort,{once:true});
+      }
     }
+    timer=setTimeout(()=>{internalTimeout=true;controller.abort();},(Number(cfg.aiTimeout)||60)*1000);
+    const signal=controller.signal;
 
     let res;
     try{
