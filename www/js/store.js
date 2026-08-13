@@ -109,9 +109,57 @@
     // 宽松应验率 = (应验+部分应验) / (已复盘数 - 无法判断数)
     const looseAcc=judgeable>0?(byResult['应验']+byResult['部分应验'])/judgeable:0;
     const avgScore=scoreCnt>0?scoreSum/scoreCnt:0;
+
+    // 时间趋势：按月统计案例数与应验率
+    const trend={};
+    all.forEach(c=>{
+      const t=c.createdAt||Date.now();
+      const d=new Date(t);
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if(!trend[key])trend[key]={total:0,reviewed:0,hit:0,judgeable:0};
+      trend[key].total++;
+      if(c.reviewed){
+        trend[key].reviewed++;
+        const res=(c.review&&c.review.result)||'无法判断';
+        if(res==='应验'||res==='部分应验')trend[key].hit++;
+        if(res!=='无法判断')trend[key].judgeable++;
+      }
+    });
+    const trendKeys=Object.keys(trend).sort();
+    const trendArr=trendKeys.map(k=>({
+      month:k,
+      total:trend[k].total,
+      reviewed:trend[k].reviewed,
+      acc:trend[k].judgeable>0?Math.round(trend[k].hit/trend[k].judgeable*100):0
+    }));
+
+    // 决策画像聚合
+    const topQuestionType=Object.keys(byType).sort((a,b)=>byType[b]-byType[a])[0]||'—';
+    const topShu=Object.keys(byShu).sort((a,b)=>byShu[b]-byShu[a])[0]||'—';
+    const dominantTendency=Object.keys(byTendency).sort((a,b)=>byTendency[b]-byTendency[a])[0]||'—';
+    // 各术数应验率（至少 3 条可判断样本）
+    const shuAcc={};
+    all.forEach(c=>{
+      if(!c.reviewed||!c.shushu)return;
+      const shus=String(c.shushu).split('、').filter(Boolean);
+      const res=(c.review&&c.review.result)||'无法判断';
+      shus.forEach(s=>{
+        if(!shuAcc[s])shuAcc[s]={count:0,hit:0,judgeable:0};
+        shuAcc[s].count++;
+        if(res==='应验'||res==='部分应验')shuAcc[s].hit++;
+        if(res!=='无法判断')shuAcc[s].judgeable++;
+      });
+    });
+    const shuAccArr=Object.keys(shuAcc).map(s=>{
+      const a=shuAcc[s];
+      return{name:s,acc:a.judgeable>0?Math.round(a.hit/a.judgeable*100):0,count:a.count,judgeable:a.judgeable};
+    }).filter(x=>x.judgeable>=3).sort((a,b)=>b.acc-a.acc);
+    const bestShu=shuAccArr[0]||null;
+    const worstShu=shuAccArr[shuAccArr.length-1]||null;
+
     return{
       total,reviewedCount,reviewRate,byResult,byType,byShu,byMood,byTendency,byScore,
-      strictAcc,looseAcc,avgScore
+      strictAcc,looseAcc,avgScore,trend:trendArr,profile:{topQuestionType,topShu,dominantTendency,bestShu,worstShu}
     };
   }
 

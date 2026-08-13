@@ -2,7 +2,7 @@
 (function(global){
   const $=s=>document.querySelector(s);
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
-  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null};
+  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null,online:true,deferredPrompt:null,installable:false};
   let remindTimeout=null, remindInterval=null;
   let _aiAbort=null; // AI 请求取消控制器（全局，供 ask/result/追问共用）
 
@@ -194,6 +194,31 @@
     window.addEventListener('pagehide',()=>{
       if(Store.getLockState().appLock){Store.lockApp();}
     });
+    // PWA 安装提示
+    window.addEventListener('beforeinstallprompt',(e)=>{
+      e.preventDefault();
+      state.deferredPrompt=e;
+      state.installable=true;
+      if(state.tab==='me')renderTab();
+    });
+    window.addEventListener('appinstalled',()=>{
+      state.installable=false;state.deferredPrompt=null;
+      toast('玄决已安装到桌面');
+      if(state.tab==='me')renderTab();
+    });
+    // 网络状态监听
+    const updateOnline=()=>{
+      const online=navigator.onLine!==false;
+      if(state.online!==online){
+        state.online=online;
+        const bar=$('#network-bar');
+        if(bar)bar.classList.toggle('offline',!online);
+        if(!online)toast('当前处于离线状态，部分功能可能受限');
+      }
+    };
+    window.addEventListener('online',updateOnline);
+    window.addEventListener('offline',updateOnline);
+    updateOnline();
   }
   function showDisclaimer(){
     $('#screen-disclaimer').classList.remove('hidden');
@@ -614,13 +639,13 @@
   function newAsk(){return{step:1,bg:{questionType:'',title:'',desc:'',mood:'',urgent:'',hasOption:false,optA:'',optB:'',persons:'',other:'',adviceType:[]},method:'auto',methodTime:'',methodInput:'',shushu:['大六壬'],extra:{birth:{gender:'',calendar:'solar',date:'',hour:'',unknownHour:false,place:'',zhenTaiyang:false},liuyao:{mode:'manual',yaos:[],manualStr:''},meihua:{mode:'time',input:''},tarot:{spread:'three'},xiaoliuren:{topic:''}},computed:null};}
   const TYPES=['感情关系','事业合作','学习考试','出行移动','签约交易','人际沟通','财务决策','健康倾向','失物寻找','二选一决策','其他'];
   const QIKE_METHODS=[['auto','当前时间自动起课'],['manual','手动选择时间'],['random','随机起卦'],['number','数字起卦'],['hanzi','汉字起卦'],['coin','硬币起卦'],['baoshu','报数起卦']];
-  const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
-  const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字','紫微斗数'];
-  const REALTIME_SHU=['大六壬','六爻','梅花易数','小六壬','塔罗'];
+  const SHU_PRESET=['大六壬','六爻','梅花易数','小六壬','塔罗','八字','紫微斗数','奇门遁甲'];
+  const INFO_SHU=['六爻','梅花易数','小六壬','塔罗','八字','紫微斗数','奇门遁甲'];
+  const REALTIME_SHU=['大六壬','六爻','梅花易数','小六壬','塔罗','奇门遁甲'];
   const BIRTH_SHU=['八字','紫微斗数'];
   const LIUYAO_MODES=[['manual','手动六次摇卦'],['auto','一键摇六爻'],['time','时间起卦'],['input','手动输入爻象']];
   const MEIHUA_MODES=[['time','时间起卦'],['number','报数起卦'],['hanzi','汉字起卦'],['random','随机起卦']];
-  const TAROT_SPREADS=[['single','单张'],['three','三张'],['relation','关系'],['choice','二选一']];
+  const TAROT_SPREADS=[['single','单张'],['three','三张'],['relation','关系'],['choice','二选一'],['celtic','凯尔特十字']];
   const XLR_TOPICS=['求财','谋事','感情','出行','失物','等待消息','疾病倾向','人际沟通','其他'];
   const MOODS=['平静','焦虑','急切','犹豫','愤怒','期待','低落','迷茫'];
   const URGENT=['立即','今日','本周','不急'];
@@ -1485,6 +1510,7 @@
     else if(res.name==='塔罗')h+=renderTarot(r);
     else if(res.name==='八字')h+=renderBaZi(r);
     else if(res.name==='紫微斗数')h+=renderZiWei(r);
+    else if(res.name==='奇门遁甲')h+=renderQimen(r);
     h+=`</div>`;
     // 白话
     h+=`<div class="card"><h3>${res.name} · 白话解读</h3>`;
@@ -1680,6 +1706,7 @@
     h+=`<div class="kv-grid mt8">`;
     h+=`<div class="kv"><span class="k">本卦</span><span class="v">${r.benGua}</span></div>`;
     h+=`<div class="kv"><span class="k">变卦</span><span class="v">${r.bianGua}</span></div>`;
+    if(r.huGua)h+=`<div class="kv"><span class="k">互卦</span><span class="v">${r.huGua}</span></div>`;
     h+=`<div class="kv"><span class="k">动爻数</span><span class="v">${r.dongCount}</span></div>`;
     h+=`<div class="kv"><span class="k">日干五行</span><span class="v">${r.dayGanWx}${r.dayZhiWx?' / 日支 '+r.dayZhiWx:''}</span></div>`;
     h+=`</div>`;
@@ -1694,7 +1721,26 @@
     if(r.yuePo)h+=`<div class="kv"><span class="k">月破</span><span class="v">${r.yuePo.zhi}${r.yuePo.lines&&r.yuePo.lines.length?'（第'+r.yuePo.lines.join('、')+'爻）':''}</span></div>`;
     h+=`<div class="kv"><span class="k">日辰生克</span><span class="v">${r.dayRiRelation||'—'}</span></div>`;
     h+=`</div>`;
+    // 神煞与合局
+    const hasHe=(r.sanHe&&r.sanHe.length)||(r.liuHe&&r.liuHe.length);
+    const hasFu=(r.fuShen&&r.fuShen.length)||(r.pangFuShen&&r.pangFuShen.length);
+    if(hasHe||hasFu){
+      h+=`<div class="kv-grid mt8">`;
+      if(r.sanHe&&r.sanHe.length)h+=`<div class="kv"><span class="k">三合局</span><span class="v">${r.sanHe.map(s=>s.name).join('、')}</span></div>`;
+      if(r.liuHe&&r.liuHe.length)h+=`<div class="kv"><span class="k">六合</span><span class="v">${r.liuHe.map(j=>j.name).join('、')}</span></div>`;
+      if(r.fuShen&&r.fuShen.length)h+=`<div class="kv"><span class="k">伏神</span><span class="v">${r.fuShen.map(f=>`第${f.hostPosition}爻伏${f.liuQin}${f.naJia}`).join('，')}</span></div>`;
+      if(r.pangFuShen&&r.pangFuShen.length)h+=`<div class="kv"><span class="k">旁伏神</span><span class="v">${r.pangFuShen.map(f=>`第${f.hostPosition}爻伏${f.liuQin}${f.naJia}`).join('，')}</span></div>`;
+      h+=`</div>`;
+    }
     if(ys&&ys.desc)h+=`<div class="section-note">用神说明：${ys.desc}</div>`;
+    // 卦辞彖辞（可折叠）
+    if(r.guaCi||r.tuanCi||(r.yaoCi&&r.yaoCi.length)){
+      h+=`<div class="ly-classics">`;
+      if(r.guaCi)h+=`<details class="ly-details"><summary>卦辞 · ${esc(r.benGua||'本卦')}</summary><div class="ly-details-body">${esc(r.guaCi)}</div></details>`;
+      if(r.tuanCi)h+=`<details class="ly-details"><summary>彖辞</summary><div class="ly-details-body">${esc(r.tuanCi)}</div></details>`;
+      if(r.yaoCi&&r.yaoCi.length)h+=`<details class="ly-details"><summary>爻辞（初爻至上爻）</summary><div class="ly-details-body">${r.yaoCi.map((yc,i)=>`<div class="ly-yao-ci"><b>${['初','二','三','四','五','上'][i]}爻：</b>${esc(yc)}</div>`).join('')}</div></details>`;
+      h+=`</div>`;
+    }
     return h;
   }
   function renderTarot(r){
@@ -1705,10 +1751,14 @@
       '力量':'🦁','隐士':'🏮','命运之轮':'☸','正义':'⚖','倒吊人':'🙃','死神':'💀','节制':'🏺','恶魔':'😈',
       '高塔':'🗼','星星':'⭐','月亮':'☾','太阳':'☀','审判':'📯','世界':'🌍'
     };
-    let h=`<div class="tarot-visual-spread">`;
+    const isCeltic=r.spread==='celtic';
+    let h='';
+    if(r.spreadName)h+=`<div class="section-note" style="text-align:center;font-weight:600">${esc(r.spreadName)}</div>`;
+    h+=`<div class="tarot-visual-spread ${isCeltic?'celtic':''}">`;
     r.cards.forEach((c,i)=>{
       const sym=TAROT_ICONS[c.name]||'✦';
-      const cardData=`data-name="${esc(c.name)}" data-up="${c.up?1:0}" data-meaning="${esc(c.meaning||'')}" data-element="${esc(c.element||'')}" data-pos="${esc(c.pos||'')}"`;
+      const arcanaLabel=c.arcana==='major'?'大阿卡纳':(c.suit?{wands:'权杖',cups:'圣杯',swords:'宝剑',pentacles:'星币',coins:'星币'}[c.suit]||c.suit:'');
+      const cardData=`data-name="${esc(c.name)}" data-up="${c.up?1:0}" data-meaning="${esc(c.meaning||'')}" data-element="${esc(c.element||'')}" data-pos="${esc(c.pos||'')}" data-arcana="${esc(arcanaLabel)}"`;
       h+=`<div class="tarot-visual-card" data-idx="${i}" ${cardData}>`;
       h+=`<div class="tarot-vc-inner">`;
       // 卡背：深蓝紫 + 金色放射 + 日月星辰
@@ -1722,7 +1772,7 @@
       h+=`<div class="tarot-vc-num">${c.key||''}</div>`;
       h+=`<div class="tarot-vc-sym">${sym}</div>`;
       h+=`<div class="tarot-vc-name">${c.name}</div>`;
-      h+=`<div class="tarot-vc-element">${c.element||''}</div>`;
+      h+=`<div class="tarot-vc-element">${c.element||arcanaLabel}</div>`;
       h+=`<div class="tarot-vc-status ${c.up?'up':'rev'}">${c.up?'正位':'逆位'}</div>`;
       h+=`<div class="tarot-vc-pos">${c.pos||''}</div>`;
       h+=`</div></div></div>`;
@@ -1847,6 +1897,49 @@
     h+=`</div>`;
     return h;
   }
+  function renderQimen(r){
+    if(!r||!r.palaces)return '<div class="section-note">奇门遁甲排盘数据异常</div>';
+    const info=r.info;
+    let h=`<div class="qimen-summary">`;
+    h+=`<div class="kv-grid">`;
+    h+=`<div class="kv"><span class="k">节气</span><span class="v">${esc(info.jieqi)}</span></div>`;
+    h+=`<div class="kv"><span class="k">局数</span><span class="v">${esc(info.ju)}</span></div>`;
+    h+=`<div class="kv"><span class="k">值符</span><span class="v">${esc(info.fu)}</span></div>`;
+    h+=`<div class="kv"><span class="k">值使</span><span class="v">${esc(info.shi)}</span></div>`;
+    h+=`<div class="kv"><span class="k">空亡</span><span class="v">${esc(info.kong)}</span></div>`;
+    h+=`<div class="kv"><span class="k">旬首</span><span class="v">${esc(info.xunshou)}</span></div>`;
+    h+=`<div class="kv"><span class="k">用神</span><span class="v">${esc(r.targetName||'—')}${r.targetPal?'·'+r.targetPal.key+'宫':''}</span></div>`;
+    h+=`<div class="kv"><span class="k">日/时干</span><span class="v">${esc(info.siZhu.day)}/${esc(info.siZhu.time)}</span></div>`;
+    h+=`</div>`;
+    // 九宫格：神/星/门/天盘/地盘
+    h+=`<div class="qimen-grid">`;
+    // 洛书布局 4-9-2 / 3-5-7 / 8-1-6
+    const layout=[[4,9,2],[3,5,7],[8,1,6]];
+    layout.forEach(row=>{
+      h+=`<div class="qimen-row">`;
+      row.forEach(num=>{
+        const p=r.palaces.find(x=>x.num===num);
+        const isTarget=p&&r.targetPal&&p.key===r.targetPal.key;
+        const isDay=p&&r.dayPal&&p.key===r.dayPal.key;
+        const isTime=p&&r.timePal&&p.key===r.timePal.key;
+        h+=`<div class="qimen-cell${isTarget?' target':''}${isDay?' day':''}${isTime?' time':''}">`;
+        h+=`<div class="qm-num">${num}</div>`;
+        if(p){
+          if(p.god)h+=`<div class="qm-god">${esc(p.god)}</div>`;
+          if(p.star)h+=`<div class="qm-star">${esc(p.star)}</div>`;
+          if(p.gate)h+=`<div class="qm-gate">${esc(p.gate)}</div>`;
+          if(p.tianpan)h+=`<div class="qm-tianpan">${esc(p.tianpan).replace(/\n/g,'/')}</div>`;
+          if(p.base)h+=`<div class="qm-base">${esc(p.base).replace(/\n/g,'/')}</div>`;
+        }
+        h+=`</div>`;
+      });
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+    h+=`<div class="section-note muted">奇门遁甲以九宫星门神布局参考当下时空趋势，用于决策辅助，不做确定性预测。</div>`;
+    h+=`</div>`;
+    return h;
+  }
   function sensitiveHint(cat){
     const map={selfHarm:'请拨打心理援助热线 400-161-9995 或联系专业心理机构。本应用无法处理危机情况。',medical:'健康问题请咨询专业医生，术数仅供参考，不作诊断依据。',legal:'法律问题请咨询专业律师，术数不作判决预测。',invest:'投资有风险，术数不作收益承诺，请理性决策。'};
     return map[cat]||'该问题超出参考范围，建议咨询专业人士。';
@@ -1879,8 +1972,14 @@
   }
   // T3 多盘交叉摘要卡片渲染
   function renderCrossSummary(cross){
-    if(!cross)cross={consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,disclaimer:''};
+    if(!cross)cross={consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,consensusScore:0,tendency:'宜观察',disclaimer:''};
+    const score=cross.consensusScore||0;
+    const scoreCls=score>=70?'good':(score>=40?'calm':'warn');
     let h=`<div class="card"><h3>多盘交叉摘要</h3>`;
+    h+=`<div class="cross-header">`;
+    h+=`<div class="cross-tendency"><span class="tend-tag ${cross.tendency==='宜主动'?'good':(cross.tendency==='宜谨慎'?'warn':'calm')}">${esc(cross.tendency||'宜观察')}</span></div>`;
+    h+=`<div class="cross-score"><span class="score-label">共识度</span><span class="score-val ${scoreCls}">${score}%</span></div>`;
+    h+=`</div>`;
     // 一致点
     h+=`<div class="cross-sec"><div class="cross-sec-title">一致点</div>`;
     if(cross.consistent&&cross.consistent.length){
@@ -2021,10 +2120,11 @@
         const meaning=card.dataset.meaning||'';
         const element=card.dataset.element||'';
         const pos=card.dataset.pos||'';
+        const arcana=card.dataset.arcana||'';
         const panel=$('#tarotDetailPanel');
         if(panel&&name){
           let html=`<div class="tdp-name">${esc(name)}<span class="${up?'tdp-up':'tdp-rev'}">${up?'正位':'逆位'}</span></div>`;
-          if(element)html+=`<div class="tdp-element">元素 / 对应：${esc(element)}</div>`;
+          if(arcana||element)html+=`<div class="tdp-element">${arcana?esc(arcana)+' · ':''}${element?'元素 / 对应：'+esc(element):''}</div>`;
           if(pos)html+=`<div class="tdp-element">位置：${esc(pos)}</div>`;
           html+=`<div class="tdp-meaning">${esc(meaning)}</div>`;
           panel.innerHTML=html;
@@ -3630,6 +3730,37 @@
     h+=renderStatGroup('按准确度评分',[5,4,3,2,1].map(s=>({
       name:'★'.repeat(s),count:st.byScore[s]||0,pct:st.reviewedCount?Math.round((st.byScore[s]||0)/st.reviewedCount*100):0
     })));
+    // 6. 时间趋势（简易 CSS 柱状图）
+    if(st.trend&&st.trend.length){
+      h+=`<div class="stat-group"><div class="sg-t">时间趋势</div>`;
+      h+=`<div class="trend-chart">`;
+      const maxTotal=Math.max(...st.trend.map(x=>x.total),1);
+      st.trend.forEach(t=>{
+        const h1=Math.round((t.total/maxTotal)*80);
+        h+=`<div class="trend-col">`;
+        h+=`<div class="trend-bars"><div class="trend-bar trend-bar-acc" style="height:${Math.round(t.acc*0.8)}%" title="应验率 ${t.acc}%"></div><div class="trend-bar trend-bar-total" style="height:${h1}%" title="案例 ${t.total}"></div></div>`;
+        h+=`<div class="trend-label">${t.month.slice(5)}</div>`;
+        h+=`</div>`;
+      });
+      h+=`</div>`;
+      h+=`<div class="trend-legend"><span class="trend-dot total"></span>案例数 <span class="trend-dot acc"></span>应验率</div>`;
+      h+=`</div>`;
+    }
+    // 7. 个人决策画像
+    const pf=st.profile||{};
+    h+=`<div class="stat-group"><div class="sg-t">决策画像</div>`;
+    h+=`<div class="profile-grid">`;
+    h+=`<div class="profile-item"><div class="profile-label">最常问</div><div class="profile-val">${esc(pf.topQuestionType||'—')}</div></div>`;
+    h+=`<div class="profile-item"><div class="profile-label">最常用术数</div><div class="profile-val">${esc(pf.topShu||'—')}</div></div>`;
+    h+=`<div class="profile-item"><div class="profile-label">主导倾向</div><div class="profile-val">${esc(pf.dominantTendency||'—')}</div></div>`;
+    if(pf.bestShu){
+      h+=`<div class="profile-item"><div class="profile-label">最准术数</div><div class="profile-val">${esc(pf.bestShu.name)} <span class="profile-sub">${pf.bestShu.acc}% (${pf.bestShu.judgeable}条)</span></div></div>`;
+    }
+    if(pf.worstShu&&pf.worstShu.name!==(pf.bestShu&&pf.bestShu.name)){
+      h+=`<div class="profile-item"><div class="profile-label">待校准术数</div><div class="profile-val">${esc(pf.worstShu.name)} <span class="profile-sub">${pf.worstShu.acc}% (${pf.worstShu.judgeable}条)</span></div></div>`;
+    }
+    h+=`</div>`;
+    h+=`</div>`;
     h+=`<div class="section-note">统计仅用于个人校准，不对外展示。</div>`;
     h+=`</div>`;
     return h;
@@ -3713,8 +3844,16 @@
     h+=`<button class="btn block" id="btnLockSetting">${lock.appLock?'管理应用锁':'设置应用锁'}</button>`;
     h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
     h+=`</div>`;
+    h+=`<div class="card set-group"><div class="sg-t">应用</div>`;
+    h+=`<div class="detail-row"><span class="dk">网络状态</span><span>${state.online?'在线':'离线'}</span></div>`;
+    if(state.installable){
+      h+=`<button class="btn primary block" id="btnInstallPwa">安装到桌面</button>`;
+    }else{
+      h+=`<div class="section-note muted">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div>`;
+    }
+    h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.7</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.7</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数 · 奇门遁甲</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
   // 重要日期管理子页
@@ -3933,11 +4072,19 @@
     }
     $('#btnLockSetting').onclick=()=>openLockSetting();
     $('#btnAbout').onclick=()=>modal('关于玄决',aboutHtml(),null,true,'关闭');
+    const installBtn=$('#btnInstallPwa');
+    if(installBtn)installBtn.onclick=async()=>{
+      if(!state.deferredPrompt)return;
+      state.deferredPrompt.prompt();
+      const {outcome}=await state.deferredPrompt.userChoice;
+      if(outcome==='accepted'){state.installable=false;state.deferredPrompt=null;toast('已开始安装');}
+      renderTab();
+    };
   }
   function aboutHtml(){
     return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.7</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
-    <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数</p>
+    <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
     <p style="color:var(--gold);margin-top:12px">免责声明</p>
     <p>${AI.DISCLAIMER}</p>

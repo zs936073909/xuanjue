@@ -17,10 +17,16 @@
   "dependencies": {
     "@capacitor/android": "^6.1.2",
     "@capacitor/core": "^6.1.2",
-    "iztro": "^2.5.8"
+    "@cometpisces/tarot-kit": "^0.2.0",
+    "iching-shifa": "^1.8.0",
+    "iztro": "^2.5.8",
+    "qimendunjia-standalone": "^0.1.0",
+    "tarot-card-meanings": "^1.0.2",
+    "tarotoo-tarot": "^2.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
+    "esbuild": "^0.28.2",
     "jsdom": "^24.1.3"
   }
 }

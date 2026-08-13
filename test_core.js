@@ -11,7 +11,7 @@ ctx.window=ctx;ctx.global=ctx;ctx.self=ctx;
 // classics.js 需要 require 支持（用于 Node 环境读取数据文件）
 ctx.require=require;ctx.__filename=require('path').resolve('js/classics.js');ctx.__dirname=require('path').resolve('js');
 vm.createContext(ctx);
-['js/lunar.js','js/huangli.js','js/daliuren.js','js/iztro.min.js','js/shushu.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
+['js/lunar.js','js/huangli.js','js/daliuren.js','js/iztro.min.js','js/vendor/iching-shifa.min.js','js/vendor/tarot-kit.min.js','js/vendor/qimendunjia-standalone.min.js','js/shushu.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
   vm.runInContext(fs.readFileSync(f,'utf8'),ctx);
 });
 const {Lunar,DaLiuRen,Huangli,ShuShu}=ctx.window;
@@ -110,7 +110,16 @@ const prompt=AI.buildPrompt(Object.assign(ke,{dateStr:'2024-06-15 14:30',scStr:'
 console.log('\nAI提示词长度:',prompt.length,'字符');
 eq('提示词含禁止词规则', prompt.includes('禁止必然性预测'), true);
 
-// 敏感词检测
+// 多术数 prompt 应包含奇门遁甲与紫微斗数关键字段
+const qimenRes={name:'奇门遁甲',result:{info:{jieqi:'芒种',ju:'阳遁六局',fu:'天柱',shi:'惊门',kong:'戌亥'},targetName:'开门',targetPal:{key:'6'},relation:'比和',dayPal:{key:'4'},timePal:{key:'2'}},plain:{tendency:'宜主动',state:'测试',signals:['阳遁六局']}};
+const ziweiRes={name:'紫微斗数',result:{soulPalace:'寅',bodyPalace:'申',majorStars:['武曲','天府'],siHua:{shengNian:'禄存',guanLu:'文昌'}},plain:{tendency:'宜观察',state:'测试',signals:['命宫武曲']}};
+const multiPrompt=AI.buildMultiShuUserPrompt(null,{奇门遁甲:qimenRes,紫微斗数:ziweiRes},{questionType:'事业合作',title:'测试'});
+eq('多术数 prompt 含奇门局数',multiPrompt.includes('阳遁六局'),true);
+eq('多术数 prompt 含奇门用神宫',multiPrompt.includes('6宫'),true);
+eq('多术数 prompt 含紫微命宫',multiPrompt.includes('寅'),true);
+eq('多术数 prompt 含紫微主星',multiPrompt.includes('武曲'),true);
+
+// 敏感词拦截敏感词检测
 eq('敏感词:自杀', AI.detectSensitive('我想自杀')&&AI.detectSensitive('我想自杀').cat, 'selfHarm');
 eq('敏感词:能赚多少', AI.detectSensitive('能赚多少钱')&&AI.detectSensitive('能赚多少钱').cat, 'invest');
 eq('禁止词替换', AI.sanitize('一定发财'), '可能发财可能'.replace('可能发财可能','可能发财')||'可能');
@@ -144,6 +153,12 @@ eq('六爻 6 爻',ly.result.yaos.length,6);
 eq('六爻动爻数 0-6',ly.result.dongCount>=0&&ly.result.dongCount<=6,true);
 eq('六爻每爻 val 6-9',ly.result.yaos.every(y=>y.val>=6&&y.val<=9),true);
 console.log('六爻:',ly.result.benGua,'→',ly.result.bianGua,'动',ly.result.dongCount);
+eq('六爻六神每爻存在',ly.result.yaos.every(y=>y.liuShou),true);
+eq('六爻纳音每爻存在',ly.result.yaos.every(y=>y.naYin),true);
+eq('六爻星宿每爻存在',ly.result.yaos.every(y=>y.xingXiu),true);
+eq('六爻伏神数组存在',Array.isArray(ly.result.fuShen),true);
+eq('六爻互卦存在',ly.result.huGua&&ly.result.huGua.length>0,true);
+eq('六爻卦辞存在',ly.result.guaCi&&ly.result.guaCi.length>0,true);
 
 // 塔罗
 const tr=ShuShu.tarot(p1Date);
@@ -151,9 +166,14 @@ eq('塔罗返回 name',tr.name,'塔罗');
 eq('塔罗 3 张牌',tr.result.cards.length,3);
 eq('塔罗位置 过去/现在/未来',tr.result.cards.map(c=>c.pos).join(','),'过去,现在,未来');
 eq('塔罗牌名非空',tr.result.cards.every(c=>c.name.length>0),true);
-eq('塔罗 22 大阿卡纳内',ShuShu.TAROT.length,22);
+eq('塔罗 78 张全牌库',ShuShu.TAROT.length,78);
 eq('塔罗三牌不重复',new Set(tr.result.cards.map(c=>c.name)).size,3);
 console.log('塔罗:',tr.result.cards.map(c=>c.name+'('+(c.up?'正':'逆')+')').join(' '));
+// 凯尔特十字牌阵
+const trCeltic=ShuShu.tarot(p1Date,'celtic');
+eq('塔罗凯尔特十字 10 张牌',trCeltic.result.cards.length,10);
+eq('塔罗凯尔特十字位置完整',trCeltic.result.cards.map(c=>c.pos).join(','),'现状,阻碍,根基,过去,目标,未来,自我,环境,希望,结果');
+eq('塔罗牌库含小阿卡纳',ShuShu.TAROT.some(c=>c.arcana==='minor'),true);
 
 // 八字（必须基于真实出生信息）
 const bz=ShuShu.baZiByBirth({gender:'男',date:p1Date});
@@ -303,6 +323,10 @@ eq('统计-平均评分=4',stats.avgScore,4);
 eq('统计-按应验程度应验=2',stats.byResult['应验'],2);
 eq('统计-按评分5星=1',stats.byScore[5],1);
 eq('统计-按术数大六壬=1',stats.byShu['大六壬'],1);
+eq('统计-trend 数组存在',Array.isArray(stats.trend)&&stats.trend.length>0,true);
+eq('统计-profile 存在',!!stats.profile,true);
+eq('统计-最常问非空',typeof stats.profile.topQuestionType==='string'&&stats.profile.topQuestionType.length>0,true);
+eq('统计-最常用术数非空',typeof stats.profile.topShu==='string'&&stats.profile.topShu.length>0,true);
 
 // 筛选测试
 const filtered1=Store.listCasesByFilter({shushu:'六爻'});
@@ -333,6 +357,9 @@ eq('交叉-综合建议非空',cross1.advice.length>0,true);
 eq('交叉-观察信号非空',cross1.signals.length>0,true);
 eq('交叉-复盘天数合理',cross1.reviewDays>=14&&cross1.reviewDays<=21,true);
 eq('交叉-有免责声明',cross1.disclaimer.length>0,true);
+eq('交叉-共识度存在',typeof cross1.consensusScore==='number'&&cross1.consensusScore>=0&&cross1.consensusScore<=100,true);
+eq('交叉-一致时共识度较高',cross1.consensusScore>=60,true);
+eq('交叉-综合倾向非空',typeof cross1.tendency==='string'&&cross1.tendency.length>0,true);
 
 // 冲突点测试：一个主动一个等待
 const res2={
@@ -341,6 +368,8 @@ const res2={
 };
 const cross2=Cross.analyze('大六壬',res2);
 eq('交叉-冲突点非空',cross2.conflict.length>0,true);
+eq('交叉-冲突时共识度较低',cross2.consensusScore<60,true);
+eq('交叉-冲突时综合倾向跟随权重最高盘',cross2.tendency==='宜主动',true);
 
 // 无大六壬主盘
 const res3={
@@ -694,6 +723,29 @@ if(zw&&zw.result&&zw.result.astrolabe){
   eq('紫微斗数-iztro 排盘验证通过',false,true);
   console.log('紫微斗数排盘失败:',zw&&zw.error?zw.error:'无结果');
 }
+
+// ===== 奇门遁甲验证 =====
+console.log('\n--- 奇门遁甲 ---');
+const qmDate=new Date(2024,5,15,14,30);
+const qm=ShuShu.qimenDunJia(qmDate,'事业合作');
+eq('奇门遁甲-返回 name','奇门遁甲',qm.name);
+eq('奇门遁甲-九宫存在且为 9 宫',qm.result&&qm.result.palaces&&qm.result.palaces.length,9);
+eq('奇门遁甲-存在 info',!!(qm.result&&qm.result.info),true);
+eq('奇门遁甲-局数非空',typeof qm.result.info.ju==='string'&&qm.result.info.ju.length>0,true);
+eq('奇门遁甲-值符非空',typeof qm.result.info.fu==='string'&&qm.result.info.fu.length>0,true);
+eq('奇门遁甲-值使非空',typeof qm.result.info.shi==='string'&&qm.result.info.shi.length>0,true);
+eq('奇门遁甲-用神宫识别',!!(qm.result.targetPal&&qm.result.targetName),true);
+eq('奇门遁甲-日干宫存在',!!qm.result.dayPal,true);
+eq('奇门遁甲-时干宫存在',!!qm.result.timePal,true);
+eq('奇门遁甲-plain 倾向非空',typeof qm.plain.tendency==='string'&&qm.plain.tendency.length>0,true);
+eq('奇门遁甲-signals 非空',Array.isArray(qm.plain.signals)&&qm.plain.signals.length>0,true);
+console.log('奇门遁甲:',qm.result.info.ju,qm.result.info.fu,qm.result.info.shi,'用神',qm.result.targetName,'落',qm.result.targetPal?qm.result.targetPal.key+'宫':'—');
+// compute 入口
+const qmCompute=ShuShu.compute('奇门遁甲',qmDate,'事业合作');
+eq('奇门遁甲-compute 入口',qmCompute&&qmCompute.name,'奇门遁甲');
+// 主题差异：同一时刻不同问事主题，用神目标应不同
+const qmLove=ShuShu.qimenDunJia(qmDate,'感情关系');
+eq('奇门遁甲-感情用神≠事业用神',qmLove.result.targetName!==qm.result.targetName,true);
 
 // ===== 提醒与重要日期 =====
 console.log('\n--- 提醒与重要日期 ---');

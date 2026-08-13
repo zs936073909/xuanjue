@@ -44,6 +44,7 @@ body{
   background:var(--bg);color:var(--ink);
   font-size:15px;line-height:1.55;
   max-width:480px;margin:0 auto;position:relative;
+  overscroll-behavior-y:none;-webkit-overscroll-behavior-y:none;
   /* 夜空底纹：径向暗光 + 极淡星点 */
   background-image:
     radial-gradient(ellipse at 50% 0%,rgba(201,168,106,.06),transparent 60%),
@@ -53,6 +54,9 @@ body{
 }
 .hidden{display:none!important}
 #app{min-height:100%}
+.network-bar{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--red);color:#fff;text-align:center;font-size:12px;padding:4px;transform:translateY(-100%);transition:transform .25s ease}
+.network-bar.offline{transform:translateY(0)}
+.network-bar.hidden{display:none}
 .screen{padding:16px;animation:fadeIn .4s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
@@ -604,6 +608,14 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .cross-consistent{border-left-color:var(--green);background:rgba(106,154,106,.06)}
 .cross-conflict{border-left-color:#d48a4a;background:rgba(212,138,74,.08)}
 .cross-disclaimer{font-size:11px;color:var(--muted);margin-top:10px;padding:8px 10px;background:var(--card);border-radius:6px;line-height:1.6;border:1px solid var(--line)}
+.cross-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;padding:10px 12px;background:var(--card2);border-radius:8px;border:1px solid var(--line2)}
+.cross-tendency{display:flex;align-items:center}
+.cross-score{display:flex;align-items:center;gap:6px;font-size:13px}
+.cross-score .score-label{color:var(--muted)}
+.cross-score .score-val{font-weight:600}
+.cross-score .score-val.good{color:var(--green)}
+.cross-score .score-val.warn{color:var(--red)}
+.cross-score .score-val.calm{color:var(--gold)}
 
 /* ===== T1 复盘统计模块 ===== */
 /* 统计页容器 */
@@ -639,6 +651,26 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .stat-group .sg-bar{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:3px;transition:width .3s ease}
 .stat-group .sg-stats{color:var(--muted);font-size:11px;flex:0 0 auto;text-align:right;white-space:nowrap}
 .stat-group .sg-pct{color:var(--gold);font-size:12px;min-width:36px;text-align:right;font-family:var(--serif);flex:0 0 auto}
+
+/* 时间趋势简易 CSS 柱状图 */
+.trend-chart{display:flex;align-items:flex-end;gap:8px;height:140px;padding:10px 0 4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.trend-col{flex:1;min-width:28px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.trend-bars{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;position:relative}
+.trend-bar{width:10px;border-radius:3px 3px 0 0;min-height:2px;transition:height .35s ease}
+.trend-bar-total{background:linear-gradient(180deg,var(--gold2),var(--gold))}
+.trend-bar-acc{background:linear-gradient(180deg,var(--green),#4a7a4a);opacity:.85}
+.trend-label{font-size:10px;color:var(--muted);white-space:nowrap}
+.trend-legend{display:flex;align-items:center;gap:12px;margin-top:8px;font-size:11px;color:var(--muted)}
+.trend-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.trend-dot.total{background:var(--gold)}
+.trend-dot.acc{background:var(--green)}
+
+/* 决策画像网格 */
+.profile-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.profile-item{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px}
+.profile-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.profile-val{font-size:13px;color:var(--ink);font-weight:500;word-break:break-word}
+.profile-sub{font-size:11px;color:var(--muted);font-weight:400}
 
 /* 星评分（可点击） */
 .star-rating{display:inline-flex;gap:2px;align-items:center;line-height:1}
@@ -717,6 +749,19 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .tarot-detail-panel .tdp-element{font-size:11px;color:#8b6914;margin-top:2px}
 .tarot-detail-panel .tdp-meaning{font-size:13px;line-height:1.75;margin-top:10px;color:var(--text);padding:8px 10px;background:var(--card2);border-radius:6px;border-left:3px solid #d4af37}
 .tarot-detail-panel .tdp-desc{font-size:12px;line-height:1.65;margin-top:8px;color:var(--muted)}
+/* 凯尔特十字牌阵分区布局：中心牌 vs 周边牌 */
+.tarot-visual-spread.celtic{display:grid;grid-template-columns:repeat(3,1fr);grid-template-areas:'. p5 .' 'p4 p1 p6' '. p2 .' '. p3 .' '. p7 .' 'p8 p9 p10';gap:8px 6px;padding:16px 4px;justify-items:center}
+.tarot-visual-spread.celtic .tarot-visual-card{width:100px;height:172px}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="0"]{grid-area:p1}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="1"]{grid-area:p2}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="2"]{grid-area:p3}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="3"]{grid-area:p4}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="4"]{grid-area:p5}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="5"]{grid-area:p6}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="6"]{grid-area:p7}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="7"]{grid-area:p8}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="8"]{grid-area:p9}
+.tarot-visual-spread.celtic .tarot-visual-card[data-idx="9"]{grid-area:p10}
 /* ===== 六爻卦器视觉 ===== */
 .liuyao-visual{padding:12px 0}
 .ly-coins{display:flex;justify-content:center;gap:12px;margin:12px 0}
@@ -765,8 +810,20 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ly-table .gan-zhi{font-size:10px;color:#5a3a1a}
 .ly-table .dong-change{font-size:9px;color:#c0392b;line-height:1.3}
 .ly-table .kong-mark{color:#e65100;font-size:9px}
+/* 六爻卦辞/彖辞/爻辞可折叠面板 */
+.ly-classics{margin-top:10px;background:linear-gradient(180deg,#f7eed3,#f2e8c9);border:1px solid #8A4419;border-radius:6px;overflow:hidden;font-family:'Noto Serif SC',serif}
+.ly-details{border-bottom:1px solid rgba(138,68,25,.18)}
+.ly-details:last-child{border-bottom:none}
+.ly-details>summary{list-style:none;cursor:pointer;padding:10px 12px;font-size:13px;color:#5a3a1a;font-weight:600;background:rgba(138,68,25,.08);display:flex;align-items:center;justify-content:space-between}
+.ly-details>summary::-webkit-details-marker{display:none}
+.ly-details>summary::after{content:'▸';font-size:12px;color:#8A4419;transition:transform .2s}
+.ly-details[open]>summary::after{transform:rotate(90deg)}
+.ly-details-body{padding:10px 12px;font-size:12px;line-height:1.8;color:#3a2410;max-height:240px;overflow:auto}
+.ly-yao-ci{padding:4px 0;border-bottom:1px dashed rgba(138,68,25,.15)}
+.ly-yao-ci:last-child{border-bottom:none}
+.ly-yao-ci b{color:#8A4419;font-weight:600}
 
-/* ========== 大六壬盘面增强视觉（v1.1） ========== */
+/* ========== 大六壬盘面增强视觉（v1.1） ==========*/
 /* 顶部退出/重试条 */
 .dl-topbar{
   display:flex;align-items:center;justify-content:space-between;

@@ -66,7 +66,7 @@
     const lenHint=len==='简短'?'输出精简，每个段落不超过 60 字。':(len==='详细'?'可适度展开，每个段落可至 150 字，但保持结构清晰。':'保持适中长度，每个段落不超过 100 字。');
     return [
       '# 角色',
-      '你是「玄决」术数决策辅助系统的解读引擎。你基于中国传统术数（大六壬、梅花易数、六爻、塔罗、八字等）的排盘结构化数据进行白话解读，帮助用户将抽象盘面转化为可参考的决策线索。',
+      '你是「玄决」术数决策辅助系统的解读引擎。你基于中国传统术数（大六壬、奇门遁甲、紫微斗数、梅花易数、六爻、塔罗、八字等）的排盘结构化数据进行白话解读，帮助用户将抽象盘面转化为可参考的决策线索。',
       '',
       '# 核心原则（必须严格遵守）',
       '1. **仅基于盘面数据解读**：只使用下方提供的结构化盘面数据（天盘地支、四课、三传、神煞、卦象、五行等）。严禁凭空编造未给出的盘面信息或命运断言。',
@@ -196,15 +196,59 @@
       Object.keys(shushuResults).forEach(name=>{
         const r=shushuResults[name];
         L.push('## '+name+' · 摘要');
-        // 仅取 plain 中确定字段，避免推断字段被当盘面事实引用
+        // 仅取 plain/result 中确定字段，按术数类型提取关键盘面信息
         const safe={};
         if(r.plain){
           if(r.plain.tendency)safe.tendency=r.plain.tendency;
           if(r.plain.state)safe.state=r.plain.state;
           if(r.plain.signals)safe.signals=r.plain.signals;
+          if(r.plain.opps)safe.opps=r.plain.opps;
+          if(r.plain.risks)safe.risks=r.plain.risks;
         }
-        if(r.result&&r.result.guaName)safe.guaName=r.result.guaName;
-        if(r.result&&r.result.benGua)safe.benGua=r.result.benGua;
+        const res=r.result||{};
+        if(name==='六爻'){
+          if(res.benGua)safe.benGua=res.benGua;
+          if(res.bianGua)safe.bianGua=res.bianGua;
+          if(res.huGua)safe.huGua=res.huGua;
+          if(res.dongCount!=null)safe.dongCount=res.dongCount;
+          if(res.yaoString)safe.yaoString=res.yaoString;
+        }else if(name==='梅花易数'){
+          if(res.guaName)safe.guaName=res.guaName;
+          if(res.benGua)safe.benGua=res.benGua;
+          if(res.bianGua)safe.bianGua=res.bianGua;
+          if(res.dongYao!=null)safe.dongYao=res.dongYao;
+          if(res.tiYong)safe.tiYong=res.tiYong;
+        }else if(name==='八字'){
+          if(Array.isArray(res.pillars))safe.pillars=res.pillars.map(p=>p.gz);
+          if(res.dayGan)safe.dayGan=res.dayGan;
+          if(res.yongShen)safe.yongShen=res.yongShen;
+          if(typeof res.dayStrong==='boolean')safe.dayStrong=res.dayStrong?'偏强':'偏弱';
+        }else if(name==='紫微斗数'){
+          if(res.soulPalace)safe.soulPalace=res.soulPalace;
+          if(res.bodyPalace)safe.bodyPalace=res.bodyPalace;
+          if(Array.isArray(res.majorStars))safe.majorStars=res.majorStars;
+          if(res.siHua)safe.siHua=res.siHua;
+        }else if(name==='奇门遁甲'){
+          if(res.info){
+            safe.jieQi=res.info.jieqi;
+            safe.ju=res.info.ju;
+            safe.fu=res.info.fu;
+            safe.shi=res.info.shi;
+            safe.kong=res.info.kong;
+          }
+          if(res.targetName)safe.targetName=res.targetName;
+          if(res.targetPal&&res.targetPal.key)safe.targetPalace=res.targetPal.key+'宫';
+          if(res.relation)safe.relation=res.relation;
+          if(res.dayPal&&res.dayPal.key)safe.dayPalace=res.dayPal.key+'宫';
+          if(res.timePal&&res.timePal.key)safe.timePalace=res.timePal.key+'宫';
+        }else if(name==='塔罗'){
+          if(res.spread)safe.spread=res.spread;
+          if(Array.isArray(res.cards))safe.cards=res.cards.map(c=>c.name+(c.reversed?'(逆)':'(正)'));
+        }else if(name==='小六壬'){
+          if(res.month)safe.month=res.month;
+          if(res.day)safe.day=res.day;
+          if(res.time)safe.time=res.time;
+        }
         L.push(JSON.stringify(safe,null,0));
       });
       L.push('');
@@ -232,6 +276,19 @@
     segs.push({t:'观察信号',c:plain.signals.map(s=>`· ${s}`).join('<br>'),tag:S('三传+神煞','rule')});
     const rd=new Date(Date.now()+plain.reviewDays*86400000);
     segs.push({t:'复盘时间建议',c:`约 ${plain.reviewDays} 日后（${rd.getMonth()+1}月${rd.getDate()}日）复盘校准。`,tag:S('经验建议','ai')});
+    // 离线 RAG：检索古籍，给出有据可依的参考
+    try{
+      const lib=(typeof global!=='undefined'&&global.ClassicLibrary)||(typeof window!=='undefined'&&window.ClassicLibrary);
+      if(lib&&lib.search){
+        const q=[(bg&&bg.questionType),(bg&&bg.title),(bg&&bg.desc),plain.tendency,plain.state].filter(Boolean).join(' ');
+        const features=((plain.signals||[]).concat(plain.opps||[]).concat(plain.risks||[])).filter(Boolean);
+        const passages=lib.search({shushu:['大六壬'],query:q,board_features:features,limit:3});
+        if(passages&&passages.length){
+          const refs=passages.map((p,i)=>`· [${p.book||''}${p.chapter?'·'+p.chapter:''}] ${(p.text||'').slice(0,60)}${(p.text||'').length>60?'…':''}`).join('<br>');
+          segs.push({t:'古籍参考（离线检索）',c:refs,tag:S('典籍库','rule')});
+        }
+      }
+    }catch(_){}
     segs.push({t:'免责声明',c:DISCLAIMER,tag:''});
     return segs;
   }

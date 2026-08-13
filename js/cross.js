@@ -3,9 +3,17 @@
 (function(global){
   'use strict';
 
-  // 术数权重表：大六壬主事件成败，八字长期，六爻短期，梅花过程，小六壬快速，塔罗心理，黄历参考
+  // 术数权重表：大六壬主事件成败，八字/紫微长期，奇门时空，六爻短期，梅花过程，小六壬快速，塔罗心理，黄历参考
   const WEIGHTS={
-    '大六壬':5, '八字':4, '六爻':3, '梅花易数':3, '小六壬':2, '塔罗':2, '黄历':1
+    '大六壬':5, '八字':4, '紫微斗数':4, '奇门遁甲':4, '六爻':3, '梅花易数':3, '小六壬':2, '塔罗':2, '黄历':1
+  };
+
+  // 倾向方向映射：用于判断多盘是否同向
+  const TEND_DIRECTION={
+    '宜主动':1,
+    '宜等待':-1,
+    '宜谨慎':-1,
+    '宜观察':0
   };
 
   // 禁用词 → 替换词（advice 与 consistent 不得出现绝对化措辞）
@@ -75,20 +83,30 @@
     const signals=[];
 
     if(!plainNames.length){
-      return {consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,disclaimer};
+      return {consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,consensusScore:0,tendency:'宜观察',disclaimer};
     }
 
+    // 按权重倒序排列，用于后续主盘选择和建议排序
+    const sortedByWeight=plainNames.slice().sort((a,b)=>(WEIGHTS[b]||0)-(WEIGHTS[a]||0));
+    let mainShu=mainName;
+    if(!mainShu||!plains[mainShu]){
+      mainShu=sortedByWeight[0];
+    }
+    const mainPlain=plains[mainShu];
+
     // ===== 一致点判断 =====
-    // 1) 多个术数 tendency 同向
-    const tendMap={};
+    // 1) 多个术数 tendency 同向（含方向聚合：主动 vs 谨慎/等待 vs 观察）
+    const directionGroups={'1':[],'-1':[],'0':[]};
     plainNames.forEach(n=>{
       const t=plains[n].tendency||'宜观察';
-      if(!tendMap[t])tendMap[t]=[];
-      tendMap[t].push(n);
+      const dir=TEND_DIRECTION[t];
+      if(dir!==undefined)directionGroups[dir].push({name:n,tendency:t});
     });
-    Object.keys(tendMap).forEach(t=>{
-      if(tendMap[t].length>=2){
-        consistent.push({desc:'各盘倾向一致为「'+t+'」',shushu:tendMap[t].slice()});
+    Object.keys(directionGroups).forEach(dir=>{
+      const g=directionGroups[dir];
+      if(g.length>=2){
+        const label=dir==='1'?'主动推进':(dir==='-1'?'谨慎等待':'观察');
+        consistent.push({desc:'多盘倾向一致为「'+label+'」',shushu:g.map(x=>x.name)});
       }
     });
 
@@ -125,22 +143,32 @@
       }
     }
 
+    // 5) opps 机会关键词交集
+    for(let i=0;i<plainNames.length;i++){
+      for(let j=i+1;j<plainNames.length;j++){
+        const a=plainNames[i],b=plainNames[j];
+        const ov=semanticOverlap(plains[a].opps||[],plains[b].opps||[]);
+        if(ov.length){
+          consistent.push({desc:'机会方向均含「'+ov.join('、')+'」',shushu:[a,b]});
+        }
+      }
+    }
+
     // ===== 冲突点判断 =====
-    // 1) 一盘 tendency=宜主动，另一盘=宜等待
-    const actList=plainNames.filter(n=>plains[n].tendency==='宜主动');
-    const waitList=plainNames.filter(n=>plains[n].tendency==='宜等待');
+    // 1) 方向完全相反：主动 vs 谨慎/等待
+    const actList=plainNames.filter(n=>TEND_DIRECTION[plains[n].tendency||'宜观察']===1);
+    const waitList=plainNames.filter(n=>TEND_DIRECTION[plains[n].tendency||'宜观察']===-1);
     if(actList.length&&waitList.length){
-      conflict.push({desc:'部分盘建议主动推进，部分盘建议等待时机，节奏不一致',shushu:actList.concat(waitList)});
+      conflict.push({desc:'部分盘建议主动推进，部分盘建议谨慎等待，节奏不一致',shushu:actList.concat(waitList)});
     }
 
-    // 2) 一盘偏吉（tendency 含"主动"），另一盘偏凶（risks 非空且 tendency 含"谨慎"）
-    const jiList=plainNames.filter(n=>(plains[n].tendency||'').includes('主动'));
-    const xiongList=plainNames.filter(n=>(plains[n].tendency||'').includes('谨慎')&&(plains[n].risks||[]).length>0);
-    if(jiList.length&&xiongList.length){
-      conflict.push({desc:'部分盘倾向偏吉、部分盘提示存在风险，需权衡',shushu:jiList.concat(xiongList)});
+    // 2) 主动 vs 观察：行动信号不统一
+    const observeList=plainNames.filter(n=>TEND_DIRECTION[plains[n].tendency||'宜观察']===0);
+    if(actList.length&&observeList.length){
+      conflict.push({desc:'部分盘建议主动，部分盘建议继续观察，需更多信息再决断',shushu:actList.concat(observeList)});
     }
 
-    // 3) 一盘机会关键词与另一盘风险关键词重叠
+    // 3) 一盘机会与另一盘风险重叠
     for(let i=0;i<plainNames.length;i++){
       for(let j=0;j<plainNames.length;j++){
         if(i===j)continue;
@@ -152,15 +180,42 @@
       }
     }
 
-    // ===== 综合建议 =====
-    // 按权重倒序排列
-    const sortedByWeight=plainNames.slice().sort((a,b)=>(WEIGHTS[b]||0)-(WEIGHTS[a]||0));
-    let mainShu=mainName;
-    if(!mainShu||!plains[mainShu]){
-      mainShu=sortedByWeight[0];
-    }
-    const mainPlain=plains[mainShu];
+    // 4) 主盘与次盘 dontAct 冲突
+    sortedByWeight.slice(1).forEach(n=>{
+      const p=plains[n];
+      if(!p||!Array.isArray(p.dontAct))return;
+      const mainDoArr=mainPlain.doAct||[];
+      p.dontAct.forEach(dont=>{
+        const ov=semanticOverlap(mainDoArr,[dont]);
+        if(ov.length){
+          conflict.push({desc:'主盘建议「'+ov.join('、')+'」与'+n+'提示的忌讳「'+dont+'」冲突',shushu:[mainShu,n]});
+        }
+      });
+    });
 
+    // ===== 综合倾向与共识度 =====
+    let totalDirW=0,totalDirV=0;
+    plainNames.forEach(n=>{
+      const w=WEIGHTS[n]||1;
+      const dir=TEND_DIRECTION[plains[n].tendency||'宜观察']||0;
+      totalDirW+=w;
+      totalDirV+=dir*w;
+    });
+    let tendency='宜观察';
+    if(totalDirW>0){
+      const avg=totalDirV/totalDirW;
+      if(avg>0.3)tendency='宜主动';
+      else if(avg<-0.3)tendency='宜谨慎';
+      else tendency='宜观察';
+    }
+    // 共识度：基于倾向离散程度、一致点数量、冲突点数量
+    const maxDirW=Math.max(...Object.values(directionGroups).map(g=>g.reduce((s,x)=>(WEIGHTS[x.name]||1)+s,0)));
+    const dirScore=totalDirW>0?Math.round((maxDirW/totalDirW)*60):0;
+    const overlapScore=Math.min(consistent.length*10,25);
+    const conflictPenalty=Math.min(conflict.length*10,20);
+    const consensusScore=Math.max(0,Math.min(100,dirScore+overlapScore-conflictPenalty));
+
+    // ===== 综合建议 =====
     if(mainPlain&&Array.isArray(mainPlain.doAct)){
       // 主建议：取权重最高术数的 doAct
       mainPlain.doAct.forEach(d=>{
@@ -183,6 +238,13 @@
           advice.push('参考'+n+'的「'+d+'」');
         });
       });
+    }
+
+    // 若多盘冲突明显，追加折中建议
+    if(conflict.length>=2&&consensusScore<50){
+      advice.push('综合建议：多盘信号分歧较大，建议小步验证、保留退路，待信号更一致再加大投入。');
+    }else if(consistent.length>=2&&consensusScore>=70){
+      advice.push('综合建议：多盘信号高度一致，可按照主建议积极推进，同时留意共同提示的风险。');
     }
 
     // ===== 观察信号 =====
@@ -216,6 +278,8 @@
       advice:cleanAdvice,
       signals,
       reviewDays,
+      consensusScore,
+      tendency,
       disclaimer
     };
   }

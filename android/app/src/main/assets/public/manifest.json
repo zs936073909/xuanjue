@@ -1,7 +1,7 @@
 {
   "name": "玄决 · 大六壬决策台",
   "short_name": "玄决",
-  "description": "个人时课助手 · 大六壬决策辅助工具",
+  "description": "个人术数决策辅助工具 · 大六壬/奇门遁甲/紫微斗数/六爻/八字/梅花/塔罗",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",

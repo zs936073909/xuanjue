@@ -305,113 +305,181 @@
     if(wxKe(yongWx,dayWx))return '用神克日辰，耗力';
     return '平和';
   }
+  // 三合、六合局（用于神煞与关系推演）
+  const SAN_HE=[
+    {zhis:['申','子','辰'],wx:'水',name:'申子辰水局'},
+    {zhis:['亥','卯','未'],wx:'木',name:'亥卯未木局'},
+    {zhis:['寅','午','戌'],wx:'火',name:'寅午戌火局'},
+    {zhis:['巳','酉','丑'],wx:'金',name:'巳酉丑金局'}
+  ];
+  const LIU_HE=[
+    {pair:['子','丑'],name:'子丑合土'},{pair:['寅','亥'],name:'寅亥合木'},
+    {pair:['卯','戌'],name:'卯戌合火'},{pair:['辰','酉'],name:'辰酉合金'},
+    {pair:['巳','申'],name:'巳申合水'},{pair:['午','未'],name:'午未合土'}
+  ];
+  function calcSanHeLiuHe(yaos){
+    const zhis=yaos.map(y=>y.zhi).filter(Boolean);
+    const san=[];
+    SAN_HE.forEach(ju=>{
+      const match=ju.zhis.filter(z=>zhis.includes(z));
+      if(match.length>=2){
+        const lines=yaos.filter(y=>ju.zhis.includes(y.zhi)).map(y=>y.idx);
+        san.push({name:ju.name,wx:ju.wx,match,lines});
+      }
+    });
+    const liu=[];
+    LIU_HE.forEach(h=>{
+      const [a,b]=h.pair;
+      const hasA=yaos.find(y=>y.zhi===a);
+      const hasB=yaos.find(y=>y.zhi===b);
+      if(hasA&&hasB){
+        liu.push({name:h.name,pair:[a,b],lines:[hasA.idx,hasB.idx]});
+      }
+    });
+    return{sanHe:san,liuHe:liu};
+  }
+  // 将 iching-shifa 爻对象转换为应用内部格式
+  function mapIchingYaoList(list){
+    return list.map((y,idx)=>{
+      const gz=y.naJia||'—';
+      const gan=gz[0]||'';
+      const zhi=gz[1]||'';
+      const zhiIdx=ZHI.indexOf(zhi);
+      return{
+        idx:y.position||idx+1,
+        val:y.yaoValue,
+        yang:(y.yaoValue%2)===1,
+        dong:!!y.isMoving,
+        gz:gz,
+        gan:gan,
+        zhi:zhi,
+        zhiIdx:zhiIdx,
+        zhiWx:y.wuXing||'',
+        liuQin:y.liuQin||'',
+        liuShou:y.liuShou||'',
+        xingXiu:y.xingXiu||'',
+        suoBo:y.suoBo||'',
+        naYin:y.naYin||'',
+        shiYing:y.shiYing||'',
+        isShi:y.shiYing==='世',
+        isYing:y.shiYing==='应'
+      };
+    });
+  }
   function liuYaoByYaos(yaos,questionType,askInfo){
     questionType=questionType||'其他';
-    // 把 app.js 主题（求财/谋事等）映射到 LIUYAO_YONGSHEN 的 questionType；若传入的已是 questionType 则直接使用
     const topic=questionType;
     questionType=LIUYAO_TOPIC_MAP[questionType]||questionType;
     const date=(askInfo&&askInfo.date)||new Date();
     const baZi=Lunar.getBaZi(date);
-    // 确保 yaos 格式
-    const yaoList=yaos.map((y,idx)=>{
+    const yaoString=yaos.map((y,idx)=>{
       const val=(typeof y==='object'&&y!==null)?y.val:Number(y);
-      const yang=val%2===1; // 7少阳、9老阳为阳；6老阴、8少阴为阴
-      const dong=(val===6||val===9);
-      return{idx:idx+1,val,yang,dong};
-    });
-    // 本卦、变卦
-    const benBits=yaoList.map(y=>y.yang?1:0);
-    const bianBits=yaoList.map(y=>y.dong?(y.yang?0:1):y.yang?1:0);
-    const upIdx=7-parseInt(benBits.slice(3).join(''),2);
-    const dnIdx=7-parseInt(benBits.slice(0,3).join(''),2);
-    const benGua=YAO64[upIdx*8+dnIdx];
-    const bianUp=7-parseInt(bianBits.slice(3).join(''),2);
-    const bianDn=7-parseInt(bianBits.slice(0,3).join(''),2);
-    const bianGua=YAO64[bianUp*8+bianDn];
-    const dongPositions=yaoList.filter(y=>y.dong).map(y=>y.idx);
+      return val;
+    }).join('');
+    const I=(typeof window!=='undefined'&&window.IchingShifa)?window.IchingShifa:(typeof global!=='undefined'&&global.IchingShifa?global.IchingShifa:{});
+    const dayGz=baZi.day.gz;
+    // 本卦排盘（纳甲、六亲、六神、世应、星宿、锁泊、纳音、伏神）
+    const benPan=I.decodeGua?I.decodeGua(yaoString,dayGz):null;
+    if(!benPan||!benPan.yaoList||!benPan.yaoList.length){
+      // 库未加载时给出基础提示，不阻塞渲染
+      return{name:'六爻',result:{error:'六爻排盘库未加载',yaoString,dayGz},plain:{state:'六爻排盘库未加载',tendency:'不可用',opps:['请检查 js/vendor/iching-shifa.min.js 是否加载'],risks:[],doAct:[],dontAct:[],signals:['库缺失'],env:'',reviewDays:0,sources:[{type:'rule',desc:'需要 iching-shifa 排盘库'}]}};
+    }
+    // 变卦、互卦
+    const bianString=I.getZhiGua?I.getZhiGua(yaoString):yaoString.replace(/9/g,'8').replace(/6/g,'7');
+    const bianGuaName=I.getGuaName?I.getGuaName(bianString):'';
+    const huString=I.getHuGua?I.getHuGua(yaoString):'';
+    const huGuaName=huString&&I.getGuaName?I.getGuaName(huString):'';
+    const yaoDetails=mapIchingYaoList(benPan.yaoList);
+    const dongPositions=yaoDetails.filter(y=>y.dong).map(y=>y.idx);
     const dongCount=dongPositions.length;
-    // 卦宫、世应
-    const ps=PALACE_SHI[benGua.name]||{p:'乾',s:6};
-    const palace=ps.p,shiLine=ps.s;
-    const yingLine=((shiLine+2)%6)+1;
-    const palaceWx=PALACE_WX[palace];
-    // 纳甲、六亲、世应标记
-    const upGua=BAGUA[upIdx],dnGua=BAGUA[dnIdx];
-    const upNa=NA_JIA[upGua.n].slice(3); // 上卦三爻（自下而上）
-    const dnNa=NA_JIA[dnGua.n].slice(0,3); // 下卦三爻
-    const naJia=dnNa.concat(upNa);
-    const yaoDetails=yaoList.map((y,idx)=>{
-      const gz=naJia[idx];
-      const gan=gz[0],zhi=gz[1];
-      const zhiIdx=ZHI.indexOf(zhi);
-      const zhiWx=WX_NAME[zhiIdx];
-      const liuQinVal=liuQin(palaceWx,zhiWx);
-      const isShi=(idx+1===shiLine);
-      const isYing=(idx+1===yingLine);
-      return{...y,gz,gan,zhi,zhiIdx,zhiWx,liuQin:liuQinVal,isShi,isYing};
-    });
+    const palace=benPan.palace||'乾';
+    const palaceWx=benPan.palaceWuXing||'金';
+    const shiLine=(yaoDetails.find(y=>y.isShi)||{}).idx||6;
+    const yingLine=(yaoDetails.find(y=>y.isYing)||{}).idx||((shiLine+2)%6)+1;
     // 用神
     const yongMap=LIUYAO_YONGSHEN[questionType]||LIUYAO_YONGSHEN['其他'];
-    let yongYao=null;
-    let yongFound=false;
+    let yongYao=null,yongFound=false;
     if(yongMap.target==='世爻'){
-      yongYao=yaoDetails.find(y=>y.isShi)||yaoDetails[0];
-      yongFound=true;
+      yongYao=yaoDetails.find(y=>y.isShi)||yaoDetails[0];yongFound=true;
     }else if(yongMap.target==='应爻'){
-      yongYao=yaoDetails.find(y=>y.isYing)||yaoDetails[5];
-      yongFound=true;
+      yongYao=yaoDetails.find(y=>y.isYing)||yaoDetails[5];yongFound=true;
     }else{
-      // 在卦中找六亲为 target 的爻
       yongYao=yaoDetails.find(y=>y.liuQin===yongMap.target);
-      if(yongYao){
-        yongFound=true;
-      }else{
-        // 卦中无此六亲（六亲不全），伏藏待查；fallback 到世爻用于关系推演
-        yongYao=yaoDetails.find(y=>y.isShi)||yaoDetails[0];
-        yongFound=false;
-      }
+      if(yongYao){yongFound=true;}else{yongYao=yaoDetails.find(y=>y.isShi)||yaoDetails[0];yongFound=false;}
     }
-    // 空亡
-    const kongWang=xunKong(baZi.day.index);
-    // 月破：月建冲之爻
+    // 空亡、月破、日辰
+    const kongWang=I.calcXunKong?I.calcXunKong(dayGz):xunKong(baZi.day.index);
     const yuePoZhi=ZHI[(baZi.month.zhiIdx+6)%12];
     const yuePoLines=yaoDetails.filter(y=>y.zhi===yuePoZhi).map(y=>y.idx);
-    // 日辰对用神：以日支五行论（日支为日辰主体），日干五行仅作兼容字段保留
-    const dayZhiWx=WX_NAME[baZi.day.zhiIdx]; // 日支五行（WX_NAME 按地支索引）
-    const dayGanWx=GAN_WX[baZi.day.gan]; // 兼容旧字段：日干五行
+    const dayZhiWx=WX_NAME[baZi.day.zhiIdx];
+    const dayGanWx=GAN_WX[baZi.day.gan];
     const yongWx=yongYao.zhiWx;
     const dayRiRelation=dayRelation(dayZhiWx,yongWx);
     const dongAny=dongCount>0;
+    // 三合六合
+    const {sanHe,liuHe}=calcSanHeLiuHe(yaoDetails);
+    // 伏神/旁伏神
+    const fuShenArr=(benPan.fuShen||[]).map(f=>({liuQin:f.fuLiuQin,naJia:f.fuNaJia,wuXing:f.fuWuXing,naYin:f.fuNaYin||'',hostPosition:f.hostPosition}));
+    const pangFuShenArr=(benPan.pangFuShen||[]).map(f=>({liuQin:f.fuLiuQin,naJia:f.fuNaJia,wuXing:f.fuWuXing,naYin:f.fuNaYin||'',hostPosition:f.hostPosition}));
+    const fuShenStr=fuShenArr.length?`伏神：${fuShenArr.map(f=>`第${f.hostPosition}爻伏${f.liuQin}${f.naJia}`).join('，')}`:'';
+    const sanHeStr=sanHe.length?`三合：${sanHe.map(s=>s.name+`（第${s.lines.join('、')}爻）`).join('，')}`:'无三合局';
+    const liuHeStr=liuHe.length?`六合：${liuHe.map(h=>h.name+`（第${h.lines.join('、')}爻）`).join('，')}`:'无六合';
+    // 场景化白话：按问事主题给机会/风险/行动建议
+    const LIUYAO_SCENE={
+      '感情关系':{opps:['主动表达或回应对方','借六合/三合之势推进关系','关注应爻与用神互动'],risks:['空亡主缘分未至','月破主感情波动','世应相冲主意见不合'],do:['真诚沟通','观察对方态度','避免情绪化'],dont:['操之过急','翻旧账','冷战拖延']},
+      '事业合作':{opps:['借势三合局聚合资源','争取上级/贵人支持','用神旺相时推进项目'],risks:['官鬼持世压力重','兄弟爻动主竞争','月破主计划受阻'],do:['明确权责','保留书面记录','稳步进取'],dont:['轻信口头承诺','贸然跳槽','独断专行']},
+      '学习考试':{opps:['父母爻旺利文运','官鬼爻生父母利功名','静下心来查漏补缺'],risks:['财爻动克父母主分心','子孙爻动克官鬼主懈怠'],do:['制定计划','专注基础','请教师长'],dont:['临时抱佛脚','贪多嚼不烂','沉迷娱乐']},
+      '出行移动':{opps:['世爻旺相利出行','用神生世主一路顺风','官鬼安静无大阻'],risks:['官鬼发动主旅途不顺','月破空亡主延误'],do:['提前规划','检查交通','保持联络'],dont:['疲劳驾驶','临时改道','携带贵重物品招摇']},
+      '签约交易':{opps:['父母爻旺利文书','财爻旺相利成交','应爻生世主对方配合'],risks:['兄弟爻动主破财','官鬼发动主合同陷阱','空亡主签约无效'],do:['逐条核对条款','保留证据','必要时延后'],dont:['口头承诺代替合同','冲动签约','忽视违约责任']},
+      '人际沟通':{opps:['应爻生世主对方有助','三合局主多方和合','父母爻旺利解释澄清'],risks:['应爻克世主对方抵触','朱雀动主口舌','月破主关系裂痕'],do:['换位思考','委婉表达','寻找共同利益'],dont:['指责对方','激化矛盾','背后议论']},
+      '财务决策':{opps:['妻财爻旺相主财运','子孙爻动生财主财源','三合财局主大额进益'],risks:['兄弟爻动主破财','财爻空亡主落空','官鬼发动主官方损耗'],do:['稳健理财','分散风险','见好就收'],dont:['冲动投资','借贷冒险','贪图暴利']},
+      '健康倾向':{opps:['子孙爻旺相主康复','世爻旺相主体质','官鬼安静无病扰'],risks:['官鬼爻动主病症','世爻月破主身体虚弱','忌神旺相主反复'],do:['及早就医','调整作息','饮食清淡'],dont:['讳疾忌医','过度劳累','乱服药物']},
+      '失物寻找':{opps:['妻财爻旺相主可寻','子孙爻动主失物自回','用神生世主易得'],risks:['财爻空亡主难寻','官鬼发动主被盗窃','月破主已损坏'],do:['回忆最后位置','扩大搜索','询问周边'],dont:['拖延不报','随意放弃','轻信陌生人']},
+      '二选一决策':{opps:['比较用神旺衰','看世应生克','参考动爻所主'],risks:['两爻均衰主皆不利','用神伏藏主时机未到'],do:['列出优劣','听取建议','小步验证'],dont:['凭感觉决断','忽视关键风险','反复无常']},
+      '其他':{opps:['以用神旺衰定吉凶','动爻为事之机','世爻为我之状态'],risks:['用神空破主事不成','忌神发动主有阻'],do:['稳扎稳打','审时度势','顺势而为'],dont:['逆势而为','贸然行动','犹豫不决']}
+    };
+    const scene=LIUYAO_SCENE[questionType]||LIUYAO_SCENE['其他'];
+    const plainOpps=[...(dongAny?[`${dongCount}爻发动，事有变动之机`,`用神${yongMap.target}临${yongYao.zhi}(${yongYao.zhiWx})`]:['无动爻，事态平稳'])];
+    if(sanHe.length)plainOpps.push(sanHe.map(s=>s.name+'主事有聚合之势').join('，'));
+    if(liuHe.length)plainOpps.push(liuHe.map(h=>h.name+'主和合之象').join('，'));
+    plainOpps.push(...scene.opps.slice(0,2));
+    const plainRisks=[...scene.risks.slice(0,2)];
+    if(yuePoLines.length)plainRisks.unshift(`月破：第${yuePoLines.join('、')}爻逢月破(${yuePoZhi})`);
+    if(!plainRisks.length)plainRisks.push('暂无明显险象');
+    const plainDoAct=[...(dongAny?['观察动爻所主之事','顺势调整','参考用神旺衰']:['保持现状','蓄势待发']),...scene.do.slice(0,2)];
+    const plainDontAct=[...(dayRiRelation.includes('受制')?['不宜逆势而为','忌贸然决策']:['忌无端变动']),...scene.dont.slice(0,2)];
     const plain={
-      state:`六爻起得「${benGua.name}」${dongAny?`变「${bianGua.name}」`:''}，第${dongPositions.join('、')||'无'}爻动。世爻第${shiLine}爻，应爻第${yingLine}爻。卦宫${palace}(${palaceWx})。用神${yongMap.target}${yongFound?'·'+yongYao.liuQin+' '+yongYao.gz:'（卦中无此六亲，伏藏待查）'}。`,
+      state:`六爻起得「${benPan.guaName}」${dongAny?`变「${bianGuaName}」`:''}，第${dongPositions.join('、')||'无'}爻动。世爻第${shiLine}爻，应爻第${yingLine}爻。卦宫${palace}(${palaceWx})。问「${topic}」以${yongMap.target}为用神${yongFound?'，现临'+yongYao.liuQin+' '+yongYao.gz:'（卦中无此六亲，伏藏待查）'}。`,
       tendency:dongAny?(dayRiRelation.includes('得助')||dayRiRelation.includes('比和')?'宜主动':'宜谨慎'):'宜等待',
-      opps:dongAny?[`${dongCount}爻发动，事有变动之机`,`用神${yongMap.target}临${yongYao.zhi}(${yongYao.zhiWx})`]:['无动爻，事态平稳'],
-      risks:yuePoLines.length?[`月破：第${yuePoLines.join('、')}爻逢月破(${yuePoZhi})`,'卦变需防反复']:['暂无明显险象'],
-      doAct:dongAny?['观察动爻所主之事','顺势调整','参考用神旺衰']:['保持现状','蓄势待发'],
-      dontAct:dayRiRelation.includes('受制')?['不宜逆势而为','忌贸然决策']:['忌无端变动'],
-      signals:[`本卦${benGua.name}`,`变卦${bianGua.name}`,`动爻${dongCount}个`,`世${shiLine}应${yingLine}`,`用神${yongMap.target}`,`空亡${kongWang}`,`月破${yuePoZhi}`],
-      env:`卦宫五行${palaceWx}定六亲，日辰${baZi.day.gz}日支${baZi.day.zhi}(${dayZhiWx})${dayRiRelation}`,
+      opps:plainOpps,
+      risks:plainRisks,
+      doAct:plainDoAct,
+      dontAct:plainDontAct,
+      signals:[`本卦${benPan.guaName}`,`变卦${bianGuaName}`,`动爻${dongCount}个`,`世${shiLine}应${yingLine}`,`用神${yongMap.target}`,`空亡${kongWang}`,`月破${yuePoZhi}`,sanHeStr,liuHeStr],
+      env:`卦宫五行${palaceWx}定六亲，日辰${dayGz}日支${baZi.day.zhi}(${dayZhiWx})对用神${dayRiRelation}${fuShenStr?'；'+fuShenStr:''}`,
       reviewDays:21,
       sources:[
         {type:'rule',desc:'六爻以铜钱摇出六爻，6老阴、7少阳、8少阴、9老阳，老阴老阳为动爻'},
-        {type:'rule',desc:`本卦${benGua.name}，变卦${bianGua.name}，动爻位置${dongPositions.join('、')||'无'}`},
-        {type:'rule',desc:`纳甲：上卦${upGua.n}、下卦${dnGua.n}，卦宫${palace}(${palaceWx})`},
+        {type:'rule',desc:`本卦${benPan.guaName}，变卦${bianGuaName}，动爻位置${dongPositions.join('、')||'无'}`},
+        {type:'rule',desc:`纳甲：卦宫${palace}(${palaceWx})，六神依日干${baZi.day.gan}起`},
         {type:'rule',desc:`世应：世${shiLine}爻、应${yingLine}爻`},
         {type:'rule',desc:`用神规则：${questionType}→${yongMap.target}（${yongMap.desc}）`},
-        {type:'rule',desc:`空亡：日柱${baZi.day.gz}，旬空${kongWang}`},
+        {type:'rule',desc:`空亡：日柱${dayGz}，旬空${kongWang}`},
         {type:'rule',desc:`月破：月建${baZi.month.zhi}冲${yuePoZhi}`},
-        {type:'rule',desc:`日辰：${baZi.day.gz}日支${baZi.day.zhi}(${dayZhiWx})对用神${dayRiRelation}`}
+        {type:'rule',desc:`日辰：${dayGz}日支${baZi.day.zhi}(${dayZhiWx})对用神${dayRiRelation}`},
+        {type:'rule',desc:`三合六合：${sanHeStr}；${liuHeStr}`},
+        {type:'rule',desc:`伏神：${fuShenArr.length?fuShenArr.map(f=>`第${f.hostPosition}爻伏${f.liuQin}${f.naJia}`).join('，'):'无伏神'}`},
+        {type:'rule',desc:`卦辞：${(benPan.guaCi||'').slice(0,40)}${(benPan.guaCi||'').length>40?'…':''}`}
       ]
     };
     return{name:'六爻',result:{
-      benGua:benGua.name,bianGua:bianGua.name,yaos:yaoDetails,dongCount,dongPositions,
-      palace,palaceWx,shiLine,yingLine,naJia,questionType,topic,
+      benGua:benPan.guaName,bianGua:bianGuaName,huGua:huGuaName,yaos:yaoDetails,dongCount,dongPositions,
+      palace,palaceWx,shiLine,yingLine,naJia:yaoDetails.map(y=>y.gz),questionType,topic,
       yongShen:{target:yongMap.target,yao:yongYao,desc:yongMap.desc,found:yongFound},
       kongWang,yuePo:{zhi:yuePoZhi,lines:yuePoLines},dayRiRelation,
-      dayGanWx:dayGanWx, // 兼容旧字段：日干五行
-      dayZhiWx:dayZhiWx, // 日支五行（日辰生克实际所用）
-      dayGan:baZi.day.gan, // 日干（用于起六神）
-      dayGz:baZi.day.gz    // 日柱干支
+      dayGanWx,dayZhiWx,dayGan:baZi.day.gan,dayGz,
+      fuShen:fuShenArr,pangFuShen:pangFuShenArr,sanHe,liuHe,
+      guaCi:benPan.guaCi||'',yaoCi:benPan.yaoCi||[],tuanCi:benPan.tuanCi||'',shenYao:benPan.shenYao
     },plain};
   }
   function liuYao(date){
@@ -427,87 +495,116 @@
     return liuYaoByYaos(yaos,'其他',{date,note:'时间起卦，六爻为随机生成'});
   }
 
-  // ============ 塔罗（22 大阿卡纳，四种牌阵）============
-  const TAROT=[
-    {n:'愚者',k:'0',up:'新的开始·天真·自由',rev:'鲁莽·盲目·冒险',el:'风'},
-    {n:'魔术师',k:'1',up:'创造·掌控·行动',rev:'欺骗·滥用·未发挥',el:'水星'},
-    {n:'女祭司',k:'2',up:'直觉·静默·智慧',rev:'隐秘·压抑·无知',el:'月'},
-    {n:'皇后',k:'3',up:'丰盛·孕育·温柔',rev:'依赖·过度·停滞',el:'金星'},
-    {n:'皇帝',k:'4',up:'权威·秩序·掌控',rev:'专制·僵化·软弱',el:'白羊'},
-    {n:'教皇',k:'5',up:'信仰·传统·指引',rev:'反叛·教条·误导',el:'金牛'},
-    {n:'恋人',k:'6',up:'选择·结合·和谐',rev:'分离·错误选择·失衡',el:'双子'},
-    {n:'战车',k:'7',up:'意志·胜利·前进',rev:'失控·挫败·方向迷失',el:'巨蟹'},
-    {n:'力量',k:'8',up:'勇气·柔韧·驾驭',rev:'软弱·自我怀疑·失控',el:'狮子'},
-    {n:'隐士',k:'9',up:'内省·独行·智慧',rev:'孤立·固执·迷失',el:'处女'},
-    {n:'命运之轮',k:'10',up:'转机·循环·机遇',rev:'逆转·厄运·阻滞',el:'木星'},
-    {n:'正义',k:'11',up:'公正·因果·决断',rev:'不公·偏颇·逃避责任',el:'天秤'},
-    {n:'倒吊人',k:'12',up:'暂停·视角·放下',rev:'无谓牺牲·停滞·抗拒',el:'海王'},
-    {n:'死神',k:'13',up:'终结·转化·重生',rev:'抗拒变化·停滞·腐朽',el:'天蝎'},
-    {n:'节制',k:'14',up:'平衡·调和·耐心',rev:'失衡·过度·不协调',el:'射手'},
-    {n:'恶魔',k:'15',up:'束缚·欲望·物质',rev:'释放·觉醒·挣脱',el:'摩羯'},
-    {n:'高塔',k:'16',up:'突变·崩解·启示',rev:'延缓·避免·内在动荡',el:'火星'},
-    {n:'星星',k:'17',up:'希望·灵感·疗愈',rev:'绝望·失落·盲目',el:'水瓶'},
-    {n:'月亮',k:'18',up:'直觉·幻象·潜意识',rev:'澄清·释放恐惧·真相',el:'双鱼'},
-    {n:'太阳',k:'19',up:'成功·喜悦·活力',rev:'暂迟·过度乐观·黯淡',el:'太阳'},
-    {n:'审判',k:'20',up:'觉醒·重生·决断',rev:'犹豫·自责·错失良机',el:'冥王'},
-    {n:'世界',k:'21',up:'圆满·完成·整合',rev:'未完成·停滞·残缺',el:'土星'}
-  ];
+  // ============ 塔罗（78 张全牌库 + 多种牌阵）============
+  // 大阿卡纳本地化（繁体转简中）
+  const TAROT_NAME_ZH={
+    'the-fool':'愚者','the-magician':'魔术师','the-high-priestess':'女祭司','the-empress':'皇后','the-emperor':'皇帝',
+    'the-hierophant':'教皇','the-lovers':'恋人','the-chariot':'战车','strength':'力量','the-hermit':'隐士',
+    'wheel-of-fortune':'命运之轮','justice':'正义','the-hanged-man':'倒吊人','death':'死神','temperance':'节制',
+    'the-devil':'恶魔','the-tower':'高塔','the-star':'星星','the-moon':'月亮','the-sun':'太阳','judgement':'审判','the-world':'世界'
+  };
+  const SUIT_NAME={wands:'权杖',cups:'圣杯',swords:'宝剑',pentacles:'星币',coins:'星币'};
+  const SUIT_WX={wands:'火',cups:'水',swords:'风',pentacles:'土',coins:'土'};
+  const MAJOR_WX={
+    'the-fool':'风','the-magician':'水星','the-high-priestess':'月','the-empress':'金星','the-emperor':'火星',
+    'the-hierophant':'木星','the-lovers':'水星','the-chariot':'巨蟹','strength':'狮子','the-hermit':'处女',
+    'wheel-of-fortune':'木星','justice':'金星','the-hanged-man':'海王','death':'冥王','temperance':'射手',
+    'the-devil':'土星','the-tower':'火星','the-star':'水瓶','the-moon':'双鱼','the-sun':'太阳','judgement':'冥王','the-world':'土星'
+  };
+  function getTarotKit(){return (typeof window!=='undefined'&&window.TarotKit)?window.TarotKit:(typeof global!=='undefined'&&global.TarotKit?global.TarotKit:null);}
+  function tarotCardName(card){return card.arcana==='major'?(TAROT_NAME_ZH[card.id]||(card.name&&card.name.zh)||card.id):(SUIT_NAME[card.suit]||card.suit||'')+(card.number||'');}
+  function tarotCardElement(card){return card.arcana==='major'?(MAJOR_WX[card.id]||''):(SUIT_WX[card.suit]||'');}
+  function tarotCardMeaning(card,reverse){
+    const m=card.meaning||{};
+    const side=reverse?(m.reversed||{}):(m.upright||{});
+    return side.zh||side.en||card.coreKeyword&&card.coreKeyword.zh||card.coreKeyword&&card.coreKeyword.en||'';
+  }
+  // 在模块加载时构建 78 张牌的内部缓存；若 TarotKit 未加载则留空，运行时由 tarot 兜底
+  const TAROT=(function(){
+    const T=getTarotKit();
+    if(!T||!T.cards)return [];
+    return T.cards.map(c=>({id:c.id,name:tarotCardName(c),key:String(c.number||0),up:c.meaning&&c.meaning.upright?c.meaning.upright.zh:'',rev:c.meaning&&c.meaning.reversed?c.meaning.reversed.zh:'',el:tarotCardElement(c),arcana:c.arcana,suit:c.suit}));
+  })();
+  // 牌阵配置
+  const SPREAD_CFG={
+    single:{name:'单张牌阵',pos:['今日指引']},
+    three:{name:'三牌阵（过去-现在-未来）',pos:['过去','现在','未来']},
+    relation:{name:'关系牌阵（我-对方-关系现状）',pos:['我','对方','关系现状']},
+    choice:{name:'二选一牌阵（选项A-选项B-建议）',pos:['选项A','选项B','建议']},
+    celtic:{name:'凯尔特十字牌阵',pos:['现状','阻碍','根基','过去','目标','未来','自我','环境','希望','结果']}
+  };
+  // 基于日期种子的确定性抽牌（替代 Math.random，保证同一时刻结果稳定）
+  function seededDraw(seed,count,reverseMode){
+    const T=getTarotKit();
+    const all=T&&T.cards?T.cards:(TAROT&&TAROT.length?TAROT.map(t=>{return{id:t.id,name:{zh:t.name,en:t.name},arcana:t.arcana||'major',suit:t.suit,meaning:{upright:{zh:t.up},reversed:{zh:t.rev}}}}):[]);
+    if(!all.length)return [];
+    let rng=seed>>>0;
+    function next(){rng=(rng*1664525+1013904223)>>>0;return rng/4294967296;}
+    const deck=[...all];
+    for(let i=deck.length-1;i>0;i--){const j=Math.floor(next()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}
+    const pickCount=Math.min(count,deck.length);
+    return deck.slice(0,pickCount).map(card=>{
+      let reverse=false;
+      if(reverseMode==='仅正位')reverse=false;
+      else if(reverseMode==='仅逆位')reverse=true;
+      else reverse=next()<0.5;
+      return {card,reverse};
+    });
+  }
   function tarot(date,spread,reverseMode){
-    // 兼容旧调用 tarot(date)：默认三牌阵
     spread=spread||'three';
     reverseMode=reverseMode||'随机正逆位';
-    const seed=date.getTime();
-    let rng=seed;
-    function r(){rng=(rng*9301+49297)%233280;return rng/233280;}
-    const used=new Set();
-    function pick(){
-      let i;do{i=Math.floor(r()*22);}while(used.has(i));used.add(i);return i;
-    }
-    // 牌阵配置：位置名 + 牌阵说明
-    const SPREAD_CFG={
-      single:{name:'单张牌阵',pos:['今日指引']},
-      three:{name:'三牌阵（过去-现在-未来）',pos:['过去','现在','未来']},
-      relation:{name:'关系牌阵（我-对方-关系现状）',pos:['我','对方','关系现状']},
-      choice:{name:'二选一牌阵（选项A-选项B-建议）',pos:['选项A','选项B','建议']}
-    };
     const cfg=SPREAD_CFG[spread]||SPREAD_CFG['three'];
     const pos=cfg.pos;
-    // 正逆位：仅正位/仅逆位/随机
-    function isReverse(){
-      if(reverseMode==='仅正位')return false;
-      if(reverseMode==='仅逆位')return true;
-      return r()<0.5;
+    const seed=date.getTime();
+    const drawn=seededDraw(seed,pos.length,reverseMode);
+    if(!drawn.length){
+      return{name:'塔罗',result:{error:'塔罗牌库未加载',spread},plain:{state:'塔罗牌库未加载',tendency:'不可用',opps:['请检查 js/vendor/tarot-kit.min.js 是否加载'],risks:[],doAct:[],dontAct:[],signals:['库缺失'],env:'',reviewDays:0,sources:[{type:'rule',desc:'需要 tarot-kit 牌库'}]}};
     }
-    // 所有牌阵均用 22 大阿卡纳，同阵不重复抽牌
-    const cards=pos.map(p=>{
-      const idx=pick();
-      const reverse=isReverse();
-      const card=TAROT[idx];
-      return{pos:p,name:card.n,key:card.k,reverse,meaning:reverse?card.rev:card.up,element:card.el,up:!reverse};
+    const cards=drawn.map((d,i)=>{
+      const c=d.card;
+      return{pos:pos[i],name:tarotCardName(c),nameZh:tarotCardName(c),key:String(c.number||0),reverse:d.reverse,meaning:tarotCardMeaning(c,d.reverse),element:tarotCardElement(c),up:!d.reverse,id:c.id,arcana:c.arcana,suit:c.suit};
     });
     const total=cards.length;
     const allUp=cards.filter(c=>c.up).length;
     const upRatio=total>0?allUp/total:0;
-    const hasNeg=cards.some(c=>c.name==='高塔'||c.name==='恶魔'||(c.reverse&&(c.name==='死神')));
+    const negNames=['高塔','恶魔','死神','宝剑十','宝剑九','宝剑五'];
+    const hasNeg=cards.some(c=>negNames.includes(c.name)||(c.reverse&&['死神','高塔','恶魔','宝剑十','宝剑九'].includes(c.name)));
     const cardStr=cards.map(c=>`${c.pos}「${c.name}${c.reverse?'(逆)':''}」`).join('、');
-    // 关键牌：三牌阵取现在位（中位），其余牌阵取末位
-    const focus=cards[spread==='three'?1:total-1];
+    const focusIndex=(spread==='three'?1:(spread==='celtic'?9:total-1));
+    const focus=cards[focusIndex]||cards[total-1];
+    const majorCount=cards.filter(c=>c.arcana==='major').length;
+    const minorCount=cards.filter(c=>c.arcana==='minor').length;
+    const elements=[...new Set(cards.map(c=>c.element).filter(Boolean))];
+    const wxCount={};
+    elements.forEach(e=>wxCount[e]=(wxCount[e]||0)+cards.filter(c=>c.element===e).length);
+    const dominantEl=Object.keys(wxCount).sort((a,b)=>wxCount[b]-wxCount[a])[0]||'';
+    const elHints={'火':'行动力强，宜主动推进','水':'情绪与直觉主导，宜倾听内心','风':'思考与沟通，宜收集信息','土':'务实稳定，宜稳扎稳打','风/水':'思绪起伏，宜先整理再行动'};
+    const elementHint=elHints[dominantEl]||'能量多元，宜因时制宜';
+    const suitHints={wands:'权杖多主行动与创造力，宜积极开拓',cups:'圣杯多主情感与人际，宜重视关系',swords:'宝剑多主思考与冲突，宜理性沟通',pentacles:'星币多主物质与务实，宜脚踏实地',coins:'星币多主物质与务实，宜脚踏实地'};
+    const suitCounts={};cards.filter(c=>c.suit).forEach(c=>suitCounts[c.suit]=(suitCounts[c.suit]||0)+1);
+    const dominantSuit=Object.keys(suitCounts).sort((a,b)=>suitCounts[b]-suitCounts[a])[0]||'';
+    const suitHint=suitHints[dominantSuit]||'';
     const plain={
-      state:`塔罗${cfg.name}：${cardStr}。`,
+      state:`塔罗${cfg.name}（${total}张，${minorCount}张小阿卡纳）：${cardStr}。`,
       tendency:upRatio>=0.6?'宜主动':(upRatio<=0.4?'宜谨慎':'宜等待'),
-      opps:[`${focus.pos}「${focus.name}」：${focus.meaning}`,upRatio>=0.5?'整体能量积极，可把握当下':''],
+      opps:[`${focus.pos}「${focus.name}」：${focus.meaning}`,upRatio>=0.5?'整体能量积极，可把握当下':'',elementHint,suitHint].filter(Boolean),
       risks:hasNeg?[`出现挑战牌，需正视而非回避`,`末位${cards[total-1].meaning}`]:['暂无明显阻碍信号'],
-      doAct:['参考关键位的牌义行动','结合整体牌阵反思'],
+      doAct:['参考关键位的牌义行动','结合整体牌阵反思','注意正逆位组合',`关注${dominantEl||'整体'}元素动向`].filter(Boolean),
       dontAct:hasNeg?['忌回避问题','忌冲动对抗']:['忌固步自封'],
       signals:cards.map(c=>`${c.pos}：${c.name}(${c.up?'正':'逆'})`),
-      env:`整体正位 ${allUp}/${total}，元素含 ${[...new Set(cards.map(c=>c.element))].join('、')}`,
+      env:`整体正位 ${allUp}/${total}，大阿卡纳 ${majorCount} 张，小阿卡纳 ${minorCount} 张；主导元素 ${dominantEl||'—'}（${elementHint}）${suitHint?'；'+suitHint:''}`,
       reviewDays:30,
       sources:[
-        {type:'rule',desc:`塔罗采用22张大阿卡纳${cfg.name}`},
-        {type:'rule',desc:'随机抽取并随机正逆位，同阵不重复抽牌'}
+        {type:'rule',desc:`塔罗采用78张全牌库${cfg.name}`},
+        {type:'rule',desc:'基于时间种子随机抽取并随机正逆位，同阵不重复抽牌'},
+        {type:'rule',desc:`牌阵位置：${pos.join('→')}`},
+        {type:'rule',desc:`正逆位模式：${reverseMode}`},
+        {type:'rule',desc:`元素分布：${elements.join('、')||'—'}`},
+        {type:'rule',desc:`大小阿卡纳：大阿卡纳${majorCount}张，小阿卡纳${minorCount}张`}
       ]
     };
-    return{name:'塔罗',result:{cards,spread},plain};
+    return{name:'塔罗',result:{cards,spread,spreadName:cfg.name},plain};
   }
 
   // ============ 八字（四柱展示+五行+十神+大运）============
@@ -902,6 +999,111 @@
     if(a==='火'&&b==='金')return true;return false;
   }
 
+  // ============ 奇门遁甲（qimendunjia-standalone 离线排盘）============
+  const QIMEN_GOD_WX={值符:'土',腾蛇:'火',太阴:'金',六合:'木',白虎:'金',玄武:'水',九地:'土',九天:'金'};
+  const QIMEN_STAR_WX={天蓬:'水',天任:'土',天冲:'木',天辅:'木',天英:'火',天芮:'土',天柱:'金',天心:'金',禽芮:'土'};
+  const QIMEN_GATE_WX={休门:'水',生门:'土',伤门:'木',杜门:'木',景门:'火',死门:'土',惊门:'金',开门:'金'};
+  const QIMEN_SCENE={
+    '感情关系':{targets:['六合','天乙','休门'],opps:['看六合宫与乙庚关系','天乙生用神则对方有情','休门旺相主感情和谐'],risks:['白虎/玄武入感情宫主口舌或隐瞒','死门主关系停滞'],do:['真诚沟通','观察对方态度','创造相处机会'],dont:['冲动表白','冷战','疑神疑鬼']},
+    '事业合作':{targets:['开门','值符','日干'],opps:['开门旺相利事业','值符生用神得上级助','日干乘吉神利我方'],risks:['惊门主是非变动','白虎主压力竞争','空亡主机会不实'],do:['明确目标','借助贵人','稳步推进'],dont:['独断专行','轻信口头承诺','急于求成']},
+    '学习考试':{targets:['天辅','杜门','日干'],opps:['天辅生用神利文运','杜门旺主专注','景门旺主文书利'],risks:['惊门动主分心','玄武主迷糊'],do:['制定计划','专注基础','查漏补缺'],dont:['临时抱佛脚','贪多嚼不烂']},
+    '出行移动':{targets:['九天','马星','日干'],opps:['九天主远行顺利','开门旺相利出行','日干旺动身吉'],risks:['白虎主旅途阻滞','天蓬主风险','空亡主延误'],do:['提前规划','检查交通','保持联络'],dont:['疲劳驾驶','临时改道','夜间独行']},
+    '签约交易':{targets:['开门','日干','时干'],opps:['开门旺相利签约','日干时干相生主双方和合','值符临宫主有贵人'],risks:['惊门主合同纠纷','玄武主欺诈','空亡主签约无效'],do:['逐条核对','保留证据','选择吉时'],dont:['冲动签约','口头承诺','忽视违约责任']},
+    '人际沟通':{targets:['六合','日干','时干'],opps:['六合主和合','日干生时干主我方能推动','太阴主暗中得助'],risks:['腾蛇主口舌纠缠','白虎主冲突','玄武主隐瞒'],do:['换位思考','委婉表达','寻找共同利益'],dont:['指责对方','激化矛盾','背后议论']},
+    '财务决策':{targets:['生门','甲子戊','日干'],opps:['生门旺相主财源','戊+生门利投资','日干生门主我能得财'],risks:['天乙（庚金）克用神主破财','空亡主财落空','玄武主被骗'],do:['稳健理财','分散风险','见好就收'],dont:['冲动投资','借贷冒险','贪图暴利']},
+    '健康倾向':{targets:['天芮','日干','时干'],opps:['天芮受制主病轻','日干旺主体质可恢复','天心/乙奇主医药有效'],risks:['天芮旺而无制主病重','死门主病程缠绵','白虎主急症'],do:['及早就医','调整作息','饮食清淡'],dont:['讳疾忌医','过度劳累','乱服药物']},
+    '失物寻找':{targets:['时干','日干','玄武'],opps:['时干生用神主可寻','玄武退主失物自现','生门旺主可得'],risks:['时干空亡主难寻','玄武旺主被盗窃','死门主已损坏'],do:['回忆最后位置','扩大搜索','询问周边'],dont:['拖延不报','随意放弃','轻信陌生人']},
+    '二选一决策':{targets:['日干','时干','值符'],opps:['比较用神旺衰','看值符倾向','参考开门/生门'],risks:['两宫皆衰主皆不利','空亡宫选项多落空'],do:['列出优劣','听取建议','小步验证'],dont:['凭感觉决断','忽视关键风险','反复无常']},
+    '其他':{targets:['值符','日干','时干'],opps:['值符为事体','日干为我','时干为事'],risks:['用神入墓/空亡主无力','凶星克用神主有阻'],do:['稳扎稳打','审时度势','顺势而为'],dont:['逆势而为','贸然行动','犹豫不决']}
+  };
+  // 九宫标准排布（洛书数）：4 9 2 / 3 5 7 / 8 1 6
+  const QIMEN_LAYOUT=[[4,9,2],[3,5,7],[8,1,6]];
+  function qimenDunJia(date,questionType){
+    questionType=questionType||'其他';
+    const Q=(typeof window!=='undefined'&&window.QimenDunJia)?window.QimenDunJia:(typeof global!=='undefined'&&global.QimenDunJia?global.QimenDunJia:null);
+    if(!Q||!Q.calculate)return{name:'奇门遁甲',result:{error:'奇门遁甲排盘库未加载'},plain:{state:'奇门遁甲排盘库未加载',tendency:'不可用',opps:['请检查 js/vendor/qimendunjia-standalone.min.js 是否加载'],risks:[],doAct:[],dontAct:[],signals:['库缺失'],env:'',reviewDays:0,sources:[{type:'rule',desc:'需要 qimendunjia-standalone 排盘库'}]}};
+    const r=Q.calculate(date,{method:'时家',type:'三元'});
+    if(r.error)return{name:'奇门遁甲',result:{error:r.message||'排盘失败'},plain:{state:'奇门遁甲排盘失败',tendency:'不可用',opps:[],risks:[r.message||'排盘异常'],doAct:['请检查时间是否有效'],dontAct:[],signals:[r.message||'异常'],env:'',reviewDays:0,sources:[]}};
+    // 构建九宫数据（按洛书布局）
+    const palaces=[];
+    QIMEN_LAYOUT.forEach((row,ri)=>{
+      row.forEach((num,ci)=>{
+        const key=String(num);
+        const base=(r.raw.diPan&&r.raw.diPan[key])||'';
+        const tianpan=(r.raw.tianPan&&r.raw.tianPan[key])||'';
+        const star=(r.raw.jiuXing&&r.raw.jiuXing[key])||'';
+        const gate=(r.raw.baMen&&r.raw.baMen[key])||'';
+        const god=(r.raw.baShen&&r.raw.baShen[key])||'';
+        const anGan=(r.raw.anGan&&r.raw.anGan[key])||'';
+        palaces.push({num,key,row:ri,col:ci,base,tianpan,star,gate,god,anGan,wx:{god:QIMEN_GOD_WX[god]||'',star:QIMEN_STAR_WX[star]||'',gate:QIMEN_GATE_WX[gate]||''}});
+      });
+    });
+    const info=r.info;
+    const scene=QIMEN_SCENE[questionType]||QIMEN_SCENE['其他'];
+    // 找用神宫：优先取第一个 target 对应的宫
+    const targetMap={值符:'值符',天乙:'天心',六合:'六合',天辅:'天辅',开门:'开门',生门:'生门',休门:'休门',杜门:'杜门',景门:'景门',死门:'死门',惊门:'惊门',伤门:'伤门',天芮:'天芮',甲子戊:'戊',日干:info.siZhu.day[0],时干:info.siZhu.time[0]};
+    let targetPal=null,targetName='';
+    for(const t of scene.targets){
+      const tk=targetMap[t]||t;
+      targetPal=palaces.find(p=>{
+        if(t==='日干')return p.tianpan.includes(tk)||p.base.includes(tk);
+        if(t==='时干')return p.tianpan.includes(tk)||p.base.includes(tk);
+        if(t==='甲子戊')return p.base.includes('戊')||p.tianpan.includes('戊');
+        return p.star===tk||p.gate===tk||p.god===tk||p.tianpan.includes(tk)||p.base.includes(tk);
+      });
+      if(targetPal){targetName=t;break;}
+    }
+    const dayGan=info.siZhu.day[0],timeGan=info.siZhu.time[0];
+    const dayPal=palaces.find(p=>p.tianpan.includes(dayGan)||p.base.includes(dayGan));
+    const timePal=palaces.find(p=>p.tianpan.includes(timeGan)||p.base.includes(timeGan));
+    const targetGateWx=targetPal?targetPal.wx.gate:'';
+    const dayGateWx=dayPal?dayPal.wx.gate:'';
+    let relation='';
+    if(targetGateWx&&dayGateWx){
+      if(targetGateWx===dayGateWx)relation='比和';
+      else if(wxSheng(dayGateWx,targetGateWx))relation='日生生门（用神），得助';
+      else if(wxKe(dayGateWx,targetGateWx))relation='日克用神，可控';
+      else if(wxSheng(targetGateWx,dayGateWx))relation='用神生日干，泄气';
+      else if(wxKe(targetGateWx,dayGateWx))relation='用神克日干，受制';
+    }
+    const targetStar=targetPal?targetPal.star:'';
+    const targetGod=targetPal?targetPal.god:'';
+    const opps=[...scene.opps];
+    if(targetPal)opps.unshift(`${targetName}落${targetPal.key}宫（${targetPal.god}·${targetPal.star}·${targetPal.gate}）`);
+    const risks=[...scene.risks];
+    if(targetPal && (targetPal.god==='白虎'||targetPal.god==='玄武'))risks.unshift(`${targetPal.god}临用神宫，需防${targetPal.god==='白虎'?'压力冲突':'欺瞒暗算'}`);
+    if(targetPal && !targetPal.tianpan && !targetPal.star)risks.unshift('用神宫空亡，力量不实');
+    const plain={
+      state:`奇门遁甲时家排盘：${info.jieqi}，${info.ju}，值符${info.fu.replace('值符：','')}，值使${info.shi.replace('值使：','')}。问「${questionType}」以${targetName||scene.targets[0]}为用神${targetPal?'，落'+targetPal.key+'宫':'（未明显落宫）'}。`,
+      tendency:relation.includes('得助')||relation.includes('比和')?'宜主动':(relation.includes('受制')||relation.includes('泄气')?'宜谨慎':'宜观察'),
+      opps:opps,
+      risks:risks,
+      doAct:[...scene.do],
+      dontAct:[...scene.dont],
+      signals:[
+        `局：${info.ju}`,
+        `值符：${info.fu}`,
+        `值使：${info.shi}`,
+        `空亡：${info.kong}`,
+        `用神：${targetName||'—'}`,
+        `用神宫：${targetPal?targetPal.key+'宫':'—'}`,
+        `日干${dayGan}落${dayPal?dayPal.key+'宫':'—'}`,
+        `时干${timeGan}落${timePal?timePal.key+'宫':'—'}`,
+        `日用神关系：${relation||'—'}`
+      ],
+      env:`四柱 ${info.siZhu.year} ${info.siZhu.month} ${info.siZhu.day} ${info.siZhu.time}，旬首 ${info.xunshou}。九宫排布以洛书数为准，中五宫寄坤二宫。`,
+      reviewDays:30,
+      sources:[
+        {type:'rule',desc:'奇门遁甲以二十四节气定局，拆补/置闰/茅山法起局数'},
+        {type:'rule',desc:`当前局：${info.jieqi} ${info.ju}，值符${info.fu}，值使${info.shi}`},
+        {type:'rule',desc:`空亡：${info.kong}，旬首：${info.xunshou}`},
+        {type:'rule',desc:`用神规则：${questionType}→${scene.targets.join('/')}`},
+        {type:'rule',desc:`日干${dayGan}落${dayPal?dayPal.key+'宫':'—'}，时干${timeGan}落${timePal?timePal.key+'宫':'—'}`}
+      ]
+    };
+    return{name:'奇门遁甲',result:{info,palaces,dayPal,timePal,targetPal,targetName,relation,questionType},plain};
+  }
+
   // ============ 紫微斗数（iztro 离线排盘 + 基础解读）============
   const ZW_STAR_HINTS={
     '紫微':{tend:'宜稳健把握',opp:'发挥领导与统筹能力',risk:'期望过高或过于固执',do:'制定中长期计划',dont:'独断专行'},
@@ -1124,9 +1326,10 @@
         if(askInfo && askInfo.birthInfo)return ziWeiDouShu(askInfo.birthInfo);
         return null;
       }
+      case '奇门遁甲':return qimenDunJia(date,questionType);
       default:return null;
     }
   }
 
-  global.ShuShu={compute,xiaoLiuRen,meiHua,meiHuaByInput,liuYao,liuYaoByYaos,tarot,baZi,baZiByBirth,ziWeiDouShu,XLR_POS,BAGUA,TAROT};
+  global.ShuShu={compute,xiaoLiuRen,meiHua,meiHuaByInput,liuYao,liuYaoByYaos,tarot,baZi,baZiByBirth,ziWeiDouShu,qimenDunJia,XLR_POS,BAGUA,TAROT};
 })(window);
