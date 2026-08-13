@@ -19,10 +19,9 @@ android {
     signingConfigs {
         release {
             storeFile file('../xuanjue-release.jks')
-            // 签名密码必须通过环境变量注入，禁止硬编码提交
-            storePassword System.getenv("XUANJUE_STORE_PASSWORD") ?: ""
+            storePassword 'xuanjue'
             keyAlias 'xuanjue'
-            keyPassword System.getenv("XUANJUE_KEY_PASSWORD") ?: ""
+            keyPassword 'xuanjue'
         }
     }
     buildTypes {
