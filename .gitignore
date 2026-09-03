@@ -14,3 +14,7 @@ android/*.jks
 
 # 备份
 *.backup.json
+
+# 构建产物
+release/
+assets/

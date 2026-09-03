@@ -2,7 +2,7 @@
 (function(global){
   const $=s=>document.querySelector(s);
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
-  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null,online:true,deferredPrompt:null,installable:false};
+  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null,online:true,deferredPrompt:null,installable:false,fxYear:new Date().getFullYear()};
   let remindTimeout=null, remindInterval=null;
   let _aiAbort=null; // AI 请求取消控制器（全局，供 ask/result/追问共用）
 
@@ -374,14 +374,16 @@
     if(state.clockInterval){clearInterval(state.clockInterval);state.clockInterval=null;}
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
     const c=$('#page-container');
-    if(state.tab==='home')c.innerHTML=pageHome();
+    if(state.tab==='home'&&state.subPage==='feixing')c.innerHTML=pageFeixing();
+    else if(state.tab==='home')c.innerHTML=pageHome();
     else if(state.tab==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
     else if(state.tab==='classics')c.innerHTML=pageClassics();
     else if(state.tab==='me')c.innerHTML=pageMe();
     bindTab();
   }
   function bindTab(){
-    if(state.tab==='home')bindHome();
+    if(state.tab==='home'&&state.subPage==='feixing')bindFeixing();
+    else if(state.tab==='home')bindHome();
     else if(state.tab==='ask')bindAsk();
     else if(state.tab==='classics')bindClassics();
     else if(state.tab==='me')bindMe();
@@ -493,7 +495,7 @@
     // 此刻大六壬（精简）
     h+=`<div class="card">`;
     h+=`<h3>此刻大六壬时课</h3>`;
-    h+=`<div class="time-row"><span class="k">月将 ${yj.zhi}</span><span class="k">占时 ${comp.sc.zhi}（${comp.scStr}）</span></div>`;
+    h+=`<div class="time-row"><span class="k">月将 ${yj.zhi}</span><span class="k">占时 ${comp.ke.scStr}</span></div>`;
     h+=`<div class="one-line">${p.state}</div>`;
     h+=`<div class="tendency"><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
     if(p.risks.length)h+=`<div class="risk-tip">⚠ ${p.risks[0]}</div>`;
@@ -509,6 +511,13 @@
       h+=`<div class="recent-item" data-shu="${s}"><div><div class="ri-t">${s}</div><div class="ri-m">点击此刻起课</div></div><div class="ri-r">›</div></div>`;
     });
     h+=`</div></div>`;
+    // 九宫飞星（流年方位黑板）
+    h+=`<div class="card fx-entry-card">`;
+    h+=`<h3>九宫飞星 <span class="h-sub">流年方位</span></h3>`;
+    h+=`<div class="dc-desc">紫白飞星入中，看流年各方位吉凶、宜忌与布局建议。</div>`;
+    h+=`<div class="fx-mini" id="fxMini"></div>`;
+    h+=`<button class="btn primary block" id="btnFeixing">☉ 查看 ${state.fxYear} 飞星方位</button>`;
+    h+=`</div>`;
     // 决策对比助手（实时栏核心延伸：A/B 选项结构化决策）
     h+=`<div class="card decision-compare-card">`;
     h+=`<h3>决策对比助手 <span class="h-sub">二选一</span></h3>`;
@@ -548,6 +557,11 @@
       tick();
       state.clockInterval=setInterval(tick,1000);
     }
+    // 九宫飞星：迷你盘 + 入口
+    const fxMini=$('#fxMini');
+    if(fxMini)fxMini.innerHTML=fxMiniView(state.fxYear);
+    const btnFeixing=$('#btnFeixing');
+    if(btnFeixing)btnFeixing.onclick=()=>{state.subPage='feixing';renderTab();navEnter(()=>{state.subPage='';renderTab();},'feixing');};
     $('#btnViewBoard').onclick=()=>{
       const comp=computeDaliuren(new Date(),state.ask&&state.ask.bg.questionType||'其他');
       state.currentKe=comp;showDaliurenBoard(comp);
@@ -649,6 +663,21 @@
   const XLR_TOPICS=['求财','谋事','感情','出行','失物','等待消息','疾病倾向','人际沟通','其他'];
   const MOODS=['平静','焦虑','急切','犹豫','愤怒','期待','低落','迷茫'];
   const URGENT=['立即','今日','本周','不急'];
+  // 问题类型 → 推荐术数（选类型时自动预选，可在术数步骤调整）
+  const TYPE_SHU_MAP={
+    '感情关系':['大六壬','六爻'],
+    '事业合作':['大六壬','八字'],
+    '学习考试':['梅花易数','八字'],
+    '出行移动':['大六壬','小六壬'],
+    '签约交易':['大六壬','六爻'],
+    '人际沟通':['小六壬','塔罗'],
+    '财务决策':['大六壬','六爻'],
+    '健康倾向':['八字','大六壬'],
+    '失物寻找':['大六壬','六爻','梅花易数'],
+    '二选一决策':['六爻','塔罗'],
+    '其他':['大六壬']
+  };
+  function recShuFor(type){return TYPE_SHU_MAP[type]||['大六壬'];}
 
   function pageAsk(){
     const a=state.ask;const s=a.step;
@@ -681,14 +710,22 @@
     let h='<div class="field"><label>选择问题类型</label><div class="chips">';
     h+=TYPES.map(t=>`<span class="chip ${a.bg.questionType===t?'on':''}" data-type="${t}">${t}</span>`).join('');
     h+='</div></div>';
+    if(a.bg.questionType){
+      const rec=recShuFor(a.bg.questionType);
+      h+=`<div class="section-note">已推荐主术数「${rec[0]}」，另可搭配：${rec.slice(1).join(' · ')||'—'}（下一步可调整）</div>`;
+    }
     h+=`<button class="btn primary block" id="nextStep" ${a.bg.questionType?'':'disabled'}>下一步</button>`;
     return h;
   }
   function askStep2(a){
     const b=a.bg;
+    const moreOpen=a._moreOpen;
+    const hasMore=!!(b.mood||b.urgent||b.hasOption||b.persons||b.other||b.adviceType.length);
     let h='';
     h+=`<div class="field"><label>问题标题 <span class="req">*</span></label><input type="text" id="fTitle" value="${escAttr(b.title)}" placeholder="如：这段关系要不要继续"></div>`;
     h+=`<div class="field"><label>问题描述</label><textarea id="fDesc" placeholder="补充背景…">${esc(b.desc)}</textarea></div>`;
+    h+=`<div class="switch"><span>更多背景（可选）${hasMore?' · 已填写':''}</span><input type="checkbox" id="fMore" ${moreOpen?'checked':''}></div>`;
+    h+=`<div id="moreBox" style="${moreOpen?'':'display:none'}">`;
     h+=`<div class="field"><label>当前情绪</label><div class="chips">${MOODS.map(m=>`<span class="chip ${b.mood===m?'on':''}" data-mood="${m}">${m}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>紧急程度</label><div class="chips">${URGENT.map(u=>`<span class="chip ${b.urgent===u?'on':''}" data-urgent="${u}">${u}</span>`).join('')}</div></div>`;
     h+=`<div class="switch"><span>是否有明确选项</span><input type="checkbox" id="fHasOpt" ${b.hasOption?'checked':''}></div>`;
@@ -696,16 +733,19 @@
     h+=`<div class="field"><label>涉及人物</label><input type="text" id="fPersons" value="${escAttr(b.persons)}" placeholder="如：伴侣/同事"></div>`;
     h+=`<div class="field"><label>对方信息（可选，用于合盘）</label><input type="text" id="fOther" value="${escAttr(b.other)}" placeholder="出生日期时间"></div>`;
     h+=`<div class="field"><label>希望得到的建议类型</label><div class="chips">${['行动建议','风险提示','关系建议','时机建议'].map(t=>`<span class="chip ${b.adviceType.includes(t)?'on':''}" data-adv="${t}">${t}</span>`).join('')}</div></div>`;
+    h+=`</div>`;
     h+=`<div class="shike-cmd"><button class="btn ghost" id="prevStep">上一步</button><button class="btn primary" id="nextStep">下一步</button></div>`;
     return h;
   }
   function askStep3(a){
+    const rec=recShuFor(a.bg.questionType);
+    const chip=s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}${rec.includes(s)?'<i class="rec">荐</i>':''}</span>`;
     let h='';
     h+=`<div class="step-section"><div class="step-section-title">实时起课 · 当下时课</div><div class="step-section-desc">基于当前时间起卦/起课，适合具体事项的短期决策</div><div class="chips">`;
-    h+=REALTIME_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
+    h+=REALTIME_SHU.map(chip).join('');
     h+=`</div></div>`;
     h+=`<div class="step-section"><div class="step-section-title">命理排盘 · 终身命理</div><div class="step-section-desc">基于出生日期排盘，适合分析个人长期运势与趋吉避凶</div><div class="chips">`;
-    h+=BIRTH_SHU.map(s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}</span>`).join('');
+    h+=BIRTH_SHU.map(chip).join('');
     h+=`</div></div>`;
     const isDl=a.shushu.includes('大六壬');
     if(isDl){
@@ -1207,22 +1247,23 @@
         }
       }
     };
-    // step1
+    // step1：选类型时联动预选主推术数（完整推荐列表在 step3 打"荐"标记，可按需补选）
     if(a.step===1){
-      document.querySelectorAll('[data-type]').forEach(e=>e.onclick=()=>{a.bg.questionType=e.dataset.type;renderTab();});
+      document.querySelectorAll('[data-type]').forEach(e=>e.onclick=()=>{a.bg.questionType=e.dataset.type;a.shushu=[recShuFor(e.dataset.type)[0]];renderTab();});
     }
     // step2 chips
     if(a.step===2){
+      const fMore=$('#fMore');if(fMore)fMore.onchange=ev=>{a._moreOpen=ev.target.checked;renderTab();};
       document.querySelectorAll('[data-mood]').forEach(e=>e.onclick=()=>{a.bg.mood=a.bg.mood===e.dataset.mood?'':e.dataset.mood;renderTab();});
       document.querySelectorAll('[data-urgent]').forEach(e=>e.onclick=()=>{a.bg.urgent=a.bg.urgent===e.dataset.urgent?'':e.dataset.urgent;renderTab();});
       document.querySelectorAll('[data-adv]').forEach(e=>e.onclick=()=>{const t=e.dataset.adv;const i=a.bg.adviceType.indexOf(t);if(i>=0)a.bg.adviceType.splice(i,1);else a.bg.adviceType.push(t);renderTab();});
-      $('#fHasOpt').onchange=ev=>{a.bg.hasOption=ev.target.checked;renderTab();};
+      const fHasOpt=$('#fHasOpt');if(fHasOpt)fHasOpt.onchange=ev=>{a.bg.hasOption=ev.target.checked;renderTab();};
       $('#fTitle').oninput=ev=>a.bg.title=ev.target.value;
       $('#fDesc').oninput=ev=>a.bg.desc=ev.target.value;
-      $('#fOptA').oninput=ev=>a.bg.optA=ev.target.value;
-      $('#fOptB').oninput=ev=>a.bg.optB=ev.target.value;
-      $('#fPersons').oninput=ev=>a.bg.persons=ev.target.value;
-      $('#fOther').oninput=ev=>a.bg.other=ev.target.value;
+      const fOptA=$('#fOptA');if(fOptA)fOptA.oninput=ev=>a.bg.optA=ev.target.value;
+      const fOptB=$('#fOptB');if(fOptB)fOptB.oninput=ev=>a.bg.optB=ev.target.value;
+      const fPersons=$('#fPersons');if(fPersons)fPersons.oninput=ev=>a.bg.persons=ev.target.value;
+      const fOther=$('#fOther');if(fOther)fOther.oninput=ev=>a.bg.other=ev.target.value;
     }
     // step3：术数选择 + 大六壬起课方式
     if(a.step===3){
@@ -1512,16 +1553,18 @@
     else if(res.name==='紫微斗数')h+=renderZiWei(r);
     else if(res.name==='奇门遁甲')h+=renderQimen(r);
     h+=`</div>`;
-    // 白话
+    // 白话（紧凑表格，避免长卡片堆叠）
     h+=`<div class="card"><h3>${res.name} · 白话解读</h3>`;
-    h+=`<div class="plain-card"><div class="pc-t">当前状态</div><div class="pc-c">${p.state}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">总体倾向</div><div class="pc-c">${p.tendency}</div></div>`;
-    if(p.opps&&p.opps.length)h+=`<div class="plain-card"><div class="pc-t">主要机会</div><div class="pc-c">${p.opps.filter(Boolean).join('；')}</div></div>`;
-    if(p.risks&&p.risks.length)h+=`<div class="plain-card"><div class="pc-t">主要阻力</div><div class="pc-c">${p.risks.join('；')}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">环境/对方</div><div class="pc-c">${p.env}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">建议行动</div><div class="pc-c">${p.doAct.join('；')}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">不建议行动</div><div class="pc-c">${p.dontAct.join('；')}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">观察信号</div><div class="pc-c">${p.signals.join('；')}</div></div>`;
+    h+=`<div class="plain-table">`;
+    h+=`<div class="pt-row"><span class="pt-k">当前状态</span><span class="pt-v">${p.state}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">总体倾向</span><span class="pt-v">${p.tendency}</span></div>`;
+    if(p.opps&&p.opps.length)h+=`<div class="pt-row"><span class="pt-k">主要机会</span><span class="pt-v">${p.opps.filter(Boolean).join('；')}</span></div>`;
+    if(p.risks&&p.risks.length)h+=`<div class="pt-row"><span class="pt-k">主要阻力</span><span class="pt-v">${p.risks.join('；')}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">建议行动</span><span class="pt-v">${p.doAct.join('；')}</span></div>`;
+    if(p.dontAct&&p.dontAct.length)h+=`<div class="pt-row"><span class="pt-k">不建议</span><span class="pt-v">${p.dontAct.join('；')}</span></div>`;
+    if(p.signals&&p.signals.length)h+=`<div class="pt-row"><span class="pt-k">观察信号</span><span class="pt-v">${p.signals.join('；')}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">环境/对方</span><span class="pt-v">${p.env}</span></div>`;
+    h+=`</div>`;
     h+=`</div>`;
     h+=renderSourcesPanel(p,state.currentRagPassages);
     return h;
@@ -1555,15 +1598,14 @@
   function renderSourcesPanel(plain,ragPassages){
     const sources=(plain&&plain.sources)||[];
     const rules=sources.filter(s=>s.type==='rule');
-    let h=`<div class="card"><h3>依据来源</h3>`;
+    // 折叠容器：默认展开规则，古籍引用折叠（内容长、非必需）
+    const classics=(ragPassages||state.currentRagPassages||[]);
+    let h=`<div class="card"><h3>依据来源 <span class="src-collapse" data-sc="sourcesPanel">收起 ▾</span></h3><div class="src-body" id="sourcesPanel">`;
     if(rules.length){
       h+=`<div class="source-sec"><div class="source-sec-title">盘面规则</div>`;
       rules.forEach(r=>{h+=`<div class="source-item"><span class="source-tag rule">规则</span><span>${r.text||r.desc||r.content||r.name||''}</span></div>`;});
       h+=`</div>`;
     }
-    h+=`<div class="source-sec"><div class="source-sec-title">AI 推断</div><div class="source-item"><span class="source-tag ai">AI</span>以上为离线规则引擎基于盘面生成。如需 AI 深度解读与多轮追问，请点击下方「AI 解读与对话」。</div></div>`;
-    // 古籍引用：优先使用传入的 ragPassages，其次取全局 state.currentRagPassages
-    const classics=(ragPassages||state.currentRagPassages||[]);
     if(classics.length){
       h+=`<div class="source-sec"><div class="source-sec-title">古籍引用</div>`;
       classics.forEach(p=>{
@@ -1577,10 +1619,9 @@
       </div>`;
       });
       h+=`</div>`;
-    }else{
-      h+=`<div class="source-sec"><div class="source-sec-title">古籍引用</div><div class="source-item"><span class="source-tag classic">古籍</span>当前未检索到直接相关古籍依据，结果基于盘面规则生成。</div></div>`;
     }
-    h+=`</div>`;
+    h+=`<div class="source-item ai-note"><span class="source-tag ai">AI</span>以上为离线规则引擎基于盘面生成，可点击下方「AI 解读与对话」进行多轮追问。</div>`;
+    h+=`</div></div>`;
     return h;
   }
   function tendencyBadge(t){return t.replace('宜','');}
@@ -2073,6 +2114,13 @@
     const tg=document.querySelectorAll('.mode-toggle button');
     if(tg.length)tg.forEach(b=>b.onclick=()=>{state.boardMode=b.dataset.mode;renderTab();});
     const btnSave=$('#btnSaveCase');if(btnSave)btnSave.onclick=()=>saveCurrentAsCase(a);
+    // 依据来源折叠
+    document.querySelectorAll('.src-collapse[data-sc]').forEach(el=>{
+      el.onclick=()=>{
+        const body=document.getElementById(el.dataset.sc);
+        if(body){const open=body.style.display!=='none';body.style.display=open?'none':'';el.textContent=open?'展开 ▸':'收起 ▾';}
+      };
+    });
     // AI 深度解读（解读完成后底部直接变对话区，可继续追问）
     const btnAI=$('#btnAIDeep');
     if(btnAI)btnAI.onclick=()=>runAIDeepRead(a);
@@ -3027,14 +3075,16 @@
   }
   function renderPlainBoard(p){
     let h='<div class="card"><h3>白话解读</h3>';
-    h+=`<div class="plain-card"><div class="pc-t">当前状态</div><div class="pc-c">${p.state}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">总体倾向</div><div class="pc-c">${p.tendency}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">主要机会</div><div class="pc-c">${p.opps.length?p.opps.join('；'):'暂无明显机会信号'}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">主要阻力</div><div class="pc-c">${p.risks.length?p.risks.join('；'):'暂无明显阻力'}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">对方/环境倾向</div><div class="pc-c">${p.env}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">建议行动</div><div class="pc-c">${p.doAct.join('；')}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">不建议行动</div><div class="pc-c">${p.dontAct.join('；')}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">观察信号</div><div class="pc-c">${p.signals.join('；')}</div></div>`;
+    h+=`<div class="plain-table">`;
+    h+=`<div class="pt-row"><span class="pt-k">当前状态</span><span class="pt-v">${p.state}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">总体倾向</span><span class="pt-v">${p.tendency}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">主要机会</span><span class="pt-v">${p.opps.length?p.opps.join('；'):'暂无明显机会信号'}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">主要阻力</span><span class="pt-v">${p.risks.length?p.risks.join('；'):'暂无明显阻力'}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">对方/环境</span><span class="pt-v">${p.env}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">建议行动</span><span class="pt-v">${p.doAct.join('；')}</span></div>`;
+    if(p.dontAct&&p.dontAct.length)h+=`<div class="pt-row"><span class="pt-k">不建议</span><span class="pt-v">${p.dontAct.join('；')}</span></div>`;
+    if(p.signals&&p.signals.length)h+=`<div class="pt-row"><span class="pt-k">观察信号</span><span class="pt-v">${p.signals.join('；')}</span></div>`;
+    h+=`</div>`;
     h+=`</div>`;
     return h;
   }
@@ -3394,6 +3444,94 @@
     state.tab='ask';renderTab();
     setTimeout(()=>bindResult(state.ask),30);
     navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'shushuBoard');
+  }
+  // ================= 九宫飞星（紫白飞星 · 流年方位） =================
+  // 洛书九宫定宫（行×列 → 宫名）；固定，不可旋转
+  const FX_CELLS=[
+    {dir:'东南',gua:'巽',r:0,c:2},{dir:'正南',gua:'离',r:0,c:1},{dir:'西南',gua:'坤',r:0,c:0},
+    {dir:'正东',gua:'震',r:1,c:2},{dir:'中宫',gua:'中',r:1,c:1},{dir:'正西',gua:'兑',r:1,c:0},
+    {dir:'东北',gua:'艮',r:2,c:2},{dir:'正北',gua:'坎',r:2,c:1},{dir:'西北',gua:'乾',r:2,c:0}
+  ];
+  // 九星
+  const FX_STARS={
+    1:{name:'贪狼',wx:'水',luck:'吉',tips:'聪明文思、偏财运与贵人；宜发展正业、广结人缘。'},
+    2:{name:'巨门',wx:'土',luck:'凶',tips:'病符位，忌探病问丧；注意健康与口舌是非。'},
+    3:{name:'禄存',wx:'木',luck:'凶',tips:'主是非争斗；忌动土兴工，谨防口舌与官非。'},
+    4:{name:'文曲',wx:'木',luck:'吉',tips:'文昌位，利读书考试、文书契约，宜坐此方位用功。'},
+    5:{name:'廉贞',wx:'土',luck:'凶',tips:'五黄大煞，宜静不宜动，忌装修破土；可置铜器化解。'},
+    6:{name:'武曲',wx:'金',luck:'吉',tips:'偏财与武职之喜；利决策执行、置业与商业谈判。'},
+    7:{name:'破军',wx:'金',luck:'凶',tips:'主破财虚耗、贼盗口舌；忌投资投机，保管好财物。'},
+    8:{name:'左辅',wx:'土',luck:'吉',tips:'正财吉庆，本年大吉之方；利纳财旺运、添丁进喜。'},
+    9:{name:'右弼',wx:'火',luck:'吉',tips:'喜庆姻缘，利婚嫁庆典；火旺之地注意用火安全。'}
+  };
+  // 飞星轨迹（自中宫起顺飞）：中→乾→兑→艮→离→坎→坤→震→巽
+  const FX_TRAJ=['中','乾','兑','艮','离','坎','坤','震','巽'];
+  // 年紫白入中星：2025 五黄入中，此后逐年顺延
+  function fxCenterStar(year){return ((5+(year-2025)-1)%9+9)%9+1;}
+  // 返回 {宫名: 星数}
+  function fxMap(year){
+    const start=fxCenterStar(year);
+    const m={};
+    FX_TRAJ.forEach((g,i)=>{m[g]=((start+i-1)%9)+1;});
+    return m;
+  }
+  function fxYearGanzhi(year){
+    // 干支年：以立春为界（近似用公历年份，标注供参考）
+    const GAN10=['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+    const ZHI12=['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+    return GAN10[(year-4)%10]+ZHI12[(year-4)%12];
+  }
+  // 迷你三宫透视（可选）→ 简化：显示 3x3 全盘缩小版
+  function fxMiniView(year){
+    const m=fxMap(year);
+    let h=`<div class="fx-mini-grid">`;
+    FX_CELLS.forEach(cell=>{
+      const st=FX_STARS[m[cell.gua]];
+      const luck=st.luck==='吉'?'fx-g':'fx-b';
+      h+=`<div class="fx-mini-cell ${luck}"><span class="fxm-dir">${cell.dir}</span><span class="fxm-num">${m[cell.gua]}</span><span class="fxm-name">${st.name}</span></div>`;
+    });
+    h+=`</div>`;
+    return h;
+  }
+  function pageFeixing(){
+    const year=state.fxYear;
+    const gz=fxYearGanzhi(year);
+    const m=fxMap(year);
+    let h=`<div class="phead"><div><div class="ptitle">九宫飞星</div><div class="psub">紫白飞星 · 流年方位</div></div><button class="btn ghost sm" id="backFeixing">返回</button></div>`;
+    // 年份切换
+    h+=`<div class="fx-yearbar"><button class="fx-nav" id="fxPrev">‹</button><div class="fx-year">${year} · ${gz}年<span class="fx-center-note">中宫 ${m['中']}${FX_STARS[m['中']].name}</span></div><button class="fx-nav" id="fxNext">›</button></div>`;
+    // 九宫盘（黑金黑板）
+    let grid=new Array(9).fill(null);
+    FX_CELLS.forEach(cell=>{grid[cell.r*3+cell.c]=cell;});
+    h+=`<div class="fx-board">`;
+    for(let i=0;i<9;i++){
+      const cell=grid[i];
+      if(!cell){h+='<div class="fx-cell empty"></div>';continue;}
+      const st=FX_STARS[m[cell.gua]];
+      const luck=st.luck==='吉'?'fx-g':(st.luck==='凶'?'fx-b':'fx-w');
+      const center=cell.gua==='中';
+      h+=`<div class="fx-cell ${luck} ${center?'fx-c':''}"><div class="fx-gua">${cell.dir}·${cell.gua}</div><div class="fx-num">${m[cell.gua]}</div><div class="fx-name">${st.name}<span class="fx-wx">${st.wx}星</span></div></div>`;
+    }
+    h+=`</div>`;
+    // 吉凶详解
+    h+=`<div class="card"><h3>吉凶详解</h3>`;
+    FX_CELLS.forEach(cell=>{
+      const st=FX_STARS[m[cell.gua]];
+      const luck=st.luck==='吉'?'cross-consistent':'cross-conflict';
+      h+=`<div class="cross-item ${luck}"><div class="cross-desc"><b>${cell.dir}（${st.name}星）</b>：${st.tips}</div></div>`;
+    });
+    h+=`</div>`;
+    // 使用建议 + 免责
+    h+=`<div class="card"><h3>方位参考</h3><div class="dc-desc">本年旺方宜多停留、办公位与睡床朝向可作参考；凶方宜静不宜动，装修动土请避开。</div></div>`;
+    h+=`<div class="disclaimer-inline">九宫飞星系传统术数文化参考，仅供娱乐，不构成实际居住、投资或健康决策依据。</div>`;
+    return h;
+  }
+  function bindFeixing(){
+    const back=$('#backFeixing');
+    if(back)back.onclick=()=>{state.subPage='';renderTab();navBack();};
+    const prev=$('#fxPrev'),next=$('#fxNext');
+    if(prev)prev.onclick=()=>{state.fxYear--;renderTab();};
+    if(next)next.onclick=()=>{state.fxYear++;renderTab();};
   }
   function showDaliurenBoard(comp){
     // 用一个临时 ask bg（标记 _placeholder 以便用户主动点「问事」Tab 时重置）
@@ -3853,7 +3991,7 @@
     }
     h+=`</div>`;
     h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.7</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数 · 奇门遁甲</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.9</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数 · 奇门遁甲</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
     return h;
   }
   // 重要日期管理子页
@@ -4082,7 +4220,7 @@
     };
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.7</span></p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.9</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
     <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>

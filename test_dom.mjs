@@ -142,18 +142,18 @@ ok('我的页含AI设置', pc.textContent.includes('AI 设置'));
 ok('我的页含备份', pc.textContent.includes('备份与恢复'));
 ok('我的页含隐私与安全入口', pc.textContent.includes('隐私与安全'));
 ok('我的页含应用锁入口', !!d.getElementById('btnLockSetting'));
-ok('我的页含版本', pc.textContent.includes('V1.0.7'));
+ok('我的页含版本', pc.textContent.includes('V1.0.9'));
 ok('导出备份按钮存在', !!d.getElementById('btnExport'));
 ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
 ok('备份卡显示存储信息', !!d.querySelector('.storage-info'));
-ok('版本号显示 V1.0.7', pc.textContent.includes('V1.0.7'));
+ok('版本号显示 V1.0.9', pc.textContent.includes('V1.0.9'));
 
 // 9. 关于弹窗
 d.getElementById('btnAbout').click();
 await sleep(40);
 ok('关于弹窗含免责声明', d.querySelector('.modal').textContent.includes('不构成'));
-ok('关于弹窗含 V1.0.7', d.querySelector('.modal').textContent.includes('V1.0.7'));
+ok('关于弹窗含 V1.0.9', d.querySelector('.modal').textContent.includes('V1.0.9'));
 d.querySelector('.modal .btn.ghost').click();
 await sleep(30);
 
