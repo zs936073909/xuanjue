@@ -56,13 +56,13 @@ d.getElementById('btnEnter').click();
 await sleep(50);
 ok('进入后主界面显示', !d.getElementById('main').classList.contains('hidden'));
 
-// 2. 首页
+// 2. 首页（v2.0 精简版：去重问事，仅保留核心看板）
 const pc=d.getElementById('page-container');
 ok('首页标题玄决', pc.textContent.includes('玄决'));
-ok('首页含此刻大六壬时课', pc.textContent.includes('此刻大六壬时课'));
-ok('首页含快速问事', pc.textContent.includes('快速问事'));
-ok('首页含月将', pc.textContent.includes('月将'));
-ok('首页含空亡或干支', pc.textContent.includes('干支')||pc.textContent.includes('时辰'));
+ok('首页含此刻大六壬', pc.textContent.includes('此刻大六壬'));
+ok('首页含流年飞星', pc.textContent.includes('流年飞星')||pc.textContent.includes('九宫'));
+ok('首页含命盘', pc.textContent.includes('命盘')||pc.textContent.includes('八字排盘'));
+ok('首页含干支或时辰', pc.textContent.includes('干支')||pc.textContent.includes('时辰'));
 
 // 3. 查看完整盘面（首页按钮直接进入大六壬详细盘面）
 d.getElementById('btnViewBoard').click();
@@ -137,30 +137,31 @@ ok('典籍页列出书籍', pc.textContent.includes('增删卜易')||pc.textCont
 // 8. 我的 / 设置
 d.querySelector('.tab[data-tab="me"]').click();
 await sleep(40);
-ok('我的页含术数设置', pc.textContent.includes('术数设置'));
-ok('我的页含AI设置', pc.textContent.includes('AI 设置'));
-ok('我的页含备份', pc.textContent.includes('备份与恢复'));
+ok('我的页含术数设置', pc.textContent.includes('术数偏好'));
+ok('我的页含AI设置', pc.textContent.includes('AI 顾问'));
+ok('我的页含备份', pc.textContent.includes('数据管理'));
 ok('我的页含隐私与安全入口', pc.textContent.includes('隐私与安全'));
 ok('我的页含应用锁入口', !!d.getElementById('btnLockSetting'));
-ok('我的页含版本', pc.textContent.includes('V1.0.9'));
+ok('我的页含版本', pc.textContent.includes('V1.0.10'));
 ok('导出备份按钮存在', !!d.getElementById('btnExport'));
 ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
-ok('备份卡显示存储信息', !!d.querySelector('.storage-info'));
-ok('版本号显示 V1.0.9', pc.textContent.includes('V1.0.9'));
+ok('备份卡显示存储信息', pc.textContent.includes('本地存储'));
+ok('版本号显示 V1.0.10', pc.textContent.includes('V1.0.10'));
 
 // 9. 关于弹窗
 d.getElementById('btnAbout').click();
 await sleep(40);
 ok('关于弹窗含免责声明', d.querySelector('.modal').textContent.includes('不构成'));
-ok('关于弹窗含 V1.0.9', d.querySelector('.modal').textContent.includes('V1.0.9'));
+ok('关于弹窗含 V1.0.10', d.querySelector('.modal').textContent.includes('V1.0.10'));
 d.querySelector('.modal .btn.ghost').click();
 await sleep(30);
 
 // 10. 应用锁入口与弹窗
 d.getElementById('btnLockSetting').click();
 await sleep(60);
-ok('应用锁设置弹窗出现', pc.textContent.includes('设置应用锁')||pc.textContent.includes('管理应用锁'));
+const lockModalRoot=d.querySelector('#modal-root');
+ok('应用锁设置弹窗出现', !!(lockModalRoot&&(lockModalRoot.textContent.includes('设置应用锁')||lockModalRoot.textContent.includes('管理应用锁'))));
 const lockModal=d.querySelector('.modal');
 if(lockModal)lockModal.querySelector('.btn.ghost').click();
 await sleep(30);

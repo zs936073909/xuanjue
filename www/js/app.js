@@ -380,6 +380,11 @@
     else if(state.tab==='classics')c.innerHTML=pageClassics();
     else if(state.tab==='me')c.innerHTML=pageMe();
     bindTab();
+    // iOS 式页面推进动效
+    c.classList.remove('scr-back');
+    c.classList.remove('scr-next');
+    void c.offsetWidth;
+    c.classList.add('scr-next');
   }
   function bindTab(){
     if(state.tab==='home'&&state.subPage==='feixing')bindFeixing();
@@ -406,143 +411,66 @@
     const p=comp.plain;
     const tendCls=p.tendency==='宜主动'?'good':(p.tendency==='宜谨慎'?'warn':'calm');
     const cases=Store.listCases();
-    const todo=cases.filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
-    const recent=cases.slice(0,5);
-    const lifetimeCases=cases.filter(c=>c.shushu&&(c.shushu.includes('八字')||c.shushu.includes('紫微斗数'))).slice(0,3);
-    const qaTypes=[['感情关系','♥'],['事业合作','★'],['学习考试','✎'],['出行移动','→'],['签约交易','§'],['人际沟通','✉'],['财务决策','¥'],['健康倾向','+'],['失物寻找','?'],['二选一决策','⇄'],['其他','⋯']];
+    const recent=cases.slice(0,3);
     const settings=Store.getSettings();
-    const important=settings.remindImportant?Store.listImportant():[];
-    const upcoming=important.map(it=>{const d=daysUntil(it.date,it);return d!==null?Object.assign({},it,{days:d}):null;}).filter(Boolean).filter(it=>it.days>=-1&&it.days<=7).sort((a,b)=>a.days-b.days);
     const profile=Store.getProfile();
     const profileReady=profile&&profile.birth;
-    const SHU_P1_QUICK=['小六壬','梅花易数','六爻','塔罗'];
+    const weekCN=['日','一','二','三','四','五','六'][now.getDay()];
+    const lunarText=lunar?lunar.monthStr+lunar.dayStr:'—';
 
     let h='';
-    h+=`<div class="phead"><div><div class="ptitle">玄决</div><div class="psub">终身命理 · 实时卜筮</div></div><div class="psub" id="homeDate">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} <span id="homeClock">${pad(now.getHours())}:${pad(now.getMinutes())}</span></div></div>`;
-    // 顶部精简时间卡（共用：年月日 + 干支 + 时辰 + 农历）
-    h+=`<div class="card">`;
-    h+=`<div class="time-row"><span class="k">农历</span><span>${lunar?lunar.monthStr+lunar.dayStr:'—'}</span></div>`;
-    h+=`<div class="time-row"><span class="k">干支</span><span><span class="stem">${bz.year.gz}</span>年 <span class="stem">${bz.month.gz}</span>月 <span class="stem">${bz.day.gz}</span>日 <span class="stem">${bz.hour.gz}</span>时</span></div>`;
-    h+=`<div class="time-row"><span class="k">时辰</span><span>${sc.name} ${sc.range}</span></div>`;
-    h+=`<div class="time-row"><span class="k">节气</span><span>${jq.cur?jq.cur.name:'—'} → ${jq.next?jq.next.name:'—'}</span></div>`;
-    h+=`<div class="time-row"><span class="k">值神</span><span>${zs.n}（${zs.g?'吉':'凶'}） · 建除 ${hl.jianchu} · ${cs.chong}${cs.sha}</span></div>`;
-    h+=`<div class="yiji"><div class="yiji-box yi"><div class="yj-title">宜</div><div class="yiji-tags">${hl.yi.map(y=>`<span>${y}</span>`).join('')}</div></div><div class="yiji-box ji"><div class="yj-title">忌</div><div class="yiji-tags">${hl.ji.map(j=>`<span>${j}</span>`).join('')}</div></div></div>`;
+    // ===== iOS 大标题导航 =====
+    h+=`<div class="phead ios-head"><div><div class="ptitle">玄<em>决</em></div><div class="psub">大六壬决策台</div></div><div class="ih-time"><div class="ih-date">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} · 周${weekCN}</div><div class="ih-clock" id="homeClock">${pad(now.getHours())}:${pad(now.getMinutes())}</div><div class="ih-note">时课 · 实时</div></div></div>`;
+
+    // ===== 「此刻」黑金音板：干支/农历/时辰/节气/值神/宜忌 一体化 =====
+    h+=`<div class="now-card" id="nowCard">`;
+    h+=`<div class="now-gz"><span class="stem">${bz.year.gz}</span>·<span class="stem">${bz.month.gz}</span>·<span class="stem">${bz.day.gz}</span><span class="stem">${bz.hour.gz}</span></div>`;
+    h+=`<div class="now-grid">`;
+    h+=`<div class="now-cell"><span class="k">农历</span><b>${lunarText}</b></div>`;
+    h+=`<div class="now-cell"><span class="k">时辰</span><b>${sc.name} ${sc.range}</b></div>`;
+    h+=`<div class="now-cell"><span class="k">节气</span><b>${jq.cur?jq.cur.name:'—'}→${jq.next?jq.next.name:'—'}</b></div>`;
+    h+=`<div class="now-cell"><span class="k">值神</span><b>${zs.n}${zs.g?'（吉）':'（凶）'}</b></div>`;
+    h+=`</div>`;
+    h+=`<div class="now-yiji"><span class="yj-t yi">宜</span><div class="yj-tags">${hl.yi.slice(0,5).map(y=>`<span>${y}</span>`).join('')}</div><span class="yj-t ji">忌</span><div class="yj-tags">${hl.ji.slice(0,5).map(j=>`<span>${j}</span>`).join('')}</div></div>`;
     h+=`</div>`;
 
-    // ============ 双栏：终身命理 / 实时卜筮 ============
-    h+=`<div class="home-columns">`;
+    // ===== 此刻大六壬时课 =====
+    h+=`<div class="card now-ke">`;
+    h+=`<div class="nk-top"><span class="nk-tag">此刻大六壬</span><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
+    h+=`<div class="nk-line">${p.state}</div>`;
+    h+=`<div class="nk-acts"><span class="lab do">宜·${p.doAct.slice(0,2).join(' / ')}</span><span class="lab dont">忌·${p.dontAct.slice(0,2).join(' / ')}</span></div>`;
+    h+=`<div class="shike-cmd nk-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面 ›</button></div>`;
+    h+=`</div>`;
 
-    // ---------- 左栏：终身命理 ----------
-    h+=`<div class="home-column col-lifetime">`;
-    h+=`<div class="column-header"><h2>终身命理</h2><span class="col-sub">基于出生日期</span></div>`;
-    // 命盘档案卡
-    h+=`<div class="profile-card">`;
+    // ===== 流年飞星 =====
+    const fxCenter=FX_STARS[fxMap(state.fxYear)['中']];
+    h+=`<div class="card">`;
+    h+=`<h3>流年飞星 <span class="h-sub">九宫方位</span></h3>`;
+    h+=`<div class="fx-home">`;
+    h+=`<div class="fx-mini" id="fxMini"></div>`;
+    h+=`<div class="fx-info"><div class="fi-t">${state.fxYear} ${fxYearGanzhi(state.fxYear)}年</div><div class="fi-d">${fxCenter.luck==='吉'?'吉':(fxCenter.luck==='凶'?'凶':'平')}星「${fxCenter.name}」入中宫${fxCenter.luck==='吉'?'，主文思与贵人':fxCenter.luck==='凶'?'，宜静不宜动':''}。查看全年方位吉凶与宜忌布局。</div><button class="btn ghost sm" id="btnFeixing">查看飞星方位 ›</button></div>`;
+    h+=`</div>`;
+    h+=`</div>`;
+
+    // ===== 我的命盘（八字 / 紫微 / 今日宜忌）=====
+    h+=`<div class="card home-pal">`;
+    h+=`<h3>命盘</h3>`;
     if(profileReady){
       const bDate=String(profile.birth).split('T')[0];
-      const bHour=String(profile.birth).split('T')[1]||'';
-      h+=`<div class="pc-head"><div class="pc-name">${esc(profile.nick||'我的命盘')}</div><button class="btn sm ghost" id="btnEditProfile">编辑</button></div>`;
-      h+=`<div class="pc-meta">${profile.gender||'—'} · ${bDate}${bHour?(' '+bHour):''}${profile.place?(' · '+esc(profile.place)):''}</div>`;
-      h+=`<div class="pc-actions"><button class="btn sm" id="btnHomeBaZi">八字排盘</button><button class="btn sm" id="btnHomeZiWei">紫微斗数</button></div>`;
+      h+=`<div class="hp-status">${esc(profile.nick||'我的命盘')} · ${profile.gender||'—'} · ${bDate}</div>`;
+      h+=`<div class="hp-actions"><button class="btn" id="btnHomeBaZi">八字排盘</button><button class="btn" id="btnHomeZiWei">紫微斗数</button></div>`;
     }else{
-      h+=`<div class="pc-head"><div class="pc-name">尚未建档</div></div>`;
-      h+=`<div class="profile-empty">填写出生日期后，可排八字 / 紫微命盘，并由 AI 顾问为你趋吉避凶。</div>`;
-      h+=`<div class="pc-actions"><button class="btn primary sm" id="btnEditProfile">填写出生信息</button></div>`;
+      h+=`<div class="hp-status">填写出生日期后，可排八字 / 紫微命盘，并由 AI 顾问趋吉避凶。</div>`;
+      h+=`<div class="hp-actions"><button class="btn primary" id="btnEditProfile">填写出生信息</button></div>`;
     }
+    h+=`<div class="hp-lite">今日宜忌<span class="pb2"><button id="btnGenDailyYiJi">生成 ›</button></span><span class="pb2"><button id="btnDailyYiJiAsk" class="hidden">追问 ›</button></span></div>`;
+    h+=`<div id="dailyYiJiBody" class="dy-body"></div>`;
     h+=`</div>`;
-    // 今日宜忌卡（终身栏核心延伸：命盘喜用神×当日干支 → AI 当日行动指南）
-    if(profileReady){
-      h+=`<div class="card daily-yiji-card">`;
-      h+=`<h3>今日宜忌 <span class="h-sub">趋吉避凶</span></h3>`;
-      h+=`<div class="dy-date">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} · ${bz.day.gz}日 · ${lunar?lunar.monthStr+lunar.dayStr:''}</div>`;
-      h+=`<div class="dy-body" id="dailyYiJiBody"><div class="dy-empty">基于命盘喜用神与今日干支，AI 生成当日行动指南（方位/颜色/宜/忌/人际/起居）。</div></div>`;
-      h+=`<div class="dy-actions"><button class="btn primary sm" id="btnGenDailyYiJi">生成今日宜忌</button><button class="btn sm ghost hidden" id="btnDailyYiJiAsk">继续追问 ›</button></div>`;
-      h+=`</div>`;
-    }
-    // AI 趋吉避凶顾问入口（八字）
-    h+=`<div class="advisor-card lifetime">`;
-    h+=`<div class="adv-title">☉ 八字 · 趋吉避凶顾问</div>`;
-    h+=`<div class="adv-desc">基于八字命盘与喜用神的多轮对话，分领域给出日常行动建议。</div>`;
-    h+=`<div class="adv-quick">`;
-    Object.keys(AI.getLifetimeDomains()).slice(0,6).forEach(k=>{
-      h+=`<span class="qchip" data-domain="${k}">${k}</span>`;
-    });
-    h+=`</div>`;
-    h+=`<button class="btn-advisor" id="btnLifetimeBaziAdvisor"><span class="ba-ico">✦</span><span class="ba-text">开启八字顾问对话<span class="ba-sub">命盘长期记忆 · 多轮趋吉避凶</span></span></button>`;
-    h+=`</div>`;
-    // AI 命运推演顾问入口（紫微）
-    h+=`<div class="advisor-card lifetime">`;
-    h+=`<div class="adv-title">☰ 紫微 · 命运推演顾问</div>`;
-    h+=`<div class="adv-desc">基于十二宫星曜、大限流年与四化的多轮对话，解读人生各领域。</div>`;
-    h+=`<div class="adv-quick">`;
-    ['命宫格局','大限走势','流年提示','四化解读','感情婚姻','事业财运'].forEach(k=>{
-      h+=`<span class="qchip" data-domain="${k==='命宫格局'||k==='大限走势'||k==='流年提示'||k==='四化解读'?'流年运势':k}">${k}</span>`;
-    });
-    h+=`</div>`;
-    h+=`<button class="btn-advisor" id="btnLifetimeZiweiAdvisor"><span class="ba-ico">✦</span><span class="ba-text">开启紫微顾问对话<span class="ba-sub">十二宫长期记忆 · 多轮推演</span></span></button>`;
-    h+=`</div>`;
-    // 命盘历史案例
-    if(lifetimeCases.length){
-      h+=`<div class="section-mini">命盘历史</div>`;
-      h+=`<div class="card"><h3>命盘案例</h3>`;
-      lifetimeCases.forEach(c=>{h+=`<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?'已复盘':'待复盘'}</div></div>`;});
-      h+=`</div>`;
-    }
-    h+=`</div>`; // end 左栏
 
-    // ---------- 右栏：实时卜筮 ----------
-    h+=`<div class="home-column col-realtime">`;
-    h+=`<div class="column-header"><h2>实时卜筮</h2><span class="col-sub">当下时课</span></div>`;
-    // 此刻大六壬（精简）
-    h+=`<div class="card">`;
-    h+=`<h3>此刻大六壬时课</h3>`;
-    h+=`<div class="time-row"><span class="k">月将 ${yj.zhi}</span><span class="k">占时 ${comp.ke.scStr}</span></div>`;
-    h+=`<div class="one-line">${p.state}</div>`;
-    h+=`<div class="tendency"><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
-    if(p.risks.length)h+=`<div class="risk-tip">⚠ ${p.risks[0]}</div>`;
-    h+=`<div class="suit-row"><span style="font-size:11px;color:var(--muted)">宜：</span>${p.doAct.map(d=>`<span class="lab do">${d}</span>`).join('')}</div>`;
-    h+=`<div class="suit-row"><span style="font-size:11px;color:var(--muted)">忌：</span>${p.dontAct.map(d=>`<span class="lab dont">${d}</span>`).join('')}</div>`;
-    h+=`<div class="shike-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面</button></div>`;
-    h+=`</div>`;
-    // 快速问事
-    h+=`<div class="card"><h3>快速问事</h3><div class="qa-grid">${qaTypes.map(t=>`<div class="qa-item" data-type="${t[0]}"><div class="qa-ico">${t[1]}</div>${t[0]}</div>`).join('')}</div></div>`;
-    // 多术数起课
-    h+=`<div class="card"><h3>多术数起课</h3><div class="board-list">`;
-    SHU_P1_QUICK.forEach(s=>{
-      h+=`<div class="recent-item" data-shu="${s}"><div><div class="ri-t">${s}</div><div class="ri-m">点击此刻起课</div></div><div class="ri-r">›</div></div>`;
-    });
-    h+=`</div></div>`;
-    // 九宫飞星（流年方位黑板）
-    h+=`<div class="card fx-entry-card">`;
-    h+=`<h3>九宫飞星 <span class="h-sub">流年方位</span></h3>`;
-    h+=`<div class="dc-desc">紫白飞星入中，看流年各方位吉凶、宜忌与布局建议。</div>`;
-    h+=`<div class="fx-mini" id="fxMini"></div>`;
-    h+=`<button class="btn primary block" id="btnFeixing">☉ 查看 ${state.fxYear} 飞星方位</button>`;
-    h+=`</div>`;
-    // 决策对比助手（实时栏核心延伸：A/B 选项结构化决策）
-    h+=`<div class="card decision-compare-card">`;
-    h+=`<h3>决策对比助手 <span class="h-sub">二选一</span></h3>`;
-    h+=`<div class="dc-desc">填写两个选项，AI 基于当下卦象对比利弊，给出倾向建议与观察信号。</div>`;
-    h+=`<button class="btn primary block" id="btnDecisionCompare">⚖ 开始对比分析</button>`;
-    h+=`</div>`;
-    // AI 决策顾问入口
-    h+=`<div class="advisor-card realtime">`;
-    h+=`<div class="adv-title">◈ 实时决策顾问</div>`;
-    h+=`<div class="adv-desc">基于当下卦象的多轮对话，帮你做出选择、判断时机、预警风险。</div>`;
-    h+=`<div class="adv-quick">`;
-    Object.keys(AI.getRealtimeTopics()).slice(0,6).forEach(k=>{
-      h+=`<span class="qchip" data-topic="${k}">${k}</span>`;
-    });
-    h+=`</div>`;
-    h+=`<button class="btn-advisor realtime" id="btnRealtimeAdvisor"><span class="ba-ico">◈</span><span class="ba-text">开启决策顾问对话<span class="ba-sub">卦象上下文 · 多轮决策辅助</span></span></button>`;
-    h+=`</div>`;
-    h+=`</div>`; // end 右栏
-
-    h+=`</div>`; // end 双栏
-
-    // 最近案例（首页唯一下方区块，保持简洁）
+    // ===== 最近案例 =====
     h+=`<div class="card"><h3>最近案例</h3>`;
     if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.questionType)} · ${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(esc(c.review.result)||'已复盘'):'待复盘'}</div></div>`;});}
-    else h+=`<div class="empty">暂无案例，去“问事”起一课吧</div>`;
+    else h+=`<div class="empty">暂无案例，去「问事」起一课吧</div>`;
     h+=`</div>`;
     return h;
   }
@@ -592,38 +520,11 @@
     // 编辑个人信息
     const btnEditProfile=$('#btnEditProfile');
     if(btnEditProfile)btnEditProfile.onclick=()=>{state.tab='me';renderTab();setTimeout(()=>{const c=$('#profileCard');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});},60);};
-    // 多术数起课
-    document.querySelectorAll('[data-shu]').forEach(e=>e.onclick=()=>{
-      const name=e.dataset.shu;
-      const res=ShuShu.compute(name,new Date());
-      if(!res){toast(name+' 暂不可用');return;}
-      showShuShuBoard(res);
-    });
-    // 今日宜忌（终身栏核心延伸）
+    // 今日宜忌
     const btnGenDailyYiJi=$('#btnGenDailyYiJi');
     if(btnGenDailyYiJi)btnGenDailyYiJi.onclick=()=>genDailyYiJi();
     const btnDailyYiJiAsk=$('#btnDailyYiJiAsk');
     if(btnDailyYiJiAsk)btnDailyYiJiAsk.onclick=()=>openDailyYiJiChat();
-    // 终身命理 AI 顾问
-    const btnLifetimeBazi=$('#btnLifetimeBaziAdvisor');
-    if(btnLifetimeBazi)btnLifetimeBazi.onclick=()=>openLifetimeAdvisor('bazi');
-    const btnLifetimeZiwei=$('#btnLifetimeZiweiAdvisor');
-    if(btnLifetimeZiwei)btnLifetimeZiwei.onclick=()=>openLifetimeAdvisor('ziwei');
-    // 实时决策 AI 顾问
-    const btnRealtimeAdvisor=$('#btnRealtimeAdvisor');
-    if(btnRealtimeAdvisor)btnRealtimeAdvisor.onclick=()=>openRealtimeAdvisor();
-    // 决策对比助手（实时栏核心延伸）
-    const btnDecisionCompare=$('#btnDecisionCompare');
-    if(btnDecisionCompare)btnDecisionCompare.onclick=()=>openDecisionCompare();
-    // 顾问快捷问题（点击即开启对话并发送预设问题）
-    document.querySelectorAll('.advisor-card .qchip[data-domain]').forEach(e=>e.onclick=()=>{
-      const card=e.closest('.advisor-card.lifetime');
-      const type=card&&card.querySelector('[id^="btnLifetime"]')&&card.querySelector('[id^="btnLifetime"]').id==='btnLifetimeZiweiAdvisor'?'ziwei':'bazi';
-      openLifetimeAdvisor(type,e.dataset.domain);
-    });
-    document.querySelectorAll('.advisor-card .qchip[data-topic]').forEach(e=>e.onclick=()=>{
-      openRealtimeAdvisor(e.dataset.topic);
-    });
     // 命理趣玩
     document.querySelectorAll('.game-item').forEach(e=>e.onclick=()=>openFortuneGame(e.dataset.game));
     document.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.case;state.tab='me';state.subPage='case';renderTab();setTimeout(openCaseDetail,30);});
@@ -3935,63 +3836,96 @@
     if(state.subPage==='important')return pageImportant();
     if(state.subPage==='case')return pageCaseList();
     const s=Store.getSettings(),p=Store.getProfile();
-    let h=`<div class="phead"><div class="ptitle">我的</div></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">昵称</span><span>${esc(p.nick)||'未设置'}</span></div><div class="detail-row"><span class="dk">出生</span><span>${esc(p.birth)||'—'}</span></div></div>`;
-    h+=`<div class="card set-group"><div class="sg-t">个人信息</div><button class="btn block" id="btnProfile">编辑个人信息</button></div>`;
-    // 案例库入口（原案例 Tab 合并到此）
     const caseCount=Store.listCases().length;
-    h+=`<div class="card set-group"><div class="sg-t">案例库</div><div class="detail-row"><span class="dk">已记录</span><span>${caseCount} 条案例</span></div><button class="btn primary block" id="btnCaseList">查看全部案例</button></div>`;
-    h+=`<div class="card set-group"><div class="sg-t">术数设置</div>`;
+    const importantCount=Store.listImportant().length;
+    const lock=Store.getLockState();
+
+    let h=`<div class="phead ios-head"><div><div class="ptitle">我的</div><div class="psub">个人 · 偏好 · 数据</div></div></div>`;
+
+    // ---- 个人资料头卡 ----
+    const nick=p.nick||'未设置昵称';
+    const birth=p.birth?String(p.birth).split('T').join(' '):'未填写出生信息';
+    h+=`<div class="me-profile"><div class="mp-ring">${esc((p.nick||'玄').slice(0,1))}</div><div class="mp-main"><div class="mp-name">${esc(nick)}</div><div class="mp-meta">${p.gender||''}${p.gender&&birth?' · ':''}${esc(birth)}</div></div><button class="btn ghost sm" id="btnProfile">编辑</button></div>`;
+
+    // ---- 数据 ----
+    h+=`<div class="gp-head">数据</div>`;
+    h+=`<div class="gp-card">`;
+    h+=`<div class="gp-row" id="btnCaseList"><span class="gp-ico">◫</span><div class="gp-main"><div class="gp-t">案例库</div><div class="gp-d">全部起课记录与复盘</div></div><span class="gp-val">${caseCount} 条</span><span class="gp-chev">›</span></div>`;
+    h+=`<div class="gp-row" id="btnImportant"><span class="gp-ico">⌾</span><div class="gp-main"><div class="gp-t">重要日期</div><div class="gp-d">生日、约定、事务节点</div></div><span class="gp-val">${importantCount} 个</span><span class="gp-chev">›</span></div>`;
+    h+=`</div>`;
+
+    // ---- 术数偏好 ----
+    h+=`<div class="gp-head">术数偏好</div>`;
+    h+=`<div class="gp-card">`;
     h+=selectRow('大六壬贵人','dlGuiRen',['昼夜贵人','夜贵人','甲戊庚牛羊']);
     h+=selectRow('涉害取法','dlSheHai',['涉害取深','涉害取孟仲季']);
     h+=selectRow('月将设置','yueJiang',['中气定将','节气定将']);
     h+=switchRow('八字真太阳时','zhenTaiyang',s.zhenTaiyang);
     h+=selectRow('塔罗正逆位','tarotReverse',['随机正逆位','仅正位','仅逆位']);
     h+=`</div>`;
-    h+=`<div class="card set-group"><div class="sg-t">AI 设置</div>`;
+
+    // ---- AI 顾问 ----
+    h+=`<div class="gp-head">AI 顾问</div>`;
+    h+=`<div class="gp-card">`;
+    h+=`<div class="gp-row" id="btnAiConfig"><span class="gp-ico">✦</span><div class="gp-main"><div class="gp-t">模型配置</div><div class="gp-d">${AI.PROVIDERS[s.aiProvider]?AI.PROVIDERS[s.aiProvider].label:'未配置'} · ${s.aiApiKey?'密钥已设置':'待填写密钥'}</div></div><span class="gp-chev" id="aiCfgChev">›</span></div>`;
+    h+=`<div class="ai-config-wrap" id="aiConfigWrap">${pageAIConfigInner(s)}</div>`;
     h+=selectRow('AI 语气','aiTone',['专业谨慎','温和陪伴','直接简洁','传统术数','心理探索']);
     h+=selectRow('解读长度','aiLength',['简短','标准','详细']);
     h+=switchRow('显示专业术语','showTerm',s.showTerm);
     h+=switchRow('自动生成行动建议','autoAdvice',s.autoAdvice);
-    h+=switchRow('自动复制提示词','autoCopyPrompt',s.autoCopyPrompt);
-    h+=switchRow('离线模式','offlineMode',s.offlineMode);
+    h+=switchRow('离线模式（禁用 AI）','offlineMode',s.offlineMode);
     h+=`</div>`;
-    h+=`<div class="card set-group"><div class="sg-t">外观</div>`;
+
+    // ---- 外观 ----
+    h+=`<div class="gp-head">外观</div>`;
+    h+=`<div class="gp-card">`;
     h+=selectRow('深色模式','darkMode',['自动','深色','浅色']);
     h+=`</div>`;
-    h+=pageAIConfig(s);
-    h+=`<div class="card set-group"><div class="sg-t">备份与恢复</div>`;
-    const sz=Store.storageSizeEstimate();
-    h+=`<div class="storage-info">当前案例 <span class="num-val">${sz.caseCount}</span> 条 · 占用 <span class="num-val">${sz.sizeText}</span></div>`;
-    h+=`<button class="btn block" id="btnExport">导出备份</button><button class="btn block mt8" id="btnImport">导入备份</button><button class="btn danger block mt8" id="btnClear">一键清除全部案例</button>`;
-    h+=`</div>`;
-    h+=`<div class="card set-group"><div class="sg-t">提醒</div>`;
+
+    // ---- 提醒 ----
+    h+=`<div class="gp-head">提醒</div>`;
+    h+=`<div class="gp-card">`;
     const notifyStatus=('Notification' in window)?(Notification.permission==='granted'?'已授权':(Notification.permission==='denied'?'已拒绝':'未授权')):'不支持';
-    h+=`<div class="detail-row"><span class="dk">系统通知</span><span>${notifyStatus}</span></div>`;
-    h+=switchRow('允许系统通知','notificationEnabled',s.notificationEnabled && notifyStatus==='已授权');
-    h+=`<button class="btn block mt8" id="btnReqNotify">${notifyStatus==='已授权'?'重新请求通知权限':'请求通知权限'}</button>`;
+    h+=switchRow('系统通知','notificationEnabled',s.notificationEnabled && notifyStatus==='已授权');
+    h+=`<button class="btn-link-row" id="btnReqNotify"><span class="gp-ico">◔</span>授权状态：${notifyStatus}<span class="btn-x-chev">›</span></button>`;
     h+=switchRow('每日时课提醒','remindDaily',s.remindDaily);
-    h+=`<div class="field" style="margin:8px 0"><label>每日提醒时间</label><input type="time" data-set="dailyTime" value="${escAttr(s.dailyTime)}"></div>`;
+    h+=`<div class="field switch-time"><label>提醒时间</label><input type="time" data-set="dailyTime" value="${escAttr(s.dailyTime)}"></div>`;
     h+=switchRow('复盘提醒','remindReview',s.remindReview);
     h+=switchRow('重要日期提醒','remindImportant',s.remindImportant);
-    h+=`<button class="btn block mt8" id="btnImportant">管理重要日期</button>`;
     h+=`</div>`;
-    const lock=Store.getLockState();
-    h+=`<div class="card set-group"><div class="sg-t">隐私与安全</div>`;
-    h+=`<div class="detail-row"><span class="dk">应用锁</span><span>${lock.appLock?'已开启':'未开启'}</span></div>`;
-    h+=`<button class="btn block" id="btnLockSetting">${lock.appLock?'管理应用锁':'设置应用锁'}</button>`;
-    h+=`<div class="section-note">开启后进入应用、从后台返回需输入密码；可额外启用本地加密保护 API Key 与个人信息。</div>`;
+
+    // ---- 隐私与安全 ----
+    h+=`<div class="gp-head">隐私与安全</div>`;
+    h+=`<div class="gp-card">`;
+    h+=`<div class="gp-row" id="btnLockSetting"><span class="gp-ico">◇</span><div class="gp-main"><div class="gp-t">应用锁</div><div class="gp-d">后台返回需验证，可加密本地数据</div></div><span class="gp-val ${lock.appLock?'gold':''}">${lock.appLock?'已开启':'未开启'}</span><span class="gp-chev">›</span></div>`;
     h+=`</div>`;
-    h+=`<div class="card set-group"><div class="sg-t">应用</div>`;
-    h+=`<div class="detail-row"><span class="dk">网络状态</span><span>${state.online?'在线':'离线'}</span></div>`;
+
+    // ---- 数据管理 ----
+    h+=`<div class="gp-head">数据管理</div>`;
+    h+=`<div class="gp-card">`;
+    const sz=Store.storageSizeEstimate();
+    h+=`<div class="gp-row disabled"><span class="gp-ico">▤</span><div class="gp-main"><div class="gp-t">本地存储</div><div class="gp-d">案例 ${sz.caseCount} 条 · 占用 ${sz.sizeText} · 仅存本机</div></div></div>`;
+    h+=`<button class="btn-link-row" id="btnExport"><span class="gp-ico">⇪</span>导出备份<span class="btn-x-chev">›</span></button>`;
+    h+=`<button class="btn-link-row" id="btnImport"><span class="gp-ico">⇩</span>导入备份<span class="btn-x-chev">›</span></button>`;
+    h+=`<button class="btn-link-row danger" id="btnClear"><span class="gp-ico danger">✕</span>清除全部案例<span class="btn-x-chev">›</span></button>`;
+    h+=`</div>`;
+
+    // ---- 应用 ----
+    h+=`<div class="gp-head">应用</div>`;
+    h+=`<div class="gp-card">`;
+    h+=`<div class="gp-row disabled"><span class="gp-ico">◌</span><div class="gp-main"><div class="gp-t">网络状态</div></div><span class="gp-val ${state.online?'':'gold'}">${state.online?'在线':'离线'}</span></div>`;
     if(state.installable){
-      h+=`<button class="btn primary block" id="btnInstallPwa">安装到桌面</button>`;
+      h+=`<button class="btn-link-row" id="btnInstallPwa"><span class="gp-ico">⌂</span>安装到桌面<span class="btn-x-chev">›</span></button>`;
     }else{
-      h+=`<div class="section-note muted">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div>`;
+      h+=`<div class="gp-row disabled" style="padding:10px 15px"><div class="gp-main"><div class="gp-d">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div></div></div>`;
     }
+    h+=`<button class="btn-link-row" id="btnAbout"><span class="gp-ico">ℹ</span>关于与免责声明<span class="btn-x-chev">›</span></button>`;
     h+=`</div>`;
-    h+=`<div class="card"><button class="btn block" id="btnAbout">关于与免责声明</button></div>`;
-    h+=`<div class="card"><div class="detail-row"><span class="dk">版本</span><span>玄决 V1.0.9</span></div><div class="detail-row"><span class="dk">术数模块</span><span>大六壬 · 六爻 · 八字 · 梅花易数 · 小六壬 · 塔罗 · 紫微斗数 · 奇门遁甲</span></div><div class="detail-row"><span class="dk">古籍库</span><span>10 本 / 150 段</span></div><div class="detail-row"><span class="dk">数据</span><span>本地存储 · 离线可用 · 不上传</span></div></div>`;
+
+    // ---- 版本信息 ----
+    h+=`<div class="gp-card" style="margin-top:12px">`;
+    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t" style="font-size:12px;color:var(--muted)">玄决 V1.0.10 · 大六壬决策台</div></div><span class="gp-val" style="font-size:10px">本地加密 · 离线可用</span></div>`;
+    h+=`</div>`;
     return h;
   }
   // 重要日期管理子页
@@ -4048,14 +3982,14 @@
 
   function selectRow(label,key,opts){
     const s=Store.getSettings();const cur=s[key];
-    return `<div class="field" style="margin:8px 0"><label>${label}</label><select data-set="${key}">${opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('')}</select></div>`;
+    return `<div class="switch"><span>${label}</span><select data-set="${key}">${opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('')}</select></div>`;
   }
   function switchRow(label,key,val){
     return `<div class="switch"><span>${label}</span><input type="checkbox" data-set="${key}" ${val?'checked':''}></div>`;
   }
-  // AI 模型配置卡片
+  // AI 模型配置（折叠卡内部内容，随「AI 顾问 → 模型配置」行展开/收起）
   function escAttr(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-  function pageAIConfig(s){
+  function pageAIConfigInner(s){
     const P=AI.PROVIDERS;
     const provOpts=Object.keys(P).map(k=>`<option value="${k}" ${s.aiProvider===k?'selected':''}>${P[k].label}</option>`).join('');
     const protoOpts=['openai','anthropic'].map(p=>`<option value="${p}" ${s.aiProtocol===p?'selected':''}>${p==='openai'?'OpenAI 兼容（推荐）':'Anthropic 协议'}</option>`).join('');
@@ -4063,8 +3997,8 @@
       ?P[s.aiProvider].models:['(请直接输入模型名)'];
     // 密钥不直接落 DOM（防截图/审查泄露）；只显示掩码提示
     const keyMasked=s.aiApiKey?(s.aiApiKey.length>=9?(s.aiApiKey.slice(0,4)+'****'+s.aiApiKey.slice(-4)):'已设置'):'';
-    let h=`<div class="card set-group" id="aiConfigCard"><div class="sg-t">AI 模型配置</div>`;
-    h+=`<div class="section-note">用户自带 Key，应用不内置密钥。兼容 OpenAI/DeepSeek/通义/Kimi/智谱/Ollama/中转站等。请求仅在用户主动调用 AI 解读时发起。</div>`;
+    let h=`<div class="ai-config-inner" id="aiConfigCard">`;
+    h+=`<div class="section-note">用户自带 Key，应用不内置密钥。兼容 OpenAI/DeepSeek/通义/Kimi/智谱/Ollama/中转站等。</div>`;
     h+=`<div class="field"><label>提供商</label><select id="aiProvider" data-set="aiProvider">${provOpts}</select></div>`;
     h+=`<div class="field"><label>API 协议</label><select id="aiProtocol" data-set="aiProtocol">${protoOpts}</select></div>`;
     h+=`<div class="field"><label>接口地址 BaseUrl</label><input type="text" id="aiBaseUrl" data-set="aiBaseUrl" value="${escAttr(s.aiBaseUrl)}" placeholder="如 https://api.deepseek.com/v1"></div>`;
@@ -4173,9 +4107,23 @@
   function bindMe(){
     if(state.subPage==='important'){bindImportant();return;}
     if(state.subPage==='case'){bindCaseList();return;}
-    $('#btnProfile').onclick=()=>openProfile();
+    const btnProfile=$('#btnProfile');
+    if(btnProfile)btnProfile.onclick=()=>openProfile();
     const btnCaseList=$('#btnCaseList');
     if(btnCaseList)btnCaseList.onclick=()=>{state.subPage='case';renderTab();};
+    const btnImportant=$('#btnImportant');
+    if(btnImportant)btnImportant.onclick=()=>{state.subPage='important';renderTab();};
+    // AI 模型配置折叠行
+    const btnAiConfig=$('#btnAiConfig');
+    if(btnAiConfig)btnAiConfig.onclick=()=>{
+      const wrap=$('#aiConfigWrap');
+      if(!wrap)return;
+      const open=!wrap.classList.contains('open');
+      wrap.classList.toggle('open',open);
+      const chev=$('#aiCfgChev');
+      if(chev)chev.innerHTML=open?'⌃':'›';
+      if(open)bindAIConfig();
+    };
     document.querySelectorAll('[data-set]').forEach(e=>e.onchange=ev=>{
       const k=ev.target.dataset.set;
       // aiProvider / aiTemperature / notificationEnabled 由专用 handler 处理
@@ -4192,11 +4140,10 @@
         startReminderLoop();
       }
     });
-    bindAIConfig();
+    // AI 模型配置折叠卡内的绑定在展开时调用
     $('#btnExport').onclick=()=>doExport();
     $('#btnImport').onclick=()=>doImport();
     $('#btnClear').onclick=()=>{modal('清除全部案例','将删除所有案例数据（设置保留），不可恢复。',m=>{Store.clearAll();closeModal();toast('已清除全部案例');renderTab();});};
-    $('#btnImportant').onclick=()=>{state.subPage='important';renderTab();};
     $('#btnReqNotify').onclick=()=>requestNotificationPermission();
     const notifySw=$('[data-set="notificationEnabled"]');
     if(notifySw){
@@ -4220,7 +4167,7 @@
     };
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.9</span></p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.10</span></p>
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
     <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
     <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
@@ -4332,8 +4279,85 @@
     return q.toLowerCase().split(/\s+/).filter(Boolean).every(t=>s.includes(t));
   }
 
+  // ---------- 典籍 AI 问答：RAG 检索本地古籍 → LLM 输出原文+解释 ----------
+  async function askClassics(question){
+    const cfg=Store.getSettings();
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(!(cfg.aiApiKey||cfg.aiProvider==='ollama')){
+      modal('未配置 API Key','请在「我的 → AI 顾问 → 模型配置」中填写 API Key，即可让 AI 基于典籍检索回答。',()=>{state.tab='me';renderTab();},()=>{},'去配置');
+      return;
+    }
+    if(state.classics.aiBusy)return;
+    state.classics.aiBusy=true;
+    // 1) RAG 检索本地古籍段落
+    let refs=[];
+    try{
+      const hits=ClassicLibrary.search({query:question,limit:4});
+      if(hits&&hits.length){
+        refs=hits.map(p=>({id:p.id,src:ClassicLibrary.formatCitation(p),text:(p.text||'').slice(0,220),comment:(p.comment||'').slice(0,160)}));
+      }
+    }catch(_){refs=[];}
+    // 2) 推入对话（助手占位，流式填充）
+    state.classics.aiConv.push({role:'q',q:question});
+    const idx=state.classics.aiConv.length;
+    state.classics.aiConv.push({role:'a',a:'',html:'',refs,ab:true});
+    state.classics.aiDraft='';
+    renderTab(true);
+    scrollToClassicsAsk();
+    // 3) 构造提示词并流式调用
+    const refTxt=refs.length
+      ? refs.map((r,i)=>`【段落${i+1}】出处：${r.src}\n原文：${r.text}\n${r.comment?'白话：'+r.comment:''}`).join('\n\n')
+      : '（未检索到直接相关段落，请基于传统术数通识谨慎回应，并明确说明未检索到原文依据）';
+    const sys=`你是「玄决」的古典术数典籍顾问。请严谨、克制地回答用户问题。要求：
+1. 若提供了【段落】，务必引用其中原文段落（可摘录关键句）作为依据；
+2. 紧随原文给出白话解释（分点，简明）；
+3. 最后给 1-2 条参考应用提示；
+4. 绝不编造原文出处；未检索到依据时如实说明；
+5. 全程避免"必然/一定/保证"等绝对化措辞，仅作文化参考。`;
+    const user=`问题：${question}\n\n【检索到的典籍段落】\n${refTxt}\n\n请按上述要求回答：先列原文（标注出处），再做白话解释。`;
+    const threadId='classics_ask_'+Date.now().toString(36);
+    AI.startChat(threadId,sys,'');
+    try{
+      const reply=await AI.chat(threadId,user,{
+        stream:cfg.aiStream!==false,
+        retries:2,
+        onDelta:(delta,full)=>{
+          const m=state.classics.aiConv[idx];
+          if(!m)return;
+          m.ab=false;
+          m.html=AI.renderMarkdown(full);
+          if(state.tab==='classics'){
+            const cards=document.querySelectorAll('.cl-ask-a .ca-body');
+            const body=cards.length?cards[cards.length-1]:null;
+            if(body){body.innerHTML=m.html;body.parentElement.classList.remove('ab');}
+          }
+        }
+      });
+      const m=state.classics.aiConv[idx];
+      if(m){m.a=reply;m.ab=false;m.html=AI.renderMarkdown(reply);}
+      const forb=AI.hasForbidden(reply);
+      if(forb.length&&state.tab==='classics'){
+        const last=document.querySelector('.cl-ask-a:last-of-type .ca-body');
+        if(last)last.innerHTML+=`<div class="ai-warn">检测到 ${forb.length} 处绝对化措辞，请理性参考。</div>`;
+      }
+    }catch(e){
+      const m=state.classics.aiConv[idx];
+      if(m)m.html='<div class="ai-error">✗ 回答失败：'+esc(e.message||'未知错误')+'</div><div class="section-note">建议：检查「我的 → 模型配置」或点击「测试连接」排查。</div>';
+    }finally{
+      state.classics.aiBusy=false;
+      if(state.tab==='classics')renderTab();
+    }
+  }
+  function scrollToClassicsAsk(){
+    setTimeout(()=>{
+      const wrap=document.querySelector('.cl-ask-card');
+      if(wrap&&typeof wrap.scrollIntoView==='function')wrap.scrollIntoView({behavior:'smooth',block:'start'});
+    },50);
+  }
+
   function pageClassics(){
     if(!state.classics) state.classics={cat:'',book:'',q:'',favOnly:false,mode:'list',readBook:'',readCh:0};
+    if(state.classics.aiConv===undefined)state.classics.aiConv=[];
     const f=state.classics;
     const idx=ClassicLibrary.loadIndex();
     if(idx&&typeof idx.then==='function'){idx.then(()=>{if(state.tab==='classics')renderTab();});}
@@ -4376,7 +4400,21 @@
 
     // 书籍列表模式
     if(f.mode==='list'||!f.mode){
-      let h=`<div class="phead"><div><div class="ptitle">典籍</div><div class="psub">古籍知识库 · 完整全文 · RAG 检索</div></div><div class="psub">已收录 ${books.length} 本</div></div>`;
+      let h=`<div class="phead ios-head"><div><div class="ptitle">典籍</div><div class="psub">古籍库 · 全文 · AI 问答</div></div><div class="psub" style="align-self:flex-end">已收录 ${books.length} 本</div></div>`;
+      // AI 问典籍（RAG 检索 + LLM 原文与解释）
+      const aiCfg=Store.getSettings();
+      const aiReady=!!(aiCfg.aiApiKey||aiCfg.aiProvider==='ollama');
+      const aiConv=(state.classics.aiConv||[]);
+      h+=`<div class="classics-hero"><div class="ch-ring">籍</div><div><div class="ch-t">AI 问典籍</div><div class="ch-d">基于 ${books.length} 本古籍检索作答：输出原文 + 白话解释</div></div></div>`;
+      h+=`<div class="cl-ask-card">`;
+      h+=`<div class="cl-ask-head"><span class="ca-ico">✦</span><span class="ca-t">向古籍提问</span>${aiReady?'<span class="ca-sub">RAG · 实时</span>':'<span class="ca-sub" style="color:var(--warn)">未配置 Key</span>'}</div>`;
+      h+=aiConv.map((m,i)=>m.role==='q'
+        ?`<div class="cl-ask-q">${esc(m.q)}</div>`
+        :`<div class="cl-ask-a ${m.ab?'ab':''}"><div class="ca-body">${m.html||esc(m.a||'…')}</div>${m.refs&&m.refs.length?m.refs.map(r=>`<div class="cl-ask-ref"><div class="cr-src">📖 ${esc(r.src)}</div><div class="cr-text">${esc(r.text)}</div>${r.comment?`<div class="cr-comment">白话：${esc(r.comment)}</div>`:''}</div>`).join(''):''}</div>`).join('');
+      h+=`<div class="cl-ask-input-row"><input type="text" class="cl-ask-input" id="clAiInput" placeholder="如：求财看什么？大六壬取贵人的法则…" ${state.classics.aiBusy?'disabled':''} value="${esc((state.classics.aiDraft||''))}"><button class="cl-ask-send" id="btnClAsk" ${state.classics.aiBusy?'disabled':''}>➤</button></div>`;
+      h+=`<div class="cl-ask-quick">${['求财怎么看','青龙主什么','六壬取用神','什么是大运流年','玄武的象意','小六壬三宫怎么看'].map(q=>`<span class="cl-qchip" data-q="${escAttr(q)}">${q}</span>`).join('')}</div>`;
+      h+=`<div class="cl-ask-hint">${aiReady?'回答将引用古籍原文段落并给出白话解释，如需 AI 服务请先在「我的 → 模型配置」设置。':'提示：先在「我的 → AI 顾问 → 模型配置」填写 API Key 后即可使用。'}</div>`;
+      h+=`</div>`;
       // 搜索栏
       h+=`<div class="card classic-search"><input type="text" id="classicQuery" placeholder="搜索关键词，如「求财」「青龙」「用神」..." value="${esc(f.q)}"></div>`;
       // 术数分类
@@ -4443,6 +4481,22 @@
       return;
     }
     // 列表模式绑定
+    const clInp=$('#clAiInput');
+    const clBtn=$('#btnClAsk');
+    if(clInp&&clBtn){
+      const send=()=>{
+        const q=clInp.value.trim();
+        if(!q||state.classics.aiBusy)return;
+        askClassics(q);
+      };
+      clBtn.onclick=send;
+      clInp.onkeydown=e=>{if(e.key==='Enter')send();};
+      clInp.oninput=()=>{state.classics.aiDraft=clInp.value;};
+    }
+    document.querySelectorAll('.cl-qchip[data-q]').forEach(el=>el.onclick=()=>{
+      if(state.classics.aiBusy)return;
+      askClassics(el.dataset.q);
+    });
     const q=$('#classicQuery');
     if(q){
       let timer=null;
@@ -4476,5 +4530,5 @@
 
   // boot
   document.addEventListener('DOMContentLoaded',init);
-  global.App={toast,computeDaliuren};
+  global.App={toast,computeDaliuren,askClassics};
 })(window);
