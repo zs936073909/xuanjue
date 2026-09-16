@@ -23,7 +23,80 @@
   })();
 
   function read(k,dft){try{const v=_ls.getItem(k);return v?JSON.parse(v):dft;}catch(e){return dft;}}
-  function write(k,v){try{_ls.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}
+  function write(k,v){
+    let json=null;
+    try{json=JSON.stringify(v);}catch(e){return false;}
+    let ok=false;
+    try{_ls.setItem(k,json);ok=true;}catch(e){ok=false;}
+    _idbSet(k,json); // 尽力镜像到 IndexedDB（异步、不阻塞）
+    return ok;
+  }
+  // 删除：同步删 localStorage + 异步删镜像（保证加密清理等删除语义一致）
+  function rm(k){try{_ls.removeItem(k);}catch(e){}_idbDel(k);}
+
+  // ============ IndexedDB 本地持久镜像 ============
+  // localStorage 容量有限（约 5MB），案例/对话历史可能逼近上限。
+  // 策略：write() 落盘键异步镜像到 IndexedDB（write-through）；启动时若 localStorage 缺键则从镜像恢复。
+  // 无 indexedDB 的环境（jsdom / 部分隐私模式）自动降级为 no-op，不影响任何现有行为。
+  const IDB_NAME='xuanjue-idb',IDB_STORE='kv';
+  let _idb=null; // null=未初始化 'disabled'=不可用 object=可用 DB 实例
+  let _idbInitPromise=null;
+  function idbAvailable(){return typeof indexedDB!=='undefined'&&!!indexedDB.open;}
+  function _idbOpen(){
+    if(!idbAvailable()){_idb='disabled';return Promise.resolve('disabled');}
+    if(_idbInitPromise)return _idbInitPromise;
+    _idbInitPromise=new Promise(res=>{
+      try{
+        const req=indexedDB.open(IDB_NAME,1);
+        req.onupgradeneeded=()=>{
+          const db=req.result;
+          if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE,{keyPath:'k'});
+        };
+        req.onsuccess=()=>{_idb=req.result;res('ok');};
+        req.onerror=()=>{_idb='disabled';res('disabled');};
+        req.onblocked=()=>{_idb='disabled';res('disabled');};
+      }catch(e){_idb='disabled';res('disabled');}
+    });
+    return _idbInitPromise;
+  }
+  function _idbTxn(mode,fn){
+    return _idbOpen().then(st=>{
+      if(st!=='ok'||!_idb||_idb==='disabled')return;
+      try{
+        const tx=_idb.transaction(IDB_STORE,mode);
+        fn(tx.objectStore(IDB_STORE));
+        tx.onerror=()=>{_idb='disabled';}; // 事务失败（配额等）则停用镜像
+      }catch(e){_idb='disabled';}
+    }).catch(()=>{_idb='disabled';});
+  }
+  function _idbSet(k,v){return _idbTxn('readwrite',s=>s.put({k:String(k),v:String(v)}));}
+  function _idbDel(k){return _idbTxn('readwrite',s=>s.delete(String(k)));}
+  function _idbAll(){
+    return _idbOpen().then(st=>{
+      if(st!=='ok'||!_idb||_idb==='disabled')return [];
+      return new Promise(res=>{
+        try{
+          const tx=_idb.transaction(IDB_STORE,'readonly');
+          const req=tx.objectStore(IDB_STORE).getAll();
+          req.onsuccess=()=>res(req.result||[]);
+          req.onerror=()=>res([]);
+        }catch(e){res([]);}
+      });
+    }).catch(()=>[]);
+  }
+  // 从镜像恢复缺失键（localStorage 为权威主存储，仅补齐缺失项）；返回恢复键数
+  function restoreFromIdb(){
+    return _idbAll().then(items=>{
+      let restored=0;
+      items.forEach(it=>{
+        if(!it||typeof it.k!=='string'||it.k.length===0||it.k.length>128)return;
+        if(_ls.getItem(it.k)===null){
+          try{_ls.setItem(it.k,it.v);restored++;}catch(e){}
+        }
+      });
+      return restored;
+    }).catch(()=>0);
+  }
 
   // 案例
   function listCases(){
@@ -286,7 +359,7 @@
         write(KEY_PROFILE+'_enc',xorObfuscate(decP,newKey));
       }else{
         write(KEY_PROFILE+'_enc',xorObfuscate(JSON.stringify(curP),newKey));
-        _ls.removeItem(KEY_PROFILE);
+        rm(KEY_PROFILE);
       }
     }
     setLockState({pinHash:pinHash(newPin)});
@@ -325,7 +398,7 @@
       const encP=read(KEY_PROFILE+'_enc','');
       if(encP){
         try{write(KEY_PROFILE,JSON.parse(xorDeobfuscate(encP,key)));}catch(e){write(KEY_PROFILE,{});}
-        _ls.removeItem(KEY_PROFILE+'_enc');
+        rm(KEY_PROFILE+'_enc');
       }
     }
     write(KEY_SETTINGS,curS);
@@ -376,7 +449,7 @@
       _ls.removeItem(KEY_PROFILE);
     }else{
       write(KEY_PROFILE,merged);
-      _ls.removeItem(KEY_PROFILE+'_enc');
+      rm(KEY_PROFILE+'_enc');
     }
   }
 
@@ -460,8 +533,8 @@
     else{sizeText=(sizeBytes/1048576).toFixed(1)+' MB';}
     return{caseCount:cases.length,sizeBytes,sizeText};
   }
-  function clearAll(){_ls.removeItem(KEY_CASES);}
-  function clearEverything(){_ls.removeItem(KEY_CASES);_ls.removeItem(KEY_SETTINGS);_ls.removeItem(KEY_PROFILE);}
+  function clearAll(){rm(KEY_CASES);}
+  function clearEverything(){rm(KEY_CASES);rm(KEY_SETTINGS);rm(KEY_PROFILE);}
 
   // 同意声明
   function isAgreed(){return _ls.getItem(KEY_AGREE)==='1';}
@@ -525,6 +598,7 @@
     getChat,saveChat,clearChat,listChats,
     getLockState,setLockState,isLocked,verifyPin,unlock,lockApp,changePin,setAppLock,toggleLocalEncrypt,
     exportBackup,importBackup,storageSizeEstimate,clearAll,clearEverything,
-    isAgreed,setAgreed
+    isAgreed,setAgreed,
+    restoreFromIdb
   };
 })(window);

@@ -1,29 +1,30 @@
 // service-worker.js — 玄决 PWA 离线缓存与通知支持
-const CACHE_VERSION = 'v1.0.10';
+const CACHE_VERSION = 'v1.5.0';
 const STATIC_CACHE = 'xuanjue-static-' + CACHE_VERSION;
 const DATA_CACHE = 'xuanjue-data-' + CACHE_VERSION;
 
 const STATIC_ASSETS = [
   './',
-  './index.html',
-  './manifest.json',
+  './css/style.css',
   './icon-192.png',
   './icon-512.png',
-  './css/style.css',
   './img/ambient-hero.jpg',
-  './js/lunar.js',
-  './js/huangli.js',
-  './js/daliuren.js',
-  './js/iztro.min.js',
-  './js/vendor/iching-shifa.min.js',
-  './js/vendor/tarot-kit.min.js',
-  './js/vendor/qimendunjia-standalone.min.js',
-  './js/shushu.js',
-  './js/store.js',
+  './index.html',
   './js/ai.js',
+  './js/app.js',
   './js/classics.js',
   './js/cross.js',
-  './js/app.js'
+  './js/daliuren.js',
+  './js/huangli.js',
+  './js/iztro.min.js',
+  './js/lunar.js',
+  './js/shushu.js',
+  './js/store.js',
+  './js/vendor-loader.js',
+  './js/vendor/iching-shifa.min.js',
+  './js/vendor/qimendunjia-standalone.min.js',
+  './js/vendor/tarot-kit.min.js',
+  './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {

@@ -13,6 +13,11 @@
     "SplashScreen": {
       "backgroundColor": "#1a1410",
       "showSpinner": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_launcher",
+      "iconColor": "#d4af37",
+      "sound": null
     }
   }
 }

@@ -389,7 +389,7 @@
     opts=opts||{};
     const cfg=Store.getSettings();
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      throw new Error('未配置 API Key。请在「我的 → AI 模型配置」中填写密钥。');
+      throw new Error('未配置 API Key。请在「我的 → 玄顾问 → 模型配置」中填写密钥。');
     }
     if(!cfg.aiBaseUrl)throw new Error('未配置 BaseUrl。');
     if(!cfg.aiModel)throw new Error('未配置模型名。');

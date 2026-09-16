@@ -64,6 +64,16 @@ ok('首页含流年飞星', pc.textContent.includes('流年飞星')||pc.textCont
 ok('首页含命盘', pc.textContent.includes('命盘')||pc.textContent.includes('八字排盘'));
 ok('首页含干支或时辰', pc.textContent.includes('干支')||pc.textContent.includes('时辰'));
 
+// 2.1 语音房静态壳（预留，无通信依赖）
+ok('首页含语音房入口', pc.textContent.includes('语音房'));
+d.getElementById('btnVoice').click();
+await sleep(40);
+ok('语音房壳页含敬请期待', pc.textContent.includes('敬请期待'));
+ok('语音房壳页含静态占位', pc.textContent.includes('静态占位')||pc.textContent.includes('房间预览'));
+d.getElementById('backVoice').click();
+await sleep(40);
+ok('语音房返回首页', pc.textContent.includes('此刻大六壬'));
+
 // 3. 查看完整盘面（首页按钮直接进入大六壬详细盘面）
 d.getElementById('btnViewBoard').click();
 await sleep(60);
@@ -72,7 +82,7 @@ ok('详细盘面含三传', pc.textContent.includes('三传'));
 ok('详细盘面含格局', pc.textContent.includes('格局'));
 ok('详细盘面含天地盘', pc.textContent.includes('天地盘'));
 ok('详细盘面含神煞', pc.textContent.includes('神煞'));
-ok('详细盘面含AI白话解读', pc.textContent.includes('AI 白话解读'));
+ok('详细盘面含玄学解读', pc.textContent.includes('玄学解读'));
 ok('详细盘面含免责声明', pc.textContent.includes('免责声明')||pc.textContent.includes('不构成'));
 
 // 切换白话模式
@@ -138,22 +148,22 @@ ok('典籍页列出书籍', pc.textContent.includes('增删卜易')||pc.textCont
 d.querySelector('.tab[data-tab="me"]').click();
 await sleep(40);
 ok('我的页含术数设置', pc.textContent.includes('术数偏好'));
-ok('我的页含AI设置', pc.textContent.includes('AI 顾问'));
+ok('我的页含玄顾问', pc.textContent.includes('玄顾问'));
 ok('我的页含备份', pc.textContent.includes('数据管理'));
 ok('我的页含隐私与安全入口', pc.textContent.includes('隐私与安全'));
 ok('我的页含应用锁入口', !!d.getElementById('btnLockSetting'));
-ok('我的页含版本', pc.textContent.includes('V1.0.10'));
+ok('我的页含版本', pc.textContent.includes('V1.5.0'));
 ok('导出备份按钮存在', !!d.getElementById('btnExport'));
 ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
 ok('备份卡显示存储信息', pc.textContent.includes('本地存储'));
-ok('版本号显示 V1.0.10', pc.textContent.includes('V1.0.10'));
+ok('版本号显示 V1.5.0', pc.textContent.includes('V1.5.0'));
 
 // 9. 关于弹窗
 d.getElementById('btnAbout').click();
 await sleep(40);
 ok('关于弹窗含免责声明', d.querySelector('.modal').textContent.includes('不构成'));
-ok('关于弹窗含 V1.0.10', d.querySelector('.modal').textContent.includes('V1.0.10'));
+ok('关于弹窗含 V1.5.0', d.querySelector('.modal').textContent.includes('V1.5.0'));
 d.querySelector('.modal .btn.ghost').click();
 await sleep(30);
 

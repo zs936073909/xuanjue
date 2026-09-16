@@ -814,6 +814,18 @@ ctx.localStorage.removeItem('xuanjue_important');
 ctx.localStorage.removeItem('xuanjue_remind_state');
 ctx.localStorage.removeItem('xuanjue_lock');
 
-console.log('\n=========================');
-console.log('通过:',pass,'失败:',fail);
-process.exit(fail?1:0);
+// ===== idb 本地持久镜像（无 indexedDB 环境自动降级） =====
+console.log('\n--- idb 本地持久镜像降级 ---');
+eq('idb镜像-restoreFromIdb 存在',typeof Store.restoreFromIdb,'function');
+let idbErr=null,idbRet=null;
+try{idbRet=Store.restoreFromIdb();}catch(e){idbErr=e;}
+eq('idb镜像-无 indexedDB 调用不抛错',idbErr===null,true);
+eq('idb镜像-无 indexedDB 返回 Promise',!!idbRet&&typeof idbRet.then==='function',true);
+
+// 微任务后校验 Promise 解析值，再统一输出汇总
+Promise.resolve(idbRet).then(n=>{
+  eq('idb镜像-无 indexedDB 恢复数=0',n,0);
+  console.log('\n=========================');
+  console.log('通过:',pass,'失败:',fail);
+  process.exit(fail?1:0);
+});

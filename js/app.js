@@ -2,7 +2,7 @@
 (function(global){
   const $=s=>document.querySelector(s);
   const ZHI=Lunar.ZHI,GAN=Lunar.GAN;
-  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'pro',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,birthBoard:null,online:true,deferredPrompt:null,installable:false,fxYear:new Date().getFullYear()};
+  const state={tab:'home',subPage:'',ask:null,currentKe:null,viewCaseId:null,boardMode:'summary',reviewing:null,currentRagPassages:null,classicsHighlight:null,clockInterval:null,online:true,deferredPrompt:null,installable:false,fxYear:new Date().getFullYear()};
   let remindTimeout=null, remindInterval=null;
   let _aiAbort=null; // AI 请求取消控制器（全局，供 ask/result/追问共用）
 
@@ -142,7 +142,14 @@
   function closeModal(){$('#modal-root').innerHTML='';}
 
   // ---------- 大六壬 计算 ----------
+  // 分钟级课缓存：同一分钟内同类型起课复用同一课体（首页时课 / 问事 / 实时顾问同刻一致，且避免重复计算）
+  const _dlMinCache=new Map();
+  function dlMinKey(d,questionType){return fmtDateTime(d)+'|'+(questionType||'其他');}
+  function clearDlMinCache(){_dlMinCache.clear();}
   function computeDaliuren(date,questionType){
+    const key=dlMinKey(date,questionType);
+    const hit=_dlMinCache.get(key);
+    if(hit)return hit;
     const s=Store.getSettings();
     const baZi=Lunar.getBaZi(date);
     const yj=Lunar.getYueJiang(date,s.yueJiang);
@@ -169,7 +176,11 @@
     if(san.chu.tj==='贵人')sources.push({type:'rule',text:'贵人临传，可得助力'});
     if(san.chu.tj==='青龙')sources.push({type:'rule',text:'青龙临传，有财喜文书之喜'});
     plain.sources=sources;
-    return{ke,plain,baZi,yj,sc};
+    const result={ke,plain,baZi,yj,sc};
+    // 缓存上限保护：超限清空，防止浏览历史案例时无限堆积
+    if(_dlMinCache.size>=16)_dlMinCache.clear();
+    _dlMinCache.set(key,result);
+    return result;
   }
 
   // ---------- 启动 ----------
@@ -219,6 +230,13 @@
     window.addEventListener('online',updateOnline);
     window.addEventListener('offline',updateOnline);
     updateOnline();
+    // 术数大库：空闲后台预载 + 就绪后就地刷新首页对比网格
+    if(window.Vendor){
+      Vendor.preloadIdle();
+      Object.keys(Vendor.MAP).forEach(k=>{
+        Vendor.onReady(k,ok=>{if(ok)patchRtAfterVendor(k);});
+      });
+    }
   }
   function showDisclaimer(){
     $('#screen-disclaimer').classList.remove('hidden');
@@ -228,6 +246,8 @@
   function enterApp(){
     $('#screen-disclaimer').classList.add('hidden');
     applyDarkMode();
+    // 从 IndexedDB 镜像恢复缺失的本地键（静默，不打扰用户）
+    try{Store.restoreFromIdb().catch(()=>{});}catch(e){}
     if(Store.isLocked()){
       showLockScreen();
     }else{
@@ -293,19 +313,54 @@
       else{html.removeAttribute('data-theme');}
     }
   }
-  // 提醒：按天去重，支持每日提醒时间、重要日期、复盘到期
-  function showReminderNotification(title,body,tag){
-    if(!('Notification' in window) || Notification.permission!=='granted')return;
-    const icon='./icon-192.png';
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.ready.then(reg=>{
-        reg.showNotification(title,{body,icon,tag,badge:icon,requireInteraction:false});
-      }).catch(()=>{});
-    }else{
-      try{new Notification(title,{body,icon});}catch(e){}
+  // ================= 系统通知：Web Notification / Capacitor LocalNotifications 双通道 =================
+  function capNotifApi(){
+    // Capacitor（Android WebView 无 Web Notification，需原生插件）
+    try{
+      const C=window.Capacitor;
+      if(C&&C.Plugins&&C.Plugins.LocalNotifications)return C.Plugins.LocalNotifications;
+    }catch(e){}
+    return null;
+  }
+  function notifySupported(){
+    return !!(capNotifApi()||('Notification' in window));
+  }
+  // 解析 Capacitor 权限返回值（兼容 display / 字符串 / {permission} 各种形态）
+  function capPermissionStr(r){
+    if(r==null)return 'prompt';
+    const v=(r&&r.display!==undefined)?r.display:(r&&r.notifications!==undefined?r.notifications:(typeof r==='string'?r:(r&&r.permission)));
+    return v||'prompt';
+  }
+  async function getNotifyPermission(){
+    const cap=capNotifApi();
+    if(cap&&cap.checkPermissions){
+      try{
+        const st=capPermissionStr(await cap.checkPermissions());
+        if(['granted','denied','prompt'].includes(st))return st;
+      }catch(e){}
     }
+    if('Notification' in window)return Notification.permission;
+    return 'unsupported';
   }
   function requestNotificationPermission(){
+    const cap=capNotifApi();
+    if(cap&&cap.requestPermissions){
+      return cap.requestPermissions()
+        .then(r=>{
+          const status=capPermissionStr(r&&r.display);
+          if(status==='granted'){
+            Store.setSettings({notificationEnabled:true});toast('已开启系统通知');
+          }else{
+            Store.setSettings({notificationEnabled:false});toast('通知权限未开启，可在系统设置中手动授权');
+          }
+          renderTab();
+          return status;
+        })
+        .catch(e=>{
+          toast('通知请求失败：'+(e&&e.message?e.message:'未知错误'));
+          return 'denied';
+        });
+    }
     if(!('Notification' in window)){toast('当前环境不支持系统通知');return Promise.resolve('unsupported');}
     return Notification.requestPermission().then(status=>{
       if(status==='granted'){
@@ -318,6 +373,36 @@
       renderTab();
       return status;
     });
+  }
+  // 「我的 → 授权状态」行：异步刷新真实权限
+  function updateNotifyStatusText(){
+    const el=$('#notifyStatusText');
+    if(!el)return;
+    if(!notifySupported()){el.textContent='不支持';return;}
+    getNotifyPermission().then(p=>{
+      if(el&&el.isConnected)el.textContent=p==='granted'?'已授权':(p==='denied'?'已拒绝':'未授权');
+    }).catch(()=>{if(el&&el.isConnected)el.textContent='未知';});
+  }
+  let _capNotifSeq=0;
+  function showReminderNotification(title,body,tag){
+    // 优先 Capacitor 原生通知，其次 Web Notification
+    const cap=capNotifApi();
+    if(cap){
+      try{
+        _capNotifSeq=(_capNotifSeq+1)%100000;
+        cap.schedule({notifications:[{id:_capNotifSeq,title,body,schedule:{at:new Date(Date.now()+200)}}]});
+      }catch(e){}
+      return;
+    }
+    if(!('Notification' in window) || Notification.permission!=='granted')return;
+    const icon='./icon-192.png';
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.ready.then(reg=>{
+        reg.showNotification(title,{body,icon,tag,badge:icon,requireInteraction:false});
+      }).catch(()=>{});
+    }else{
+      try{new Notification(title,{body,icon});}catch(e){}
+    }
   }
   function runDailyReminders(){
     const s=Store.getSettings();
@@ -375,6 +460,7 @@
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
     const c=$('#page-container');
     if(state.tab==='home'&&state.subPage==='feixing')c.innerHTML=pageFeixing();
+    else if(state.tab==='home'&&state.subPage==='voice')c.innerHTML=pageVoice();
     else if(state.tab==='home')c.innerHTML=pageHome();
     else if(state.tab==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
     else if(state.tab==='classics')c.innerHTML=pageClassics();
@@ -388,6 +474,7 @@
   }
   function bindTab(){
     if(state.tab==='home'&&state.subPage==='feixing')bindFeixing();
+    else if(state.tab==='home'&&state.subPage==='voice')bindVoice();
     else if(state.tab==='home')bindHome();
     else if(state.tab==='ask')bindAsk();
     else if(state.tab==='classics')bindClassics();
@@ -395,6 +482,49 @@
   }
 
   // ================= 首页 =================
+  // 实时起课单项计算（大六壬需复用首页同刻结果以保证对比一致）
+  function computeRtItem(name,dlComp){
+    const d=state.rtBaseDate||(dlComp&&dlComp.ke&&dlComp.ke.date)||new Date();
+    if(name==='大六壬')return dlComp||computeDaliuren(d,a_state_bg().questionType);
+    try{return ShuShu.compute(name,d);}catch(e){return {name:name,result:null,plain:null,error:e&&e.message?e.message:'排盘异常'};}
+  }
+  function rtView(r){
+    const hasRes=r&&r.plain&&!r.error;
+    const stateTxt=hasRes?r.plain.state:(r&&r.error?r.error:'不可用');
+    const tend=hasRes?(r.plain.tendency||''):'不可用';
+    const tendCls=tend==='宜主动'?'good':(tend==='宜谨慎'?'warn':(tend==='不可用'?'warn':'calm'));
+    return {stateTxt:stateTxt,tend:tend,tendCls:tendCls};
+  }
+  // 某个术数库就绪后，就地刷新首页对比网格对应条目（不整页重渲染）
+  function patchRtAfterVendor(vendorKey){
+    if(state.tab!=='home'||state.subPage)return;
+    const deps=window.Vendor&&Vendor.METHOD_DEPS||{};
+    Object.keys(deps).forEach(m=>{
+      if(!deps[m].includes(vendorKey))return;
+      const old=state.rtResults&&state.rtResults[m];
+      if(!old)return;
+      const r=computeRtItem(m);
+      if(!r)return;
+      state.rtResults[m]=r;
+      const el=document.querySelector('[data-rt="'+m+'"]');
+      if(!el)return;
+      const v=rtView(r);
+      const line=el.querySelector('.rt-line');
+      if(line)line.textContent=String(v.stateTxt).slice(0,42);
+      const tag=el.querySelector('.tend-tag');
+      if(tag){tag.textContent=v.tend;tag.className='tend-tag '+v.tendCls;}
+    });
+  }
+  // 计算前确保所需术数库就绪（懒加载；失败走各术数内置降级文案）
+  async function ensureVendorsFor(methods){
+    if(!window.Vendor)return;
+    const arr=Array.isArray(methods)?methods:[methods];
+    const pending=arr.filter(m=>(Vendor.METHOD_DEPS[m]||[]).some(k=>!Vendor.loaded(k)));
+    if(!pending.length)return;
+    toast('正在加载排盘库（'+pending.join('、')+'）…');
+    await Vendor.ensure(arr);
+  }
+
   function pageHome(){
     const now=new Date();
     const bz=Lunar.getBaZi(now);
@@ -442,6 +572,30 @@
     h+=`<div class="shike-cmd nk-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面 ›</button></div>`;
     h+=`</div>`;
 
+    // ===== 实时起课 · 同刻多法门对比 =====
+    // 大六壬复用上方「此刻大六壬」同一计算结果，保证同刻对比一致
+    state.rtBaseDate=comp.ke.date;
+    const rtResults={};
+    ['大六壬','六爻','梅花易数','小六壬','塔罗','奇门遁甲'].forEach(name=>{
+      const r=computeRtItem(name,comp);
+      if(r)rtResults[name]=r;
+    });
+    state.rtResults=rtResults;
+    h+=`<div class="card rt-methods">`;
+    h+=`<h3>实时起课 <span class="h-sub">同刻多法门对比</span><span class="rt-live">● 此刻</span></h3>`;
+    h+=`<div class="rt-grid">`;
+    Object.keys(rtResults).forEach(name=>{
+      const r=rtResults[name];
+      const v=rtView(r);
+      h+=`<button class="rt-item" type="button" data-rt="${escAttr(name)}">`;
+      h+=`<div class="rt-top"><span class="rt-name">${esc(name)}</span><span class="tend-tag ${v.tendCls}">${v.tend}</span></div>`;
+      h+=`<div class="rt-line">${esc(String(v.stateTxt).slice(0,42))}</div>`;
+      h+=`</button>`;
+    });
+    h+=`</div>`;
+    h+=`<div class="section-note mt8">同一时刻，各法门独立起盘，可横向对比其倾向与建议。点击任意法门查看完整盘面。</div>`;
+    h+=`</div>`;
+
     // ===== 流年飞星 =====
     const fxCenter=FX_STARS[fxMap(state.fxYear)['中']];
     h+=`<div class="card">`;
@@ -449,6 +603,14 @@
     h+=`<div class="fx-home">`;
     h+=`<div class="fx-mini" id="fxMini"></div>`;
     h+=`<div class="fx-info"><div class="fi-t">${state.fxYear} ${fxYearGanzhi(state.fxYear)}年</div><div class="fi-d">${fxCenter.luck==='吉'?'吉':(fxCenter.luck==='凶'?'凶':'平')}星「${fxCenter.name}」入中宫${fxCenter.luck==='吉'?'，主文思与贵人':fxCenter.luck==='凶'?'，宜静不宜动':''}。查看全年方位吉凶与宜忌布局。</div><button class="btn ghost sm" id="btnFeixing">查看飞星方位 ›</button></div>`;
+    h+=`</div>`;
+    h+=`</div>`;
+
+    // ===== 语音房（静态壳预留，无任何通信依赖） =====
+    h+=`<div class="card">`;
+    h+=`<h3>语音房 <span class="h-sub">同盘共议 · 预留</span></h3>`;
+    h+=`<div class="fx-home">`;
+    h+=`<div class="fx-info"><div class="fi-t">多人语音讨论同一盘面</div><div class="fi-d">功能规划中：当前为静态壳预留，不接入实时通信与后端，所有数据仍仅存本机。</div><button class="btn ghost sm" id="btnVoice">查看语音房 ›</button></div>`;
     h+=`</div>`;
     h+=`</div>`;
 
@@ -460,7 +622,7 @@
       h+=`<div class="hp-status">${esc(profile.nick||'我的命盘')} · ${profile.gender||'—'} · ${bDate}</div>`;
       h+=`<div class="hp-actions"><button class="btn" id="btnHomeBaZi">八字排盘</button><button class="btn" id="btnHomeZiWei">紫微斗数</button></div>`;
     }else{
-      h+=`<div class="hp-status">填写出生日期后，可排八字 / 紫微命盘，并由 AI 顾问趋吉避凶。</div>`;
+      h+=`<div class="hp-status">填写出生日期后，可排八字 / 紫微命盘，并由玄顾问趋吉避凶。</div>`;
       h+=`<div class="hp-actions"><button class="btn primary" id="btnEditProfile">填写出生信息</button></div>`;
     }
     h+=`<div class="hp-lite">今日宜忌<span class="pb2"><button id="btnGenDailyYiJi">生成 ›</button></span><span class="pb2"><button id="btnDailyYiJiAsk" class="hidden">追问 ›</button></span></div>`;
@@ -490,10 +652,33 @@
     if(fxMini)fxMini.innerHTML=fxMiniView(state.fxYear);
     const btnFeixing=$('#btnFeixing');
     if(btnFeixing)btnFeixing.onclick=()=>{state.subPage='feixing';renderTab();navEnter(()=>{state.subPage='';renderTab();},'feixing');};
+    // 语音房：静态壳预留入口（无通信依赖）
+    const btnVoice=$('#btnVoice');
+    if(btnVoice)btnVoice.onclick=()=>{state.subPage='voice';renderTab();navEnter(()=>{state.subPage='';renderTab();},'voice');};
     $('#btnViewBoard').onclick=()=>{
       const comp=computeDaliuren(new Date(),state.ask&&state.ask.bg.questionType||'其他');
       state.currentKe=comp;showDaliurenBoard(comp);
     };
+    // 首页实时起课：点击法门查看完整盘面（复用首页同刻结果，保证对比一致）
+    document.querySelectorAll('[data-rt]').forEach(e=>e.onclick=async()=>{
+      const name=e.dataset.rt;
+      // 依赖大库的法门：确保库就绪后按同刻重新计算（渲染时库可能尚未加载）
+      const needVendor=window.Vendor&&Vendor.METHOD_DEPS[name]&&Vendor.METHOD_DEPS[name].some(k=>!Vendor.loaded(k));
+      if(needVendor)await ensureVendorsFor([name]);
+      let r=state.rtResults&&state.rtResults[name];
+      if(needVendor&&(!r||r.error||(r.result&&r.result.error))){
+        r=computeRtItem(name);
+        if(r&&r.plain&&!r.error){state.rtResults[name]=r;}
+      }
+      if(!r||(r.error&&!r.plain)){toast(name+' 暂不可用');return;}
+      if(name==='大六壬'){
+        // 大六壬走专用盘面（ke 结构），其它法门走统一 shushu 盘面
+        if(r.ke)state.currentKe=r;
+        showDaliurenBoard(state.currentKe||r);
+      }else{
+        showShuShuBoard(r);
+      }
+    });
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
       state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
     });
@@ -502,20 +687,21 @@
     if(btnHomeBaZi)btnHomeBaZi.onclick=()=>{
       const profile=Store.getProfile();
       if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
-      const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+      const b=birthFromProfile(profile);
       const d=resolveBirthDate(b);
       const res=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
       if(!res){toast('八字排盘失败');return;}
-      showShuShuBoard({name:'八字',result:res,plain:res.plain||{}});
+      showShuShuBoard(res);
     };
-    if(btnHomeZiWei)btnHomeZiWei.onclick=()=>{
+    if(btnHomeZiWei)btnHomeZiWei.onclick=async()=>{
       const profile=Store.getProfile();
       if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
-      const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+      await ensureVendorsFor('紫微斗数');
+      const b=birthFromProfile(profile);
       const d=resolveBirthDate(b);
       const res=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):null;
       if(!res){toast('紫微排盘失败');return;}
-      showShuShuBoard({name:'紫微斗数',result:res,plain:res.plain||{}});
+      showShuShuBoard(res);
     };
     // 编辑个人信息
     const btnEditProfile=$('#btnEditProfile');
@@ -597,7 +783,7 @@
     let topbar='';
     if(s===5||isPlaceholder){
       const backLabel=isPlaceholder?'返回盘面':'返回问事';
-      const titleText=isPlaceholder?'大六壬盘面':'问事 · 结果';
+      const titleText=isPlaceholder?(state.ask._boardTitle||'盘面'):'问事 · 结果';
       topbar=`<div class="dl-topbar">
         <button class="dl-back" id="btnDlBack">‹ ${backLabel}</button>
         <div class="dl-title">${titleText}</div>
@@ -626,11 +812,11 @@
     h+=`<div class="field"><label>问题标题 <span class="req">*</span></label><input type="text" id="fTitle" value="${escAttr(b.title)}" placeholder="如：这段关系要不要继续"></div>`;
     h+=`<div class="field"><label>问题描述</label><textarea id="fDesc" placeholder="补充背景…">${esc(b.desc)}</textarea></div>`;
     h+=`<div class="switch"><span>更多背景（可选）${hasMore?' · 已填写':''}</span><input type="checkbox" id="fMore" ${moreOpen?'checked':''}></div>`;
-    h+=`<div id="moreBox" style="${moreOpen?'':'display:none'}">`;
+    h+=`<div id="moreBox" class="${moreOpen?'':'hidden'}">`;
     h+=`<div class="field"><label>当前情绪</label><div class="chips">${MOODS.map(m=>`<span class="chip ${b.mood===m?'on':''}" data-mood="${m}">${m}</span>`).join('')}</div></div>`;
     h+=`<div class="field"><label>紧急程度</label><div class="chips">${URGENT.map(u=>`<span class="chip ${b.urgent===u?'on':''}" data-urgent="${u}">${u}</span>`).join('')}</div></div>`;
     h+=`<div class="switch"><span>是否有明确选项</span><input type="checkbox" id="fHasOpt" ${b.hasOption?'checked':''}></div>`;
-    h+=`<div id="optBox" style="${b.hasOption?'':'display:none'}"><div class="field"><label>选项 A</label><input type="text" id="fOptA" value="${escAttr(b.optA)}"></div><div class="field"><label>选项 B</label><input type="text" id="fOptB" value="${escAttr(b.optB)}"></div></div>`;
+    h+=`<div id="optBox" class="${b.hasOption?'':'hidden'}"><div class="field"><label>选项 A</label><input type="text" id="fOptA" value="${escAttr(b.optA)}"></div><div class="field"><label>选项 B</label><input type="text" id="fOptB" value="${escAttr(b.optB)}"></div></div>`;
     h+=`<div class="field"><label>涉及人物</label><input type="text" id="fPersons" value="${escAttr(b.persons)}" placeholder="如：伴侣/同事"></div>`;
     h+=`<div class="field"><label>对方信息（可选，用于合盘）</label><input type="text" id="fOther" value="${escAttr(b.other)}" placeholder="出生日期时间"></div>`;
     h+=`<div class="field"><label>希望得到的建议类型</label><div class="chips">${['行动建议','风险提示','关系建议','时机建议'].map(t=>`<span class="chip ${b.adviceType.includes(t)?'on':''}" data-adv="${t}">${t}</span>`).join('')}</div></div>`;
@@ -690,6 +876,10 @@
     if(p.place)b.place=p.place;
     if(p.nianming&&!b.nianming)b.nianming=p.nianming;
     return b;
+  }
+  // 用个人信息构造排盘出生信息（datetime-local → date + hour）
+  function birthFromProfile(profile){
+    return {calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
   }
   // 八字案例保存后，把 birth 信息回写到个人信息（若 profile 对应字段为空）
   function syncProfileFromBirth(b){
@@ -1118,7 +1308,7 @@
     if(btnDlBack)btnDlBack.onclick=()=>{
       if(_aiAbort){try{_aiAbort.abort();}catch(e){}_aiAbort=null;}
       if(a._placeholder||a._shushuOnly){
-        // 从盘面中心入口来的：走导航栈，回到盘面 Tab（同步消费历史记录）
+        // 从盘面/首页快捷入口来的：走导航栈返回（同步消费历史记录）
         navBack();
       }else{
         // 从问事向导来的：走导航栈回到上一有意义步骤（与硬件返回键一致）
@@ -1210,7 +1400,8 @@
       autoBtn.classList.add('yao-shake');
       setTimeout(()=>{a.extra.liuyao.yaos=Array.from({length:6},randomYao);renderTab();},280);
     };
-    const timeBtn=$('#fLiuYaoTime');if(timeBtn)timeBtn.onclick=()=>{
+    const timeBtn=$('#fLiuYaoTime');if(timeBtn)timeBtn.onclick=async()=>{
+      await ensureVendorsFor('六爻');
       const date=resolveZhanTime(a);
       const r=ShuShu.compute('六爻',date);
       if(r&&r.result&&r.result.yaos){a.extra.liuyao.yaos=r.result.yaos;}
@@ -1248,7 +1439,7 @@
     const mhInput=$('#fMeiHuaInput');if(mhInput)a.extra.meihua.input=mhInput.value;
     const fTarotReverse=$('#fTarotReverse');if(fTarotReverse)a.extra.tarot.reverse=fTarotReverse.value;
   }
-  function goNext(){
+  async function goNext(){
     const a=state.ask;
     if(a.step===1){if(!a.bg.questionType){toast('请选择问题类型');return;}a.step=2;renderTab();return;}
     if(a.step===2){
@@ -1265,12 +1456,14 @@
       if(!a.shushu.length){toast('请至少选择一种术数');return;}
       const needInfo=a.shushu.some(s=>INFO_SHU.includes(s));
       if(needInfo){a.step=4;renderTab();return;}
+      await ensureVendorsFor(a.shushu);
       a.computed=computeAskResult(a);a.step=5;renderTab();enterAskResultNav(a);return;
     }
     if(a.step===4){
       collectStep4(a);
       if(a.shushu.includes('六爻')&&a.extra.liuyao.yaos.length!==6){toast('请完成六爻摇卦');return;}
       if((a.shushu.includes('八字')||a.shushu.includes('紫微斗数'))&&!a.extra.birth.date){toast('请填写出生日期');return;}
+      await ensureVendorsFor(a.shushu);
       a.computed=computeAskResult(a);a.step=5;renderTab();enterAskResultNav(a);return;
     }
   }
@@ -1382,7 +1575,7 @@
     if(sensitive){
       h+=`<div class="card"><div class="warn-text">检测到敏感关键词「${esc(sensitive.keyword)}」。</div><div class="section-note">${sensitiveHint(sensitive.cat)}</div></div>`;
     }
-    // 盘面中心入口：单一术数结果对象（兼容旧数据结构）
+    // 单一术数结果对象（兼容旧数据结构）
     if(c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name && !c.comp){
       h+=renderShuShuResult(c.shushu);
       h+=`<div class="card"><h3>操作</h3>`;
@@ -1431,14 +1624,14 @@
     h+=`<div class="card"><h3>操作</h3>`;
     h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
     if(c.comp||Object.keys(c.shushuResults||{}).length){
-      h+=`<button class="btn gold block mt8" id="btnAIDeep">AI 解读与对话</button>`;
+      h+=`<button class="btn gold block mt8" id="btnAIDeep">深度解读</button>`;
     }
     if(mainPlain){
       h+=`<div class="section-note">复盘提醒：约 ${mainPlain.reviewDays} 日后（系统将出现在首页与案例库）</div>`;
     }
     h+=`</div>`;
     // AI 深度解读输出区（按需展开）
-    h+=`<div class="card ai-output-card hidden" id="aiOutputCard"><h3>AI 深度解读 <span class="ai-badge" id="aiModelBadge">${a.computed&&a.computed.comp?'':'模型'}</span></h3><div id="aiOutput" class="ai-output"></div></div>`;
+    h+=`<div class="card ai-output-card hidden" id="aiOutputCard"><h3>深度解读 <span class="ai-badge" id="aiModelBadge">${a.computed&&a.computed.comp?'':'模型'}</span></h3><div id="aiOutput" class="ai-output"></div></div>`;
     setTimeout(()=>bindResult(a),20);
     return h;
   }
@@ -1521,7 +1714,7 @@
       });
       h+=`</div>`;
     }
-    h+=`<div class="source-item ai-note"><span class="source-tag ai">AI</span>以上为离线规则引擎基于盘面生成，可点击下方「AI 解读与对话」进行多轮追问。</div>`;
+    h+=`<div class="source-item ai-note"><span class="source-tag ai">玄</span>以上为离线规则引擎基于盘面生成，可点击下方「深度解读」进行多轮追问。</div>`;
     h+=`</div></div>`;
     return h;
   }
@@ -1564,7 +1757,7 @@
     return h;
   }
   function renderLiuYao(r){
-    let h=`<div class="shu-result-title" style="font-size:18px;margin:6px 0">${r.benGua}${r.bianGua!==r.benGua?' → '+r.bianGua:''}</div>`;
+    let h=`<div class="shu-result-title big">${r.benGua}${r.bianGua!==r.benGua?' → '+r.bianGua:''}</div>`;
     // 卦器视觉：六爻图形化展示（米黄宣纸 + 古铜棕，传统书卷风）
     h+=`<div class="liuyao-visual">`;
     h+=`<div class="ly-hexagram">`;
@@ -1695,7 +1888,7 @@
     };
     const isCeltic=r.spread==='celtic';
     let h='';
-    if(r.spreadName)h+=`<div class="section-note" style="text-align:center;font-weight:600">${esc(r.spreadName)}</div>`;
+    if(r.spreadName)h+=`<div class="section-note note-strong">${esc(r.spreadName)}</div>`;
     h+=`<div class="tarot-visual-spread ${isCeltic?'celtic':''}">`;
     r.cards.forEach((c,i)=>{
       const sym=TAROT_ICONS[c.name]||'✦';
@@ -1720,7 +1913,7 @@
       h+=`</div></div></div>`;
     });
     h+=`</div>`;
-    h+=`<div class="section-note" style="text-align:center;color:var(--muted);font-size:11px">点击卡牌翻面查看详情</div>`;
+    h+=`<div class="section-note note-center">点击卡牌翻面查看详情</div>`;
     // 详情面板：默认显示第一张
     const c0=r.cards[0];
     h+=`<div class="tarot-detail-panel" id="tarotDetailPanel">`;
@@ -1991,8 +2184,9 @@
     renderTab();
   }
   // 根据当前 ask 的术数类型重新起课并刷新结果页
-  function recomputeCurrentBoard(a){
+  async function recomputeCurrentBoard(a){
     const name=(a.shushu&&a.shushu[0])||'大六壬';
+    if(name!=='大六壬')await ensureVendorsFor(name);
     if(name==='大六壬'){
       const comp=computeDaliuren(new Date(),a.bg?a.bg.questionType:'其他');
       state.currentKe=comp;
@@ -2011,9 +2205,21 @@
   }
   function bindResult(a){
     const c=a.computed;const comp=c.comp;
-    // 模式切换
+    // 模式切换（chip 就地替换三层内容区：保持滚动位置，不打断进行中的解读流）
     const tg=document.querySelectorAll('.mode-toggle button');
-    if(tg.length)tg.forEach(b=>b.onclick=()=>{state.boardMode=b.dataset.mode;renderTab();});
+    if(tg.length)tg.forEach(b=>b.onclick=()=>{
+      const mode=b.dataset.mode;
+      if(mode===state.boardMode)return;
+      state.boardMode=mode;
+      tg.forEach(x=>x.classList.toggle('on',x===b));
+      const tierBody=$('#dlTierBody');
+      const c=a.computed;
+      if(tierBody&&c&&c.comp){
+        tierBody.innerHTML=tierHtml(c.comp.ke,c.comp.plain,mode);
+      }else{
+        renderTab();
+      }
+    });
     const btnSave=$('#btnSaveCase');if(btnSave)btnSave.onclick=()=>saveCurrentAsCase(a);
     // 依据来源折叠
     document.querySelectorAll('.src-collapse[data-sc]').forEach(el=>{
@@ -2090,9 +2296,9 @@
     const out=$('#aiOutput');
     const badge=$('#aiModelBadge');
     if(!card||!out)return;
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用 AI 深度解读。',null,true,'知道了');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用深度解读。',null,true,'知道了');
       return;
     }
     // 取消上一次请求
@@ -2100,7 +2306,7 @@
     _aiAbort=new AbortController();
     card.classList.remove('hidden');
     if(badge)badge.textContent=cfg.aiModel||'模型';
-    out.innerHTML='<div class="ai-pending">正在调用 AI（'+cfg.aiProvider+' · '+cfg.aiModel+'）…</div>';
+    out.innerHTML='<div class="ai-pending">正在生成解读（'+cfg.aiProvider+' · '+cfg.aiModel+'）…</div>';
     try{
       // RAG：从古籍知识库检索相关段落并注入用户 prompt
       let userPrompt=AI.buildMultiShuUserPrompt(c.comp,c.shushuResults,a.bg,cfg);
@@ -2178,7 +2384,7 @@
       const tip=document.createElement('div');
       tip.className='section-note';
       tip.style.marginTop='8px';
-      tip.textContent='建议：1. 检查「我的 → AI 模型配置」中 BaseUrl / API Key / 模型名是否正确；2. 若用 Anthropic 协议，请通过支持 CORS 的中转站；3. 网络不通可改用「复制 AI 提示词」按钮，外部 AI 工具粘贴解读。';
+      tip.textContent='建议：1. 检查「我的 → 玄顾问 → 模型配置」中 BaseUrl / API Key / 模型名是否正确；2. 若用 Anthropic 协议，请通过支持 CORS 的中转站；3. 网络不通可先用盘面内置的「玄学解读」（离线规则）查看要点。';
       out.appendChild(tip);
       // 内联重试按钮：错误时无需滚回顶部即可重试
       const retryBox=document.createElement('div');
@@ -2187,7 +2393,7 @@
       retryBox.style.gap='8px';
       const btnRetry=document.createElement('button');
       btnRetry.className='btn gold sm';
-      btnRetry.textContent='重新调用 AI';
+      btnRetry.textContent='重新生成解读';
       btnRetry.onclick=()=>runAIDeepRead(a);
       const btnTest=document.createElement('button');
       btnTest.className='btn sm';
@@ -2219,7 +2425,7 @@
     const fu=document.createElement('div');
     fu.className='ai-followup';
     fu.innerHTML=
-      '<div class="ai-fu-divider">— 以上为 AI 解读，下方可继续追问 —</div>'
+      '<div class="ai-fu-divider">— 以上为玄学解读，下方可继续追问 —</div>'
       +'<div class="ai-fu-messages" id="aiFuMsgs"></div>'
       +(cfg.offlineMode?'<div class="section-note">离线模式，无法追问</div>':
         '<div class="ai-fu-input-row">'
@@ -2265,7 +2471,7 @@
       msgs.appendChild(ub);
       // AI 气泡（占位）
       const ab=el('div','ai-fu-msg assistant');
-      ab.innerHTML='<span class="ai-fu-role">AI</span><span class="ai-fu-content">思考中…</span>';
+      ab.innerHTML='<span class="ai-fu-role">玄</span><span class="ai-fu-content">思考中…</span>';
       msgs.appendChild(ab);
       const contentEl=ab.querySelector('.ai-fu-content');
       msgs.scrollTop=msgs.scrollHeight;
@@ -2320,14 +2526,14 @@
   // 生成今日宜忌：命盘喜用神 × 当日干支 → AI 当日行动指南（流式渲染到卡片内）
   async function genDailyYiJi(){
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用今日宜忌。',null,true,'知道了');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用今日宜忌。',null,true,'知道了');
       return;
     }
     const profile=Store.getProfile();
     if(!profile||!profile.birth){toast('请先在「我的」页填写出生信息');return;}
-    const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+    const b=birthFromProfile(profile);
     const d=resolveBirthDate(b);
     if(!d){toast('出生日期解析失败，请在「我的」页检查出生信息');return;}
     const result=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
@@ -2378,7 +2584,7 @@
       if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
         body.innerHTML='<div class="dy-empty">已取消</div>';
       }else{
-        body.innerHTML='<div class="ai-error">✗ 生成失败：'+esc(e.message)+'</div><div class="section-note">建议：1) 检查「我的 → AI 模型配置」；2) 点击「测试连接」排查。</div>';
+        body.innerHTML='<div class="ai-error">✗ 生成失败：'+esc(e.message)+'</div><div class="section-note">建议：1) 检查「我的 → 玄顾问 → 模型配置」；2) 点击「测试连接」排查。</div>';
       }
     }finally{
       if(btn){btn.disabled=false;btn.textContent='重新生成';}
@@ -2398,11 +2604,11 @@
   }
   // 开启终身命理顾问对话（八字/紫微）
   // type: 'bazi' | 'ziwei'；domainKey: 可选，预设领域问题（见 AI.getLifetimeDomains）
-  function openLifetimeAdvisor(type,domainKey){
+  async function openLifetimeAdvisor(type,domainKey){
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用 AI 顾问。',null,true,'知道了');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问。',null,true,'知道了');
       return;
     }
     const profile=Store.getProfile();
@@ -2414,7 +2620,7 @@
       return;
     }
     // 解析出生日期
-    const b={calendar:'solar',date:String(profile.birth).split('T')[0],hour:String(profile.birth).split('T')[1]||'',gender:profile.gender,place:profile.place,zhenTaiyang:false,unknownHour:false};
+    const b=birthFromProfile(profile);
     const d=resolveBirthDate(b);
     if(!d){toast('出生日期解析失败，请在「我的」页检查出生信息');return;}
     let result=null,title='',threadId='';
@@ -2423,6 +2629,7 @@
       title='八字 · 趋吉避凶顾问';
       threadId='lifetime_bazi_'+String(profile.birth).replace(/[:T-]/g,'').slice(0,8);
     }else{
+      await ensureVendorsFor('紫微斗数');
       result=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):null;
       title='紫微 · 命运推演顾问';
       threadId='lifetime_ziwei_'+String(profile.birth).replace(/[:T-]/g,'').slice(0,8);
@@ -2443,9 +2650,9 @@
   // topicKey: 可选，预设事项问题（见 AI.getRealtimeTopics）
   function openRealtimeAdvisor(topicKey){
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用 AI 顾问。',null,true,'知道了');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问。',null,true,'知道了');
       return;
     }
     const comp=state.currentKe||computeDaliuren(new Date(),'其他');
@@ -2468,14 +2675,14 @@
   // 弹出 A/B 选项表单，提交后起当下卦象并调用 AI 对比分析
   function openDecisionCompare(){
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用决策对比助手。',null,true,'知道了');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用决策对比助手。',null,true,'知道了');
       return;
     }
     const body=`<div class="field"><label>事项标题</label><input type="text" id="dcTitle" placeholder="如：是否接受这份 offer"></div>`
       +`<div class="dc-opt-row"><div class="field"><label>选项 A</label><input type="text" id="dcOptA" placeholder="如：接受"></div><div class="field"><label>选项 B</label><input type="text" id="dcOptB" placeholder="如：拒绝"></div></div>`
-      +`<div class="field"><label>背景说明（可选）</label><textarea id="dcDesc" rows="2" placeholder="补充背景，帮助 AI 更准确分析"></textarea></div>`
+      +`<div class="field"><label>背景说明（可选）</label><textarea id="dcDesc" rows="2" placeholder="补充背景，帮助更准确地分析"></textarea></div>`
       +`<div class="field"><label>当前情绪（可选）</label><select id="dcMood"><option value="">—</option>${['平静','焦虑','期待','犹豫','急切'].map(m=>'<option>'+m+'</option>').join('')}</select></div>`;
     modal('决策对比助手',body,m=>{
       const tEl=$('#dcTitle'),aEl=$('#dcOptA'),bEl=$('#dcOptB');
@@ -2542,9 +2749,9 @@
       if(actions)actions.classList.remove('hidden');
     }catch(e){
       if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
-        out.innerHTML='<span style="color:var(--muted);">已取消</span>';
+        out.innerHTML='<span class="txt-muted">已取消</span>';
       }else{
-        out.innerHTML='<div class="ai-error">✗ 分析失败：'+esc(e.message)+'</div><div class="section-note">建议：1) 检查「我的 → AI 模型配置」；2) 点击「测试连接」排查。</div>';
+        out.innerHTML='<div class="ai-error">✗ 分析失败：'+esc(e.message)+'</div><div class="section-note">建议：1) 检查「我的 → 玄顾问 → 模型配置」；2) 点击「测试连接」排查。</div>';
       }
     }finally{
       _aiChatAbort=null;
@@ -2624,7 +2831,7 @@
       : '';
     panel.innerHTML=[
       '<div class="ai-chat-header">',
-        '<div class="ai-chat-title">'+esc(title||'AI 对话')+'</div>',
+        '<div class="ai-chat-title">'+esc(title||'玄顾问对话')+'</div>',
         '<div class="ai-chat-actions">',
           '<button class="btn sm ghost" id="aiChatTest">测试连接</button>',
           '<button class="btn sm ghost" id="aiChatClear">清空</button>',
@@ -2650,7 +2857,7 @@
       if(m.role==='system')return null;
       const isUser=m.role==='user';
       const b=el('div','ai-chat-bubble '+(isUser?'user':'ai'));
-      const roleEl=el('div','ai-chat-role',isUser?'我':'AI');
+      const roleEl=el('div','ai-chat-role',isUser?'我':'玄');
       const body=el('div','ai-chat-body');
       body.innerHTML=isUser?esc(m.content):AI.renderMarkdown(m.content);
       b.appendChild(roleEl);b.appendChild(body);
@@ -2669,9 +2876,9 @@
     async function send(msgText){
       const txt=(msgText!==undefined?msgText:input.value).trim();
       if(!txt)return;
-      if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+      if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
       if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-        modal('未配置 API Key','请在「我的 → AI 模型配置」中填写 API Key 后再使用 AI 对话。',null,true,'知道了');
+        modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问对话。',null,true,'知道了');
         return;
       }
       sending=true;btnSend.disabled=true;
@@ -2682,7 +2889,7 @@
       msgBox.scrollTop=msgBox.scrollHeight;
       // AI 气泡占位（流式更新）
       const aiBubble=el('div','ai-chat-bubble ai');
-      aiBubble.innerHTML='<div class="ai-chat-role">AI</div><div class="ai-chat-body ai-pending">思考中…</div>';
+      aiBubble.innerHTML='<div class="ai-chat-role">玄</div><div class="ai-chat-body ai-pending">思考中…</div>';
       msgBox.appendChild(aiBubble);
       const aiBody=aiBubble.querySelector('.ai-chat-body');
       try{
@@ -2709,10 +2916,10 @@
         }
       }catch(e){
         if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
-          aiBody.innerHTML='<span style="color:var(--muted);">已取消</span>';
+          aiBody.innerHTML='<span class="txt-muted">已取消</span>';
         }else{
-          aiBody.innerHTML='<span style="color:var(--red);">✗ 调用失败：'+esc(e.message)+'</span>'
-            +'<div style="margin-top:8px;font-size:12px;color:var(--ink2);">建议：1) 点击右上「测试连接」排查；2) 检查 BaseUrl/Key/模型名；3) Anthropic 协议需通过支持 CORS 的中转站。</div>';
+          aiBody.innerHTML='<span class="txt-red">✗ 调用失败：'+esc(e.message)+'</span>'
+            +'<div class="err-hint">建议：1) 点击右上「测试连接」排查；2) 检查 BaseUrl/Key/模型名；3) Anthropic 协议需通过支持 CORS 的中转站。</div>';
         }
       }finally{
         sending=false;btnSend.disabled=false;
@@ -2794,7 +3001,7 @@
   function renderDaliurenResult(comp){
     const ke=comp.ke,p=comp.plain;const mode=state.boardMode;
     let h='';
-    h+=`<div class="mode-toggle"><button data-mode="pro" class="${mode==='pro'?'on':''}">专业盘面</button><button data-mode="plain" class="${mode==='plain'?'on':''}">白话解读</button></div>`;
+    h+=`<div class="mode-toggle"><button data-mode="summary" class="${mode==='summary'?'on':''}">摘要</button><button data-mode="plain" class="${mode==='plain'?'on':''}">白话解读</button><button data-mode="pro" class="${mode==='pro'?'on':''}">专业盘面</button></div>`;
     // 课体概览卡（替代原 kv-grid，更紧凑可视化）
     h+=`<div class="card"><h3>大六壬盘面</h3>`;
     h+=`<div class="dl-overview">`;
@@ -2819,11 +3026,7 @@
     h+=`<div class="ov-row"><span class="ov-tag">起课 ${ke.dateStr}</span><span class="ov-tag">${comp.sc.name}（${comp.sc.range}）</span></div>`;
     h+=`</div>`;
     h+=`</div>`;
-    if(mode==='pro'){
-      h+=renderProBoard(ke);
-    }else{
-      h+=renderPlainBoard(p);
-    }
+    h+=`<div id="dlTierBody">${tierHtml(ke,p,mode)}</div>`;
     h+=renderAIBlock(comp,a_state_bg());
     h+=renderSourcesPanel(p,state.currentRagPassages);
     // 底部退出/重试/返回操作区
@@ -2836,11 +3039,17 @@
     h+=`</div>`;
     return h;
   }
+  // 三层渐进披露内容（摘要/白话/专业）——单独抽出，供 chip 就地切换时只替换该区块
+  function tierHtml(ke,p,mode){
+    if(mode==='pro')return renderProBoard(ke);
+    if(mode==='plain')return renderPlainBoard(p);
+    return renderSummaryBoard(p);
+  }
   function a_state_bg(){return state.ask?state.ask.bg:{questionType:'其他'};}
   function renderProBoard(ke){
     let h='';
     // ===== 四课（传统自右向左：四 三 二 一）=====
-    h+=`<div class="card"><h3>四课 <span style="font-size:11px;color:var(--muted);font-weight:400">（自右向左）</span></h3>`;
+    h+=`<div class="card"><h3>四课 <span class="h-note">（自右向左）</span></h3>`;
     h+=`<div class="dl-lessons">`;
     // 渲染顺序：四 三 二 一（因 direction:rtl，第一个 DOM 元素显示在最右）
     const lessonNames=['一课·日干','二课·干阴','三课·日支','四课·支阴'];
@@ -2906,7 +3115,7 @@
     h+=`<div class="section-note">取法：${sc.method}${sc.fromLesson>=0?'（取自'+lessonNames[sc.fromLesson].split('·')[0]+'）':''}</div>`;
     h+=`</div>`;
     // ===== 天地盘（圆盘式：12地支环绕，中心月将占时）=====
-    h+=`<div class="card"><h3>天地盘 / 十二天将 <span style="font-size:11px;color:var(--muted);font-weight:400">（圆盘式）</span></h3>`;
+    h+=`<div class="card"><h3>天地盘 / 十二天将 <span class="h-note">（圆盘式）</span></h3>`;
     h+=`<div class="dl-tp-round">`;
     // 12 地支按圆周排列：子(0)在正北(顶), 顺时针: 丑(1)→艮(NE)→寅(2)→甲(NE)→卯(3)→震(E)...
     // 简化用 30° 等分，子=顶部(0°/360°), 顺时针递增
@@ -2930,7 +3139,7 @@
     h+=`<div class="tp-center-info">
       <div class="ci-row"><span class="ci-lbl">月将</span><span class="ci-val">${wxSpan(ke.yueJiang.zhi,ke.yueJiang.wx)}</span></div>
       <div class="ci-row"><span class="ci-lbl">占时</span><span class="ci-val">${wxSpan(ke.zhanShi.zhi,ke.zhanShi.wx)}</span></div>
-      <div class="ci-row"><span class="ci-lbl">${ke.guiRen.label}</span><span class="ci-val">${ke.guiRen.zhi}<span style="font-size:10px;color:var(--ink2)">·乘${ke.guiRen.chengShen}</span></span></div>
+      <div class="ci-row"><span class="ci-lbl">${ke.guiRen.label}</span><span class="ci-val">${ke.guiRen.zhi}<span class="ci-sub">·乘${ke.guiRen.chengShen}</span></span></div>
     </div>`;
     h+=`</div>`;
     h+=`<div class="section-note">外圈天盘神、内圈地盘位、下方天将；空=空亡位。点击宫位查看详情</div>`;
@@ -2955,12 +3164,12 @@
     h+=`<div class="info-cell"><div class="ic-lbl">华盖</div><div class="ic-val">${ke.shenSha.huagai}</div></div>`;
     h+=`<div class="info-cell"><div class="ic-lbl">太岁</div><div class="ic-val">${ke.shenSha.taiSui}</div></div>`;
     h+=`<div class="info-cell"><div class="ic-lbl">月建</div><div class="ic-val">${ke.shenSha.yueJian}</div></div>`;
-    h+=`<div class="info-cell"><div class="ic-lbl">类神</div><div class="ic-val">${ke.leishenName}<br><span style="font-size:11px;color:var(--ink2);font-weight:400">乘${ke.leishenShen!==null?ZHI[ke.leishenShen]:'—'}${ke.leishenShen!==null&&ke.kongWang.includes(ke.leishenShen)?' ·空':''}</span></div></div>`;
+    h+=`<div class="info-cell"><div class="ic-lbl">类神</div><div class="ic-val">${ke.leishenName}<br><span class="ic-sub">乘${ke.leishenShen!==null?ZHI[ke.leishenShen]:'—'}${ke.leishenShen!==null&&ke.kongWang.includes(ke.leishenShen)?' ·空':''}</span></div></div>`;
     h+=`</div></div>`;
     // ===== 课体格局详解（取自《大六壬大全》《大六壬指南》）=====
     const gejuExp=DaLiuRen.explainGeju(ke);
     if(gejuExp&&gejuExp.length){
-      h+=`<div class="card"><h3>课体格局详解 <span style="font-size:11px;color:var(--muted);font-weight:400">（典籍依据）</span></h3>`;
+      h+=`<div class="card"><h3>课体格局详解 <span class="h-note">（典籍依据）</span></h3>`;
       h+=`<div class="dl-geju-list">`;
       gejuExp.forEach(it=>{
         const isZongping=it.k==='总评';
@@ -2989,6 +3198,19 @@
     h+=`</div>`;
     return h;
   }
+  function renderSummaryBoard(p){
+    const top=(arr,n)=>arr&&arr.length?arr.slice(0,n).join('；'):'—';
+    let h='<div class="card"><h3>核心结论 <span class="h-note">（速览要点，切「白话」看全解 / 切「专业」看完整盘面）</span></h3>';
+    h+='<div class="plain-table">';
+    h+=`<div class="pt-row"><span class="pt-k">当前状态</span><span class="pt-v">${p.state}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">总体倾向</span><span class="pt-v">${p.tendency}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">关键机会</span><span class="pt-v">${top(p.opps,1)}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">关键阻力</span><span class="pt-v">${top(p.risks,1)}</span></div>`;
+    h+=`<div class="pt-row"><span class="pt-k">首要建议</span><span class="pt-v">${top(p.doAct,1)}</span></div>`;
+    h+='</div>';
+    h+='</div>';
+    return h;
+  }
   // 大六壬盘面详情浮层（点击四课/三传/天地盘宫位时弹出）
   function showDaliurenDetail(title,rows){
     const root=$('#modal-root');root.innerHTML='';
@@ -2996,7 +3218,7 @@
     const html=`<div class="dp-mask"></div><div class="dp-inner">
       <button class="dp-close">×</button>
       <div class="dp-title">${title}</div>
-      ${rows.map(r=>`<div class="dp-row"><span style="color:var(--gold)">${r.k}：</span>${r.v}</div>`).join('')}
+      ${rows.map(r=>`<div class="dp-row"><span class="dp-k">${r.k}：</span>${r.v}</div>`).join('')}
     </div>`;
     mask.innerHTML=html;
     root.appendChild(mask);
@@ -3060,7 +3282,7 @@
   }
   function renderAIBlock(comp,bg){
     const segs=AI.generateAI(comp.ke,comp.plain,bg,Store.getSettings());
-    let h='<div class="card"><div class="ai-h"><h3 style="margin:0;border:0;padding:0">AI 白话解读</h3><span class="src">基于盘面·离线规则</span></div>';
+    let h='<div class="card"><div class="ai-h"><h3 class="h3-flat">玄学解读</h3><span class="src">基于盘面·离线规则</span></div>';
     segs.forEach((s,i)=>{
       h+=`<div class="ai-seg"><div class="as-t">${i+1}. ${s.t} ${s.tag||''}</div><div class="as-c">${s.c}</div></div>`;
     });
@@ -3071,7 +3293,7 @@
   // ---------- 保存案例 ----------
   function saveCurrentAsCase(a){
     const c=a.computed;
-    // 兼容盘面中心旧数据结构：computed.shushu 为单一术数结果对象
+    // 兼容旧数据结构：computed.shushu 为单一术数结果对象
     const isLegacyShu=c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name;
     const hasResults=c.shushuResults && Object.keys(c.shushuResults).length>0;
     const isShuOnly=isLegacyShu || (!c.comp && hasResults);
@@ -3186,72 +3408,10 @@
     toast('盘面已导出');
   }
 
-  // ================= 盘面中心 =================
-  // P1 实时术数：小六壬/梅花易数/六爻/塔罗（八字已从实时移除，归入命理排盘）
-  const SHU_P1=['小六壬','梅花易数','六爻','塔罗'];
-  function pageBoardCenter(){
-    let h=`<div class="phead"><div class="ptitle">盘面</div><div class="psub">实时起课 · 命理排盘 · AI 分析</div></div>`;
-    // 实时起课
-    h+=`<div class="card"><h3>实时起课</h3><div class="section-note">基于当前或选定时间起课，结果页可查看 AI 分析</div>`;
-    h+=`<div class="board-shortcuts"><button class="btn primary block" id="btnDlNow">大六壬 · 此刻起课</button><button class="btn block" id="btnDlManual">大六壬 · 手动时间</button></div>`;
-    h+=`<div class="board-list">`;
-    SHU_P1.forEach(s=>{
-      h+=`<div class="recent-item" data-shu="${s}"><div class="ri-t">${s}</div><div class="ri-m">点击此刻起课</div><div class="ri-r">›</div></div>`;
-    });
-    h+=`</div></div>`;
-    // 命理排盘
-    state.birthBoard=state.birthBoard||{gender:'',calendar:'solar',date:'',hour:'',unknownHour:false,place:'',zhenTaiyang:false};
-    h+=renderBirthForm(state.birthBoard,'命理排盘 · 出生信息');
-    h+=`<div class="card"><div class="board-shortcuts"><button class="btn primary block" id="btnBoardBaZi">八字排盘 · AI 解读</button><button class="btn block" id="btnBoardZiWei">紫微斗数 · AI 解读</button></div></div>`;
-    // 命理趣玩
-    h+=`<div class="card"><h3>命理趣玩</h3><div class="qa-grid">`;
-    h+=`<div class="game-item" data-game="stick"><div class="qa-ico">🎋</div>抽今日卦签</div>`;
-    h+=`<div class="game-item" data-game="tarot"><div class="qa-ico">🃏</div>塔罗日运</div>`;
-    h+=`<div class="game-item" data-game="wuxing"><div class="qa-ico">☯</div>五行速配</div>`;
-    h+=`<div class="game-item" data-game="star"><div class="qa-ico">✦</div>星宿查询</div>`;
-    h+=`</div></div>`;
-    if(state.currentKe){
-      h+=`<div class="card"><h3>最近盘面</h3><div class="recent-item" id="lastBoard"><div><div class="ri-t">大六壬 · ${state.currentKe.ke.dateStr}</div><div class="ri-m">${state.currentKe.ke.geju.join('、')}</div></div><div class="ri-r">查看</div></div></div>`;
-    }
-    return h;
-  }
-  function bindBoardCenter(){
-    $('#btnDlNow').onclick=()=>{const comp=computeDaliuren(new Date(),state.ask&&state.ask.bg.questionType||'其他');state.currentKe=comp;showDaliurenBoard(comp);};
-    $('#btnDlManual').onclick=()=>{
-      modal('手动时间起课','<div class="field"><label>起课时间</label><input type="datetime-local" id="mTime" value="'+fmtLocalDT(new Date())+'"></div><div class="field"><label>问题类型（可选）</label><select id="mType">'+TYPES.map(t=>'<option>'+t+'</option>').join('')+'</select></div>',(m)=>{
-        const d=new Date($('#mTime').value);const t=$('#mType').value;
-        const comp=computeDaliuren(d,t);state.currentKe=comp;closeModal();showDaliurenBoard(comp);
-      });
-    };
-    document.querySelectorAll('[data-shu]').forEach(e=>e.onclick=()=>{
-      const name=e.dataset.shu;
-      const res=ShuShu.compute(name,new Date());
-      if(!res){toast(name+' 暂不可用');return;}
-      showShuShuBoard(res);
-    });
-    const lb=$('#lastBoard');if(lb)lb.onclick=()=>showDaliurenBoard(state.currentKe);
-    // 命理排盘（bindStep4 内已绑定 birth 表单与滚轮选择器）
-    bindStep4({extra:{birth:state.birthBoard}});
-    $('#btnBoardBaZi').onclick=()=>runBoardBirth('八字');
-    $('#btnBoardZiWei').onclick=()=>runBoardBirth('紫微斗数');
-    // 命理趣玩
-    document.querySelectorAll('.game-item').forEach(e=>e.onclick=()=>openFortuneGame(e.dataset.game));
-  }
-  function runBoardBirth(name){
-    const b=state.birthBoard;
-    if(!b||!b.date){toast('请填写出生日期');return;}
-    const d=resolveBirthDate(b);
-    if(!d){toast('出生日期解析失败');return;}
-    let r=null;
-    if(name==='八字')r=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
-    else r=ShuShu.ziWeiDouShu?ShuShu.ziWeiDouShu({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang}):null;
-    if(!r){toast(name+' 排盘失败，请检查出生信息');return;}
-    showShuShuBoard(r);
-  }
   // ================= 命理趣玩 =================
-  function openFortuneGame(game){
+  async function openFortuneGame(game){
     if(game==='stick')runDailyStick();
-    else if(game==='tarot')runTarotDaily();
+    else if(game==='tarot'){await ensureVendorsFor('塔罗');runTarotDaily();}
     else if(game==='wuxing')runWuxingMatch();
     else if(game==='star')runStarMansion();
   }
@@ -3341,7 +3501,7 @@
   }
   // P1 术数盘面展示（复用 ask 渠道）
   function showShuShuBoard(res){
-    state.ask={bg:{questionType:'其他'},computed:{shushuResults:{[res.name]:res},shushu:[res.name]},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true};
+    state.ask={bg:{questionType:'其他'},computed:{shushuResults:{[res.name]:res},shushu:[res.name]},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true,_boardTitle:res.name};
     state.tab='ask';renderTab();
     setTimeout(()=>bindResult(state.ask),30);
     navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'shushuBoard');
@@ -3434,11 +3594,34 @@
     if(prev)prev.onclick=()=>{state.fxYear--;renderTab();};
     if(next)next.onclick=()=>{state.fxYear++;renderTab();};
   }
+
+  // ================= 语音房（静态壳预留，无任何通信依赖） =================
+  // v1.5 预留：语音房为后续版本规划功能。当前仅提供静态壳与入口，
+  // 不含 WebRTC / WebSocket / 任何后端依赖，保持离线优先与隐私优先原则。
+  function pageVoice(){
+    let h=`<div class="phead"><div><div class="ptitle">语音房</div><div class="psub">同盘共议 · 语音讨论（预留）</div></div><button class="btn ghost sm" id="backVoice">返回</button></div>`;
+    h+=`<div class="card"><div class="warn-text">语音房 · 敬请期待</div>`;
+    h+=`<div class="section-note">这是语音房的静态壳预留：未来版本将支持多人在线语音讨论同一盘面。当前版本不接入任何实时通信与后端服务，所有数据仍只保存在本机。</div>`;
+    h+=`</div>`;
+    // 静态房间预览（占位，无交互）
+    h+=`<div class="card"><h3>房间预览 <span class="h-note">（静态占位）</span></h3>`;
+    h+=`<div class="dc-opt-row"><div class="field"><label>房间名</label><input type="text" value="今日时课 · 共同研讨" disabled></div><div class="field"><label>模式</label><select disabled><option>公开房</option><option>私密房</option></select></div></div>`;
+    h+=`<div class="section-note">成员列表、发言顺序、语音开关等将在后续版本随通信能力一并提供。</div>`;
+    h+=`<button class="btn primary block" type="button" disabled>进入房间（即将上线）</button>`;
+    h+=`</div>`;
+    h+=`<div class="disclaimer-inline">语音房为规划中功能，本页为纯静态预留，不采集、不上传任何语音或位置数据。</div>`;
+    return h;
+  }
+  function bindVoice(){
+    const back=$('#backVoice');
+    if(back)back.onclick=()=>{state.subPage='';renderTab();navBack();};
+  }
   function showDaliurenBoard(comp){
     // 用一个临时 ask bg（标记 _placeholder 以便用户主动点「问事」Tab 时重置）
     state.ask={bg:{questionType:'其他'},computed:{comp},step:5,shushu:['大六壬'],_placeholder:true};
+    state.boardMode='pro';
     state.tab='ask';renderTab();
-    // 保持 boardMode
+    // 「查看完整盘面」固定展示专业全貌
     setTimeout(()=>bindResult(state.ask),30);
     // 注册返回动作：硬件返回键 / 应用内返回按钮均回到盘面 Tab（重新起课时原地替换，不累加历史）
     navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'boardResult');
@@ -3447,7 +3630,7 @@
   // ================= 案例 =================
   // 复盘标签：预定义 + 自定义（localStorage key: xuanjue_review_tags）
   const REVIEW_TAGS_KEY='xuanjue_review_tags';
-  const PREDEF_REVIEW_TAGS=['时机准确','方向偏差','情绪干扰','信息不足','外力干预','盘面清晰','AI解释有用','其他'];
+  const PREDEF_REVIEW_TAGS=['时机准确','方向偏差','情绪干扰','信息不足','外力干预','盘面清晰','解读有用','其他'];
   const REVIEW_SHU_OPTS=['大六壬','八字','六爻','小六壬','梅花易数','塔罗'];
   function getCustomReviewTags(){try{return JSON.parse(localStorage.getItem(REVIEW_TAGS_KEY)||'[]');}catch(e){return [];}}
   function saveCustomReviewTags(arr){try{localStorage.setItem(REVIEW_TAGS_KEY,JSON.stringify(arr||[]));}catch(e){}}
@@ -3550,7 +3733,7 @@
     if(dueNow){h+=`<div class="due-banner">本案例已到复盘时间，建议尽快复盘</div>`;}
     h+=`<div class="card detail-sec"><h3>${esc(c.title)}</h3>`;
     h+=`<div class="detail-row"><span class="dk">类型</span><span>${esc(c.questionType)}</span></div>`;
-    if(c.desc)h+=`<div class="detail-row"><span class="dk">描述</span><span style="text-align:right;max-width:70%">${esc(c.desc)}</span></div>`;
+    if(c.desc)h+=`<div class="detail-row"><span class="dk">描述</span><span class="dv-r">${esc(c.desc)}</span></div>`;
     h+=`<div class="detail-row"><span class="dk">情绪</span><span>${esc(c.mood)||'—'}</span></div>`;
     h+=`<div class="detail-row"><span class="dk">紧急</span><span>${esc(c.urgent)||'—'}</span></div>`;
     if(c.hasOption){h+=`<div class="detail-row"><span class="dk">选项A</span><span>${esc(c.optA)||'—'}</span></div><div class="detail-row"><span class="dk">选项B</span><span>${esc(c.optB)||'—'}</span></div>`;}
@@ -3591,7 +3774,7 @@
     h+=`<div class="card detail-sec"><h4>复盘</h4>`;
     if(c.reviewed){
       const r=c.review||{};
-      h+=`<div class="detail-row"><span class="dk">实际结果</span><span style="text-align:right;max-width:70%">${esc(r.actual)||'—'}</span></div>`;
+      h+=`<div class="detail-row"><span class="dk">实际结果</span><span class="dv-r">${esc(r.actual)||'—'}</span></div>`;
       h+=`<div class="detail-row"><span class="dk">应验程度</span><span>${esc(r.result)||'—'}</span></div>`;
       // 准确度评分（星显示）
       if(r.score!=null&&Number(r.score)>=1&&Number(r.score)<=5){
@@ -3726,7 +3909,7 @@
     // 复盘率进度条
     const ratePct=Math.round(st.reviewRate*100);
     h+=`<div class="card"><div class="flex-between"><span>复盘率</span><span class="num-val">${ratePct}%</span></div>`;
-    h+=`<div class="stat-bar"><div class="stat-bar-fill" style="width:${ratePct}%"></div></div></div>`;
+    h+=`<div class="stat-bar"><div class="stat-bar-fill" style="--fill:${(ratePct/100).toFixed(3)}"></div></div></div>`;
     // 平均评分
     const avgStr=st.avgScore>0?st.avgScore.toFixed(1):'—';
     h+=`<div class="card"><div class="flex-between"><span>平均评分</span><span>${renderStars(st.avgScore||0)}<span class="num-val">${avgStr}</span></span></div></div>`;
@@ -3815,7 +3998,7 @@
     items.forEach(it=>{
       h+=`<div class="sg-item">`;
       h+=`<span class="sg-name">${it.name}</span>`;
-      h+=`<div class="sg-bar-wrap"><div class="sg-bar" style="width:${Math.min(100,Math.max(0,it.pct||0))}%"></div></div>`;
+      h+=`<div class="sg-bar-wrap"><div class="sg-bar" style="--fill:${(Math.min(100,Math.max(0,it.pct||0))/100).toFixed(3)}"></div></div>`;
       h+=`<span class="sg-stats">${it.count}${it.accLabel?' · '+it.accLabel+it.pct+'%':''}</span>`;
       h+=`<span class="sg-pct">${it.pct||0}%</span>`;
       h+=`</div>`;
@@ -3865,29 +4048,28 @@
     h+=`</div>`;
 
     // ---- AI 顾问 ----
-    h+=`<div class="gp-head">AI 顾问</div>`;
+    h+=`<div class="gp-head">玄顾问</div>`;
     h+=`<div class="gp-card">`;
     h+=`<div class="gp-row" id="btnAiConfig"><span class="gp-ico">✦</span><div class="gp-main"><div class="gp-t">模型配置</div><div class="gp-d">${AI.PROVIDERS[s.aiProvider]?AI.PROVIDERS[s.aiProvider].label:'未配置'} · ${s.aiApiKey?'密钥已设置':'待填写密钥'}</div></div><span class="gp-chev" id="aiCfgChev">›</span></div>`;
     h+=`<div class="ai-config-wrap" id="aiConfigWrap">${pageAIConfigInner(s)}</div>`;
-    h+=selectRow('AI 语气','aiTone',['专业谨慎','温和陪伴','直接简洁','传统术数','心理探索']);
+    h+=selectRow('解读语气','aiTone',['专业谨慎','温和陪伴','直接简洁','传统术数','心理探索']);
     h+=selectRow('解读长度','aiLength',['简短','标准','详细']);
     h+=switchRow('显示专业术语','showTerm',s.showTerm);
     h+=switchRow('自动生成行动建议','autoAdvice',s.autoAdvice);
-    h+=switchRow('离线模式（禁用 AI）','offlineMode',s.offlineMode);
+    h+=switchRow('离线模式（禁用云端解读）','offlineMode',s.offlineMode);
     h+=`</div>`;
 
     // ---- 外观 ----
     h+=`<div class="gp-head">外观</div>`;
     h+=`<div class="gp-card">`;
-    h+=selectRow('深色模式','darkMode',['自动','深色','浅色']);
+    h+=selectRow('深色模式','darkMode',[{v:'auto',l:'自动'},{v:'dark',l:'深色'},{v:'light',l:'浅色'}]);
     h+=`</div>`;
 
     // ---- 提醒 ----
     h+=`<div class="gp-head">提醒</div>`;
     h+=`<div class="gp-card">`;
-    const notifyStatus=('Notification' in window)?(Notification.permission==='granted'?'已授权':(Notification.permission==='denied'?'已拒绝':'未授权')):'不支持';
-    h+=switchRow('系统通知','notificationEnabled',s.notificationEnabled && notifyStatus==='已授权');
-    h+=`<button class="btn-link-row" id="btnReqNotify"><span class="gp-ico">◔</span>授权状态：${notifyStatus}<span class="btn-x-chev">›</span></button>`;
+    h+=switchRow('系统通知','notificationEnabled',s.notificationEnabled && notifySupported());
+    h+=`<button class="btn-link-row" id="btnReqNotify" type="button"><span class="gp-ico">◔</span>授权状态：<span id="notifyStatusText">检测中…</span><span class="btn-x-chev">›</span></button>`;
     h+=switchRow('每日时课提醒','remindDaily',s.remindDaily);
     h+=`<div class="field switch-time"><label>提醒时间</label><input type="time" data-set="dailyTime" value="${escAttr(s.dailyTime)}"></div>`;
     h+=switchRow('复盘提醒','remindReview',s.remindReview);
@@ -3917,14 +4099,14 @@
     if(state.installable){
       h+=`<button class="btn-link-row" id="btnInstallPwa"><span class="gp-ico">⌂</span>安装到桌面<span class="btn-x-chev">›</span></button>`;
     }else{
-      h+=`<div class="gp-row disabled" style="padding:10px 15px"><div class="gp-main"><div class="gp-d">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div></div></div>`;
+      h+=`<div class="gp-row disabled pad"><div class="gp-main"><div class="gp-d">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div></div></div>`;
     }
     h+=`<button class="btn-link-row" id="btnAbout"><span class="gp-ico">ℹ</span>关于与免责声明<span class="btn-x-chev">›</span></button>`;
     h+=`</div>`;
 
     // ---- 版本信息 ----
-    h+=`<div class="gp-card" style="margin-top:12px">`;
-    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t" style="font-size:12px;color:var(--muted)">玄决 V1.0.10 · 大六壬决策台</div></div><span class="gp-val" style="font-size:10px">本地加密 · 离线可用</span></div>`;
+    h+=`<div class="gp-card mt12">`;
+    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t dim">玄决 V1.5.0 · 大六壬决策台</div></div><span class="gp-val tiny">本地加密 · 离线可用</span></div>`;
     h+=`</div>`;
     return h;
   }
@@ -3981,8 +4163,13 @@
   }
 
   function selectRow(label,key,opts){
+    // opts 支持两种形式：纯字符串（值=文案），或 {v:存储值,l:显示文案}
     const s=Store.getSettings();const cur=s[key];
-    return `<div class="switch"><span>${label}</span><select data-set="${key}">${opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('')}</select></div>`;
+    return `<div class="switch"><span>${label}</span><select data-set="${key}">${opts.map(o=>{
+      const v=typeof o==='object'?o.v:o;
+      const l=typeof o==='object'?o.l:o;
+      return `<option value="${escAttr(v)}" ${String(v)===String(cur)?'selected':''}>${l}</option>`;
+    }).join('')}</select></div>`;
   }
   function switchRow(label,key,val){
     return `<div class="switch"><span>${label}</span><input type="checkbox" data-set="${key}" ${val?'checked':''}></div>`;
@@ -4133,6 +4320,7 @@
       // apiKey 留空时不清空原值
       if(k==='aiApiKey'&&!v)return;
       Store.setSettings({[k]:v});toast('已保存');
+      if(['yueJiang','dlGuiRen','dlSheHai','zhenTaiyang'].includes(k))clearDlMinCache();
       if(k==='darkMode'){applyDarkMode();}
       if(k==='dailyTime'){
         // 修改提醒时间后，清除今日已提醒状态，重新调度
@@ -4144,12 +4332,13 @@
     $('#btnExport').onclick=()=>doExport();
     $('#btnImport').onclick=()=>doImport();
     $('#btnClear').onclick=()=>{modal('清除全部案例','将删除所有案例数据（设置保留），不可恢复。',m=>{Store.clearAll();closeModal();toast('已清除全部案例');renderTab();});};
-    $('#btnReqNotify').onclick=()=>requestNotificationPermission();
+    $('#btnReqNotify').onclick=()=>{requestNotificationPermission().then(()=>updateNotifyStatusText());};
+    updateNotifyStatusText();
     const notifySw=$('[data-set="notificationEnabled"]');
     if(notifySw){
       notifySw.onchange=ev=>{
         if(ev.target.checked){
-          requestNotificationPermission();
+          requestNotificationPermission().then(()=>updateNotifyStatusText());
         }else{
           Store.setSettings({notificationEnabled:false});toast('已关闭系统通知');renderTab();
         }
@@ -4167,11 +4356,11 @@
     };
   }
   function aboutHtml(){
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.0.10</span></p>
-    <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + AI 白话解释 + 个人复盘。</p>
-    <p style="margin-top:12px"><span style="color:var(--gold)">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
-    <p><span style="color:var(--gold)">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
-    <p style="color:var(--gold);margin-top:12px">免责声明</p>
+    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.5.0</span></p>
+    <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + 玄学解读 + 个人复盘。</p>
+    <p class="mt12"><span class="gold-text">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
+    <p><span class="gold-text">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
+    <p class="gold-text mt12">免责声明</p>
     <p>${AI.DISCLAIMER}</p>
     <p>本应用不做必然性预测、不做恐吓式结论、不做改命消灾化解类营销、不诱导消费。所有数据本地保存。</p>`;
   }
@@ -4282,9 +4471,9 @@
   // ---------- 典籍 AI 问答：RAG 检索本地古籍 → LLM 输出原文+解释 ----------
   async function askClassics(question){
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用 AI 调用');return;}
+    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
     if(!(cfg.aiApiKey||cfg.aiProvider==='ollama')){
-      modal('未配置 API Key','请在「我的 → AI 顾问 → 模型配置」中填写 API Key，即可让 AI 基于典籍检索回答。',()=>{state.tab='me';renderTab();},()=>{},'去配置');
+      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key，即可让玄顾问基于典籍检索回答。',()=>{state.tab='me';renderTab();},()=>{},'去配置');
       return;
     }
     if(state.classics.aiBusy)return;
@@ -4390,7 +4579,7 @@
         // 翻页
         h+=`<div class="br-nav">`;
         h+=`<button class="btn ghost sm" id="brPrev" ${f.readCh===0?'disabled':''}>上一章</button>`;
-        h+=`<span style="font-size:11px;color:var(--muted);line-height:32px">${f.readCh+1} / ${maxCh}</span>`;
+        h+=`<span class="ch-pos">${f.readCh+1} / ${maxCh}</span>`;
         h+=`<button class="btn ghost sm" id="brNext" ${f.readCh>=maxCh-1?'disabled':''}>下一章</button>`;
         h+=`</div>`;
       }
@@ -4400,20 +4589,20 @@
 
     // 书籍列表模式
     if(f.mode==='list'||!f.mode){
-      let h=`<div class="phead ios-head"><div><div class="ptitle">典籍</div><div class="psub">古籍库 · 全文 · AI 问答</div></div><div class="psub" style="align-self:flex-end">已收录 ${books.length} 本</div></div>`;
+      let h=`<div class="phead ios-head"><div><div class="ptitle">典籍</div><div class="psub">古籍库 · 全文 · 典籍问答</div></div><div class="psub end">已收录 ${books.length} 本</div></div>`;
       // AI 问典籍（RAG 检索 + LLM 原文与解释）
       const aiCfg=Store.getSettings();
       const aiReady=!!(aiCfg.aiApiKey||aiCfg.aiProvider==='ollama');
       const aiConv=(state.classics.aiConv||[]);
-      h+=`<div class="classics-hero"><div class="ch-ring">籍</div><div><div class="ch-t">AI 问典籍</div><div class="ch-d">基于 ${books.length} 本古籍检索作答：输出原文 + 白话解释</div></div></div>`;
+      h+=`<div class="classics-hero"><div class="ch-ring">籍</div><div><div class="ch-t">问典籍</div><div class="ch-d">基于 ${books.length} 本古籍检索作答：输出原文 + 白话解释</div></div></div>`;
       h+=`<div class="cl-ask-card">`;
-      h+=`<div class="cl-ask-head"><span class="ca-ico">✦</span><span class="ca-t">向古籍提问</span>${aiReady?'<span class="ca-sub">RAG · 实时</span>':'<span class="ca-sub" style="color:var(--warn)">未配置 Key</span>'}</div>`;
+      h+=`<div class="cl-ask-head"><span class="ca-ico">✦</span><span class="ca-t">向古籍提问</span>${aiReady?'<span class="ca-sub">RAG · 实时</span>':'<span class="ca-sub ca-sub-warn">未配置 Key</span>'}</div>`;
       h+=aiConv.map((m,i)=>m.role==='q'
         ?`<div class="cl-ask-q">${esc(m.q)}</div>`
         :`<div class="cl-ask-a ${m.ab?'ab':''}"><div class="ca-body">${m.html||esc(m.a||'…')}</div>${m.refs&&m.refs.length?m.refs.map(r=>`<div class="cl-ask-ref"><div class="cr-src">📖 ${esc(r.src)}</div><div class="cr-text">${esc(r.text)}</div>${r.comment?`<div class="cr-comment">白话：${esc(r.comment)}</div>`:''}</div>`).join(''):''}</div>`).join('');
       h+=`<div class="cl-ask-input-row"><input type="text" class="cl-ask-input" id="clAiInput" placeholder="如：求财看什么？大六壬取贵人的法则…" ${state.classics.aiBusy?'disabled':''} value="${esc((state.classics.aiDraft||''))}"><button class="cl-ask-send" id="btnClAsk" ${state.classics.aiBusy?'disabled':''}>➤</button></div>`;
       h+=`<div class="cl-ask-quick">${['求财怎么看','青龙主什么','六壬取用神','什么是大运流年','玄武的象意','小六壬三宫怎么看'].map(q=>`<span class="cl-qchip" data-q="${escAttr(q)}">${q}</span>`).join('')}</div>`;
-      h+=`<div class="cl-ask-hint">${aiReady?'回答将引用古籍原文段落并给出白话解释，如需 AI 服务请先在「我的 → 模型配置」设置。':'提示：先在「我的 → AI 顾问 → 模型配置」填写 API Key 后即可使用。'}</div>`;
+      h+=`<div class="cl-ask-hint">${aiReady?'回答将引用古籍原文段落并给出白话解释，如需解读服务请先在「我的 → 模型配置」设置。':'提示：先在「我的 → 玄顾问 → 模型配置」填写 API Key 后即可使用。'}</div>`;
       h+=`</div>`;
       // 搜索栏
       h+=`<div class="card classic-search"><input type="text" id="classicQuery" placeholder="搜索关键词，如「求财」「青龙」「用神」..." value="${esc(f.q)}"></div>`;
@@ -4421,7 +4610,7 @@
       h+=`<div class="card"><h3>按术数分类</h3><div class="classic-cats">${cats.map(c=>`<span class="chip ${f.cat===c?'on':''}" data-cat="${c}">${c}</span>`).join('')}</div></div>`;
       // 书籍卡片网格
       const showBooks=f.cat?books.filter(b=>b.shushu===f.cat):books;
-      h+=`<div class="card"><h3>典籍书库 <span style="font-size:11px;color:var(--muted)">点击阅读完整全文</span></h3>`;
+      h+=`<div class="card"><h3>典籍书库 <span class="h-note">点击阅读完整全文</span></h3>`;
       h+=`<div class="book-grid">`;
       showBooks.forEach(b=>{
         const pc=b.passage_count||0;
@@ -4447,7 +4636,7 @@
       }
       if(f.favOnly)passages=passages.filter(p=>favs.includes(p.id));
       if(f.q||f.book||f.favOnly){
-        h+=`<div class="card"><h3>检索结果 <span style="font-size:11px;color:var(--muted)">(${passages.length})</span></h3>`;
+        h+=`<div class="card"><h3>检索结果 <span class="h-note">(${passages.length})</span></h3>`;
         if(!passages.length){
           h+=`<div class="empty">未找到相关段落，请尝试其他关键词或分类</div>`;
         }else{
