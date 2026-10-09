@@ -37,8 +37,96 @@
     });
   }catch(e){}
 
+  // ---------- AI 能力准入（体验模式） ----------
+  // 背景：此前 AI 能力被「离线模式 / 未配 Key」两重硬闸门锁死，首次用户零配置看不到任何云端解读。
+  // 现改为分级准入：真实模型 > 本地演示（限量，零配置可用）> 规则化兜底。
+  //   'model'  : 可直连大模型
+  //   'demo'   : 无 Key，走本地演示回复（仍消耗体验额度）
+  //   'local'  : 离线模式或小工具容器，只给规则化解读
+  function aiMode(){
+    if(window.XUANJUE_CONTAINER)return 'local';
+    if(Store.getSettings().offlineMode)return 'local';
+    if(AI.isDemoMode())return 'demo';
+    return 'model';
+  }
+  // 未配 Key 的统一引导弹窗：提供「先试用」与「去配置」两条路，不再直接阻断
+  // 首次进入任一 AI 能力时出现一次；已提示过则不再打扰（用户可随时从「我的 → 模型配置」进入）
+  function guideMissingKey(scene){
+    try{
+      if(localStorage.getItem('xuanjue_guide_shown')==='1')return;
+      localStorage.setItem('xuanjue_guide_shown','1');
+    }catch(e){}
+    const left=AI.demoQuotaRemaining();
+    const cfg=Store.getSettings();
+    const cloudOk=(function(){try{return !!(window.Cloud&&Cloud.isLoggedIn());}catch(e){return false;}})();
+    const body=
+      '<div class="guide-key-body">'
+      +'<p class="guide-key-lead">还没有配置 AI 模型。<b>'+(scene||'玄顾问')+'</b>是大模型对话能力，配置后可多轮追问、跨天不清空上下文。</p>'
+      +'<div class="guide-key-opts">'
+      +(cloudOk
+      ?  '<div class="guide-key-opt" id="gkCloud">'
+      +    '<div class="gk-opt-t">使用云端 AI（零配置，推荐）</div>'
+      +    '<div class="gk-opt-d">你已登录云同步，无需填写任何密钥即可使用。云端有每日提问次数与频率限制。</div>'
+      +  '</div>'
+      :  '')
+      +  '<div class="guide-key-opt" id="gkDemo">'
+      +    '<div class="gk-opt-t">先试用 '+left+' 次（本地演示）</div>'
+      +    '<div class="gk-opt-d">无需填任何信息，立即体验完整交互。内容为盘面规则的本地梳理。</div>'
+      +  '</div>'
+      +  '<div class="guide-key-opt" id="gkGo">'
+      +    '<div class="gk-opt-t">去配置 API Key</div>'
+      +    '<div class="gk-opt-d">只需填 1 项。当前预设：'+(cfg.aiProvider||'deepseek')+'（地址与模型名已自动填好，粘贴 Key 即可）。</div>'
+      +  '</div>'
+      +'</div>'
+      +'</div>';
+    modal('配置 AI 模型以获得完整体验',body,null,true,'稍后再说');
+    const m=$('#modal-root .modal');
+    if(m){
+      const c=m.querySelector('#gkCloud');
+      const d=m.querySelector('#gkDemo');
+      const g=m.querySelector('#gkGo');
+      if(c)c.onclick=()=>{closeModal();toast('已切换云端 AI，直接提问即可');};
+      if(d)d.onclick=()=>{closeModal();toast('已进入试用模式，剩余 '+left+' 次');};
+      if(g)g.onclick=()=>{
+        closeModal();
+        state.tab='me';renderTab();
+        setTimeout(()=>{
+          const c=$('#btnAiConfig');
+          if(c){
+            c.scrollIntoView({behavior:'smooth',block:'center'});
+            c.classList.add('pulse-hl');
+            setTimeout(()=>c.classList.remove('pulse-hl'),1600);
+          }else toast('请在「我的」页找到玄顾问 → 模型配置');
+        },80);
+      };
+    }
+  }
+  // 离线模式统一提示：说明仍可用的本地能力，不再只说「已禁用」
+  function notifyOfflineDegrade(scene){
+    toast((scene||'云端解读')+'当前离线，已切换为本地规则化解读');
+  }
+
   // ---------- utils ----------
-  function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+  // 轻触反馈：支持振动的设备在关键交互上给一次极短震动（无感，10ms）
+  function haptic(ms){
+    if(window.XUANJUE_CONTAINER)return;
+    try{if(navigator.vibrate)navigator.vibrate(ms||10);}catch(e){}
+  }
+  // 类型化 toast：ok / err / info 三态，图标 + 语义色
+  function toast(msg,type){
+    const t=$('#toast');
+    if(!t)return;
+    // 连发时重置计时，保证最后一条完整可见
+    if(t._toastTimer){clearTimeout(t._toastTimer);t._toastTimer=null;}
+    t.textContent=msg;
+    t.classList.remove('show','ok','err','info');
+    if(type==='ok')t.classList.add('ok');
+    else if(type==='err')t.classList.add('err');
+    else if(type==='info')t.classList.add('info');
+    void t.offsetWidth;
+    t.classList.add('show');
+    t._toastTimer=setTimeout(()=>{t.classList.remove('show');t._toastTimer=null;},type==='err'?2600:1800);
+  }
   function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!==undefined)e.innerHTML=html;return e;}
   function pad(n){return n<10?'0'+n:''+n;}
   function fmtDateTime(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
@@ -188,14 +276,43 @@
     if(Store.isAgreed()){enterApp();}else{showDisclaimer();}
     $('#agreeCheck').onchange=e=>{$('#btnEnter').disabled=!e.target.checked;};
     $('#btnEnter').onclick=()=>{if($('#agreeCheck').checked){Store.setAgreed();enterApp();}};
-    document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
-      // 点击「问事」Tab 视为发起新问事；之前未保存的草稿会被清空
-      if(t.dataset.tab==='ask'){state.ask=null;}
-      // 切换 Tab 时清空子页面状态（如复盘统计页），回到案例列表
-      state.subPage='';
-      // 切换顶级 Tab 时清空返回栈（子屏历史不再适用）
-      navReset();
-      state.tab=t.dataset.tab;renderTab();
+    // 非阻断：不勾选也可进入，声明只作展示而非强制同意门槛
+    const skip=$('#btnSkipGate');
+    if(skip)skip.onclick=()=>{enterApp();toast('已进入。声明可随时在「我的 → 关于」查看');};
+    document.querySelectorAll('.tab').forEach(t=>{
+      // 按下态：缩放图标 + 极短振动，松手即消（避免与激活态冲突）
+      const press=on=>{t.classList.toggle('press',!!on);};
+      t.addEventListener('pointerdown',()=>press(true));
+      t.addEventListener('pointerup',()=>press(false));
+      t.addEventListener('pointercancel',()=>press(false));
+      t.addEventListener('pointerleave',()=>press(false));
+      t.onclick=()=>{
+        press(false);
+        haptic(8);
+        // 点击「问事」Tab 视为发起新问事；之前未保存的草稿会被清空
+        if(t.dataset.tab==='ask'){state.ask=null;}
+        // 切换 Tab 时清空子页面状态（如复盘统计页），回到案例列表
+        state.subPage='';
+        // 切换顶级 Tab 时清空返回栈（子屏历史不再适用）
+        navReset();
+        state.tab=t.dataset.tab;renderTab();
+      };
+    });
+    // 全局涟漪：按下的落点决定涟漪圆心，仅对 .btn 生效（同一元素连按时只保留一个）
+    document.addEventListener('pointerdown',e=>{
+      const b=e.target&&e.target.closest?e.target.closest('.btn'):null;
+      if(!b||b.disabled||window.XUANJUE_CONTAINER)return;
+      const old=b.querySelector('.ripple');
+      if(old)old.remove();
+      const r=b.getBoundingClientRect();
+      const d=Math.max(r.width,r.height)*1.2;
+      const sp=document.createElement('span');
+      sp.className='ripple';
+      sp.style.width=sp.style.height=d+'px';
+      sp.style.left=(e.clientX-r.left-d/2)+'px';
+      sp.style.top=(e.clientY-r.top-d/2)+'px';
+      b.appendChild(sp);
+      setTimeout(()=>sp.remove(),520);
     });
     // 应用切到后台后自动上锁；切回前台时刷新提醒调度
     document.addEventListener('visibilitychange',()=>{
@@ -248,6 +365,16 @@
     applyDarkMode();
     // 从 IndexedDB 镜像恢复缺失的本地键（静默，不打扰用户）
     try{Store.restoreFromIdb().catch(()=>{});}catch(e){}
+    // 云同步：恢复本地会话与密钥。未配地址时同步整体关闭，不影响本机功能
+    try{
+      if(window.Cloud){
+        Cloud.init().catch(()=>{}).then(st=>{
+          if(st==='ready')startCloudLoop();
+          // 有会话时探测云端 AI 代理能力（零配置可用性 + 今日额度），失败静默
+          warmAiProxy();
+        });
+      }
+    }catch(e){}
     if(Store.isLocked()){
       showLockScreen();
     }else{
@@ -256,6 +383,21 @@
       renderTab();
       startReminderLoop();
     }
+  }
+
+  // 云同步周期任务：每 2 分钟尝试一次（SDK 内部按 5 分钟 / 30 秒脏标记节流，
+  // 这里只负责「到点就叫一次」，真正的频率控制在 cloud.js 里）
+  let cloudTimer=null;
+  function startCloudLoop(){
+    if(cloudTimer)return;
+    cloudTimer=setInterval(()=>{
+      // 切后台时网络请求可能被系统挂起，且用户不可见，跳过
+      if(document.hidden)return;
+      try{Cloud.maybeSync();}catch(e){}
+    },120000);
+  }
+  function stopCloudLoop(){
+    if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null;}
   }
 
   // ---------- 应用锁 ----------
@@ -284,21 +426,24 @@
     if(bio)bio.onclick=()=>tryBioUnlock();
   }
   function tryBioUnlock(){
-    // 优先尝试 WebAuthn（在支持的安全上下文可用）；否则提示
-    if(window.PublicKeyCredential){
-      navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:location.hostname,userVerification:'required',allowCredentials:[]}})
-        .then(()=>{
+    // 小工具容器禁凭据 API（WebAuthn）：生物识别解锁不可用
+    if(window.XUANJUE_CONTAINER){toast('当前环境不支持生物识别');return;}
+    // 委托给 bio-unlock.js（PWA 版加载；容器包不含该文件）
+    if(window.BioUnlock){
+      window.BioUnlock.tryUnlock(
+        ()=>{
           // WebAuthn 验证通过即视为解锁（不依赖 PIN 解密本地加密数据）
           Store.setLockState({locked:false});
           $('#lock-screen').classList.add('hidden');
           $('#main').classList.remove('hidden');
           renderTab();
           startReminderLoop();
-        })
-        .catch(err=>{toast('生物识别不可用：'+(err.message||err));});
-    }else{
-      toast('当前环境不支持生物识别');
+        },
+        (err)=>{toast('生物识别不可用：'+(err.message||err));}
+      );
+      return;
     }
+    toast('当前环境不支持生物识别');
   }
   // 应用深色/浅色模式：auto 跟随系统，dark/light 强制切换
   function applyDarkMode(){
@@ -516,13 +661,33 @@
     });
   }
   // 计算前确保所需术数库就绪（懒加载；失败走各术数内置降级文案）
+  let _progDepth=0,_progTimer=null;
+  function progressOn(){
+    const p=$('#appProgress');
+    _progDepth++;
+    if(p)p.classList.add('on');
+  }
+  function progressOff(){
+    const p=$('#appProgress');
+    _progDepth=Math.max(0,_progDepth-1);
+    if(_progDepth===0&&p){
+      // 收尾动画：等宽度走满再淡出，避免「突然消失」的断裂感
+      if(_progTimer)clearTimeout(_progTimer);
+      _progTimer=setTimeout(()=>{p.classList.remove('on');_progTimer=null;},260);
+    }
+  }
   async function ensureVendorsFor(methods){
     if(!window.Vendor)return;
     const arr=Array.isArray(methods)?methods:[methods];
     const pending=arr.filter(m=>(Vendor.METHOD_DEPS[m]||[]).some(k=>!Vendor.loaded(k)));
     if(!pending.length)return;
     toast('正在加载排盘库（'+pending.join('、')+'）…');
-    await Vendor.ensure(arr);
+    progressOn();
+    try{
+      await Vendor.ensure(arr);
+    }finally{
+      progressOff();
+    }
   }
 
   function pageHome(){
@@ -563,6 +728,23 @@
     h+=`</div>`;
     h+=`<div class="now-yiji"><span class="yj-t yi">宜</span><div class="yj-tags">${hl.yi.slice(0,5).map(y=>`<span>${y}</span>`).join('')}</div><span class="yj-t ji">忌</span><div class="yj-tags">${hl.ji.slice(0,5).map(j=>`<span>${j}</span>`).join('')}</div></div>`;
     h+=`</div>`;
+
+    // ===== 待复盘直达：到期未复盘的案例置顶，一键跳到复盘表单 =====
+    // 形成「问事 → 复盘」的闭环：用户从首页即可继续上次未完成的事
+    const dueCases=cases.filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
+    if(dueCases.length){
+      const d0=dueCases[0];
+      h+='<div class="card review-due-card" id="reviewDueCard">'
+        +'<div class="rd-head"><span class="rd-tag">待复盘</span>'
+        +'<span class="rd-num">'+dueCases.length+' 条到期</span></div>'
+        +'<div class="rd-title">'+esc(d0.title)+'</div>'
+        +'<div class="rd-sub">'+esc(d0.questionType)+' · 起课于 '+fmtDate(new Date(d0.createdAt))+' · 复盘期至 '+fmtDate(new Date(d0.reviewDue))+'</div>'
+        +'<div class="rd-acts">'
+        +'<button class="btn primary sm" id="btnDueReviewNow">立即复盘</button>'
+        +'<button class="btn ghost sm" id="btnDueViewCase">查看案例</button>'
+        +(dueCases.length>1?'<button class="btn ghost sm" id="btnDueMoreRest">其余 '+(dueCases.length-1)+' 条 ›</button>':'')
+        +'</div></div>';
+    }
 
     // ===== 此刻大六壬时课 =====
     h+=`<div class="card now-ke">`;
@@ -631,8 +813,16 @@
 
     // ===== 最近案例 =====
     h+=`<div class="card"><h3>最近案例</h3>`;
-    if(recent.length){recent.forEach(c=>{h+=`<div class="recent-item" data-case="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.questionType)} · ${esc(c.shushu)} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r">${c.reviewed?(esc(c.review.result)||'已复盘'):'待复盘'}</div></div>`;});}
-    else h+=`<div class="empty">暂无案例，去「问事」起一课吧</div>`;
+    if(recent.length){recent.forEach(c=>{
+      h+='<div class="recent-item" data-case="'+escAttr(c.id)+'" data-review="'+(c.reviewed?'1':'0')+'">'
+        +'<div class="ri-main">'
+        +'<div class="ri-t">'+esc(c.title)+'</div>'
+        +'<div class="ri-m">'+esc(c.questionType)+' · '+esc(c.shushu)+' · '+fmtDate(new Date(c.createdAt))+'</div>'
+        +'</div>'
+        +'<div class="ri-r '+(c.reviewed?'':'ri-pending')+'">'+(c.reviewed?(esc(c.review.result)||'已复盘'):'待复盘')+'</div>'
+        +'</div>';
+    });}
+    else h+=`<div class="empty"><div class="empty-ico">◦</div><div class="empty-t">还没有案例</div><div class="empty-d">去「问事」起一课，结果会自动归档到这里，到期提醒你复盘。</div><button class="btn primary sm" id="btnEmptyAsk">开始问事</button></div>`;
     h+=`</div>`;
     return h;
   }
@@ -682,11 +872,16 @@
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
       state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
     });
+    // 空态引导按钮：直接跳到问事第一步
+    const btnEmptyAsk=$('#btnEmptyAsk');
+    if(btnEmptyAsk)btnEmptyAsk.onclick=()=>{
+      state.ask=newAsk();state.ask.step=1;state.tab='ask';navReset();renderTab();
+    };
     // 命理排盘快捷入口
     const btnHomeBaZi=$('#btnHomeBaZi'),btnHomeZiWei=$('#btnHomeZiWei');
     if(btnHomeBaZi)btnHomeBaZi.onclick=()=>{
       const profile=Store.getProfile();
-      if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
+      if(!profile||!profile.birth){toast('请先填写出生信息','err');state.tab='me';renderTab();return;}
       const b=birthFromProfile(profile);
       const d=resolveBirthDate(b);
       const res=ShuShu.baZiByBirth?ShuShu.baZiByBirth({date:d,gender:b.gender,place:b.place,zhenTaiyang:b.zhenTaiyang,unknownHour:b.unknownHour}):null;
@@ -695,7 +890,7 @@
     };
     if(btnHomeZiWei)btnHomeZiWei.onclick=async()=>{
       const profile=Store.getProfile();
-      if(!profile||!profile.birth){toast('请先填写出生信息');state.tab='me';renderTab();return;}
+      if(!profile||!profile.birth){toast('请先填写出生信息','err');state.tab='me';renderTab();return;}
       await ensureVendorsFor('紫微斗数');
       const b=birthFromProfile(profile);
       const d=resolveBirthDate(b);
@@ -721,6 +916,31 @@
       state.tab='me';state.subPage='case';renderTab();
       setTimeout(()=>{
         const r=$('#fResult');if(r){r.value='未复盘';renderCaseListBody();}
+      },30);
+    };
+    // 待复盘直达卡（首页）
+    const dueAll=()=>Store.listCases().filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
+    const btnDueReviewNow=$('#btnDueReviewNow');
+    if(btnDueReviewNow)btnDueReviewNow.onclick=()=>{
+      const due=dueAll();
+      if(!due.length){toast('暂无待复盘案例');return;}
+      state.viewCaseId=due[0].id;
+      state.tab='me';state.subPage='case';renderTab();
+      setTimeout(()=>openReview(due[0].id),30);
+    };
+    const btnDueViewCase=$('#btnDueViewCase');
+    if(btnDueViewCase)btnDueViewCase.onclick=()=>{
+      const due=dueAll();
+      if(!due.length){toast('暂无待复盘案例');return;}
+      state.viewCaseId=due[0].id;
+      state.tab='me';state.subPage='case';renderTab();
+      setTimeout(()=>openCaseDetail(due[0].id),30);
+    };
+    const btnDueMoreRest=$('#btnDueMoreRest');
+    if(btnDueMoreRest)btnDueMoreRest.onclick=()=>{
+      state.tab='me';state.subPage='case';renderTab();
+      setTimeout(()=>{
+        const r=$('#fResult');if(r){r.value='到期待复盘';renderCaseListBody();}
       },30);
     };
     // 重要日期管理入口
@@ -1441,9 +1661,9 @@
   }
   async function goNext(){
     const a=state.ask;
-    if(a.step===1){if(!a.bg.questionType){toast('请选择问题类型');return;}a.step=2;renderTab();return;}
+    if(a.step===1){if(!a.bg.questionType){toast('请选择问题类型','err');return;}a.step=2;renderTab();return;}
     if(a.step===2){
-      if(!a.bg.title.trim()){toast('请填写问题标题');return;}
+      if(!a.bg.title.trim()){toast('请填写问题标题','err');return;}
       a.step=3;renderTab();return;
     }
     if(a.step===3){
@@ -1462,7 +1682,7 @@
     if(a.step===4){
       collectStep4(a);
       if(a.shushu.includes('六爻')&&a.extra.liuyao.yaos.length!==6){toast('请完成六爻摇卦');return;}
-      if((a.shushu.includes('八字')||a.shushu.includes('紫微斗数'))&&!a.extra.birth.date){toast('请填写出生日期');return;}
+      if((a.shushu.includes('八字')||a.shushu.includes('紫微斗数'))&&!a.extra.birth.date){toast('请填写出生日期','err');return;}
       await ensureVendorsFor(a.shushu);
       a.computed=computeAskResult(a);a.step=5;renderTab();enterAskResultNav(a);return;
     }
@@ -2287,6 +2507,25 @@
       };
     });
   }
+  // 离线/容器内的规则化解读兜底：复用 AI.generateAI 已有的确定性输出，不走网络
+  function renderLocalDeepRead(card,out,badge,a){
+    if(badge)badge.textContent='本地规则';
+    card.classList.remove('hidden');
+    let segs=[];
+    try{
+      const c=a.computed||{};
+      const ke=c.comp&&c.comp.ke;
+      const plain=c.comp&&c.comp.plain;
+      if(ke&&plain&&AI.generateAI)segs=AI.generateAI(ke,plain,a.bg||{},Store.getSettings());
+    }catch(e){}
+    if(!segs.length){
+      out.innerHTML='<div class="ai-pending">当前为本地规则模式。可在「我的 → 模型配置」中填入 API Key 以启用大模型解读。</div>';
+      return;
+    }
+    out.innerHTML=segs.map(s=>
+      '<div class="ai-seg"><div class="ai-seg-t">'+esc(s.t)+(s.tag?' '+s.tag:'')+'</div><div class="ai-seg-c">'+(s.c||'')+'</div></div>'
+    ).join('');
+  }
   // 调用 LLM 生成 AI 深度解读（流式 / 非流式统一处理）
   // 切页/重复触发时取消上一次请求，避免内存泄漏与离屏 DOM 写入
   async function runAIDeepRead(a){
@@ -2296,9 +2535,15 @@
     const out=$('#aiOutput');
     const badge=$('#aiModelBadge');
     if(!card||!out)return;
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用深度解读。',null,true,'知道了');
+    // 分级准入：离线/容器 → 规则化兜底（不走网络）；无 Key → 体验模式演示解读
+    if(aiMode()==='local'){
+      notifyOfflineDegrade('AI 深度解读');
+      renderLocalDeepRead(card,out,badge,a);
+      return;
+    }
+    const demoMode=aiMode()==='demo';
+    if(demoMode&&AI.demoQuotaRemaining()<=0){
+      modal('试用次数已用完','本地演示共 '+3+' 次，已全部用完。填入 API Key 后即可无限次使用大模型解读。',()=>{state.tab='me';renderTab();},()=>{},'去配置');
       return;
     }
     // 取消上一次请求
@@ -2364,7 +2609,8 @@
         a.aiReading=txt;
       }
       // 建立多轮对话线程，把解读结果注入为 assistant 上下文，使后续追问可基于解读继续
-      const threadId='result_'+(a.savedCaseId||Date.now().toString(36));
+      // 若案例已保存，threadId 携带 caseId，让「案例 → 会话」可互相定位
+      const threadId=a.savedCaseId?('result_'+a.savedCaseId):('result_'+Date.now().toString(36));
       AI.startChat(threadId,AI.buildSystemPrompt(cfg),userPrompt);
       AI.injectAssistant(threadId,txt);
       a._chatThreadId=threadId;
@@ -2416,25 +2662,68 @@
   // ---------- 解读后追问区（AI 解读与顾问合一）----------
   // 在 AI 解读输出卡片底部插入一个内嵌对话区：用户可直接输入追问，流式渲染回复。
   // 复用 AI.chat 多轮线程（解读结果已作为 assistant 上下文注入）。
+  // 本地兜底：取本次问事涉及的术数列表
+  function shushuListOf(a){
+    const list=(a&&a.shushu)||[];
+    return Array.isArray(list)?list:[];
+  }
+  // 本地兜底：把快捷问题 chips 绑到本地规则化内容（点击即展示，无需输入）
+  function bindFollowupQuick(shushuList){
+    const quickBox=$('#aiFuQuick');
+    if(!quickBox)return;
+    let quicks=[];
+    if(shushuList.includes('八字')||shushuList.includes('紫微斗数'))quicks=Object.keys(AI.getLifetimeDomains());
+    else quicks=Object.keys(AI.getRealtimeTopics());
+    quicks.slice(0,4).forEach(k=>{
+      const chip=el('span','ai-fu-chip');
+      chip.textContent=k;
+      const prompt=(shushuList.includes('八字')||shushuList.includes('紫微斗数')?AI.getLifetimeDomains():AI.getRealtimeTopics())[k];
+      chip.onclick=()=>{
+        const box=$('#aiFuMsgs');
+        if(!box)return;
+        const q=el('div','ai-fu-msg user');
+        q.innerHTML='<span class="ai-fu-role">我</span>'+esc(prompt||k);
+        box.appendChild(q);
+        const ans=el('div','ai-fu-msg assistant');
+        ans.innerHTML='<span class="ai-fu-role">玄</span><span class="ai-fu-content">'+AI.renderMarkdown(AI.buildDemoReply(prompt||k,''))+'</span>';
+        box.appendChild(ans);
+        box.scrollTop=box.scrollHeight;
+      };
+      quickBox.appendChild(chip);
+    });
+  }
+  // 本地兜底：在追问区展示规则化解读说明，避免出现空白区
+  function renderLocalFollowupMessages(box,a){
+    if(!box)return;
+    const div=el('div','ai-fu-msg assistant');
+    div.innerHTML='<span class="ai-fu-role">玄</span><span class="ai-fu-content">'
+      +AI.renderMarkdown(['本地规则模式已开启。上方为盘面规则的确定性梳理；点击下方快捷项可查看对应领域的规则化要点。','','配置大模型后，此处可进行真正的多轮追问（跨天保留上下文）。'].join('\n'))
+      +'</span>';
+    box.appendChild(div);
+  }
   function showFollowupInput(card,threadId,a){
     if(!card||!threadId)return;
     // 移除旧的追问区（重新解读时）
     const old=card.querySelector('.ai-followup');
     if(old)old.remove();
-    const cfg=Store.getSettings();
     const fu=document.createElement('div');
     fu.className='ai-followup';
     fu.innerHTML=
       '<div class="ai-fu-divider">— 以上为玄学解读，下方可继续追问 —</div>'
       +'<div class="ai-fu-messages" id="aiFuMsgs"></div>'
-      +(cfg.offlineMode?'<div class="section-note">离线模式，无法追问</div>':
+      +(aiMode()==='local'?'<div class="section-note">当前离线模式，追问将使用本地规则化解读</div>':
         '<div class="ai-fu-input-row">'
         +'<input type="text" id="aiFuInput" class="ai-fu-input" placeholder="输入追问，如「这件事什么时候能有结果？」">'
         +'<button class="btn primary sm" id="aiFuSend">发送</button>'
         +'</div>'
         +'<div class="ai-fu-quick" id="aiFuQuick"></div>');
     card.appendChild(fu);
-    if(cfg.offlineMode)return;
+    // 仅在本地模式下仍需绑定快捷问题（输入框不可用时至少可查看规则条目）
+    if(aiMode()==='local'){
+      bindFollowupQuick(shushuListOf(a));
+      renderLocalFollowupMessages($('#aiFuMsgs'),a);
+      return;
+    }
     // 快捷问题：根据术数类型提供
     const shushuList=a.shushu||[];
     const quickBox=$('#aiFuQuick');
@@ -2501,7 +2790,10 @@
         }
         msgs.scrollTop=msgs.scrollHeight;
       }catch(e){
-        if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
+        if(e&&e.message==='DEMO_EXHAUSTED'){
+          contentEl.innerHTML='<div class="ai-demo-empty"><div class="demo-empty-t">本地演示次数已用完</div>'
+            +'<div class="demo-empty-d">填入 API Key 即可无限对话（只需填 1 项）。</div></div>';
+        }else if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
           contentEl.textContent='（已取消）';
         }else{
           contentEl.innerHTML='<span class="ai-error">✗ '+esc(e.message)+'</span>';
@@ -2525,14 +2817,11 @@
   let _dailyYiJiCtx=null;
   // 生成今日宜忌：命盘喜用神 × 当日干支 → AI 当日行动指南（流式渲染到卡片内）
   async function genDailyYiJi(){
+    if(aiMode()==='local'){notifyOfflineDegrade('今日宜忌');return;}
+    if(aiMode()==='demo')guideMissingKey('今日宜忌');
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用今日宜忌。',null,true,'知道了');
-      return;
-    }
     const profile=Store.getProfile();
-    if(!profile||!profile.birth){toast('请先在「我的」页填写出生信息');return;}
+    if(!profile||!profile.birth){toast('请先在「我的」页填写出生信息','err');return;}
     const b=birthFromProfile(profile);
     const d=resolveBirthDate(b);
     if(!d){toast('出生日期解析失败，请在「我的」页检查出生信息');return;}
@@ -2593,7 +2882,7 @@
   }
   // 打开今日宜忌追问对话（复用今日线程）
   function openDailyYiJiChat(){
-    if(!_dailyYiJiCtx){toast('请先生成今日宜忌');return;}
+    if(!_dailyYiJiCtx){toast('请先生成今日宜忌','info');return;}
     const result=_dailyYiJiCtx.result;
     const threadId=_dailyYiJiCtx.threadId;
     renderAIChat(threadId,'今日宜忌 · 追问',result,'bazi',{
@@ -2605,12 +2894,8 @@
   // 开启终身命理顾问对话（八字/紫微）
   // type: 'bazi' | 'ziwei'；domainKey: 可选，预设领域问题（见 AI.getLifetimeDomains）
   async function openLifetimeAdvisor(type,domainKey){
-    const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问。',null,true,'知道了');
-      return;
-    }
+    if(aiMode()==='local'){notifyOfflineDegrade('终身命理顾问');return;}
+    if(aiMode()==='demo')guideMissingKey('终身命理顾问');
     const profile=Store.getProfile();
     if(!profile||!profile.birth){
       modal('尚未建档','终身命理顾问需要先填写出生信息。是否前往「我的」页填写？',m=>{
@@ -2648,16 +2933,27 @@
   }
   // 开启实时决策顾问对话（基于当前卦象）
   // topicKey: 可选，预设事项问题（见 AI.getRealtimeTopics）
+  // threadId 按「议题」生成（见 realtimeThreadId），同一件事可跨天继续追问，不再每天清零
+  const RT_TOPIC_LABELS={
+    '事业工作':'事业','感情关系':'感情','财运求财':'财运','学业考试':'学业','健康养生':'健康',
+    '出行平安':'出行','人际合作':'人际','综合其他':'其他'
+  };
+  function realtimeThreadId(comp){
+    // 按议题（年-月-议题）为线程 id：同月同一议题复用同一线程，实现跨天记忆
+    const now=new Date();
+    let key='其他';
+    try{
+      const qc=comp&&comp.ke&&comp.ke.questionType||(comp&&comp.plain&&comp.plain.questionType)||'';
+      key=RT_TOPIC_LABELS[qc]||(qc||'其他');
+    }catch(_){}
+    return 'realtime_'+fmtDate(now).slice(0,7).replace(/-/g,'')+'_'+key;
+  }
   function openRealtimeAdvisor(topicKey){
-    const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问。',null,true,'知道了');
-      return;
-    }
+    if(aiMode()==='local'){notifyOfflineDegrade('实时决策顾问');return;}
+    if(aiMode()==='demo')guideMissingKey('实时决策顾问');
     const comp=state.currentKe||computeDaliuren(new Date(),'其他');
     state.currentKe=comp;
-    const threadId='realtime_'+fmtDate(new Date()).replace(/[- :]/g,'').slice(0,8);
+    const threadId=realtimeThreadId(comp);
     const topics=AI.getRealtimeTopics();
     const quickList=Object.keys(topics).map(k=>({key:k,label:k}));
     let initialQ=null;
@@ -2674,12 +2970,8 @@
   let _decisionCtx=null;
   // 弹出 A/B 选项表单，提交后起当下卦象并调用 AI 对比分析
   function openDecisionCompare(){
-    const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用决策对比助手。',null,true,'知道了');
-      return;
-    }
+    if(aiMode()==='local'){notifyOfflineDegrade('决策对比助手');return;}
+    if(aiMode()==='demo')guideMissingKey('决策对比助手');
     const body=`<div class="field"><label>事项标题</label><input type="text" id="dcTitle" placeholder="如：是否接受这份 offer"></div>`
       +`<div class="dc-opt-row"><div class="field"><label>选项 A</label><input type="text" id="dcOptA" placeholder="如：接受"></div><div class="field"><label>选项 B</label><input type="text" id="dcOptB" placeholder="如：拒绝"></div></div>`
       +`<div class="field"><label>背景说明（可选）</label><textarea id="dcDesc" rows="2" placeholder="补充背景，帮助更准确地分析"></textarea></div>`
@@ -2688,7 +2980,7 @@
       const tEl=$('#dcTitle'),aEl=$('#dcOptA'),bEl=$('#dcOptB');
       if(!tEl||!aEl||!bEl)return;
       const title=tEl.value.trim(),optA=aEl.value.trim(),optB=bEl.value.trim();
-      if(!title||!optA||!optB){toast('请填写事项标题与两个选项');return;}
+      if(!title||!optA||!optB){toast('请填写事项标题与两个选项','err');return;}
       const desc=$('#dcDesc').value.trim();
       const mood=$('#dcMood').value;
       closeModal();
@@ -2771,10 +3063,11 @@
         reviewDue:Date.now()+3*86400000,
         plain:{tendency:comp.plain.tendency,opps:comp.plain.opps,risks:comp.plain.risks},
         decision:{optA:bg.optA,optB:bg.optB,aiReading:replyText},
-        aiReading:replyText
+        aiReading:replyText,
+        chatThread:threadId
       };
       Store.saveCase(c);
-      toast('已保存为案例，3 天后提醒复盘');
+      toast('已保存为案例，3 天后提醒复盘','ok');
       closeModal();
     };
     const btnAsk=$('#btnDcAsk');
@@ -2788,7 +3081,7 @@
       });
     };
     const btnCopy=$('#btnDcCopy');
-    if(btnCopy)btnCopy.onclick=()=>{copyText(replyText);toast('已复制分析结果');};
+    if(btnCopy)btnCopy.onclick=()=>{copyText(replyText);toast('已复制分析结果','ok');};
   }
   // 渲染一个 AI 对话界面（底部抽屉式遮罩），支持多轮对话与命盘/卦象上下文长期记忆。
   // threadId: 对话线程 id
@@ -2876,11 +3169,7 @@
     async function send(msgText){
       const txt=(msgText!==undefined?msgText:input.value).trim();
       if(!txt)return;
-      if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-      if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-        modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key 后再使用玄顾问对话。',null,true,'知道了');
-        return;
-      }
+      // 体验模式/本地模式均可发送：AI.chat 内部会分流到演示回复或抛错
       sending=true;btnSend.disabled=true;
       if(msgText===undefined)input.value='';
       // 立即渲染用户气泡
@@ -2915,7 +3204,34 @@
           aiBody.appendChild(note);
         }
       }catch(e){
-        if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
+        if(e&&e.message==='DEMO_EXHAUSTED'){
+          aiBody.innerHTML='<div class="ai-demo-empty">'
+            +'<div class="demo-empty-t">本地演示次数已用完</div>'
+            +'<div class="demo-empty-d">未配置 AI 模型时提供 '+AI.demoQuotaMax()+' 次本地演示。填入 API Key 即可无限次大模型对话（只需填 1 项）。</div>'
+            +'<div class="demo-empty-acts">'
+            +  '<button class="btn primary sm" id="demoGoCfg">去配置 Key</button>'
+            +  '<button class="btn sm ghost" id="demoGoLocal">查看本地规则解读</button>'
+            +'</div></div>';
+          const go=aiBody.querySelector('#demoGoCfg');
+          if(go)go.onclick=()=>{
+            close();
+            state.tab='me';renderTab();
+            setTimeout(()=>{
+              const c=$('#btnAiConfig');
+              if(c){
+                c.scrollIntoView({behavior:'smooth',block:'center'});
+                c.classList.add('pulse-hl');
+                setTimeout(()=>c.classList.remove('pulse-hl'),1600);
+              }else toast('请在「我的」页找到 玄顾问 → 模型配置');
+            },80);
+          };
+          const lo=aiBody.querySelector('#demoGoLocal');
+          if(lo)lo.onclick=()=>{
+            const r=AI.buildDemoReply(txt,'');
+            AI.injectAssistant(threadId,r);
+            renderMessages();
+          };
+        }else if(e.name==='AbortError'||(e.message&&e.message.includes('中止'))){
           aiBody.innerHTML='<span class="txt-muted">已取消</span>';
         }else{
           aiBody.innerHTML='<span class="txt-red">✗ 调用失败：'+esc(e.message)+'</span>'
@@ -2926,7 +3242,7 @@
         msgBox.scrollTop=msgBox.scrollHeight;
       }
     }
-    btnSend.onclick=()=>send();
+    btnSend.onclick=()=>{haptic(10);send();};
     input.addEventListener('keydown',e=>{
       if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
     });
@@ -2965,8 +3281,67 @@
       if(_aiChatAbort){try{_aiChatAbort.abort();}catch(e){}_aiChatAbort=null;}
       if(mask.parentNode)mask.parentNode.removeChild(mask);
     };
-    panel.querySelector('#aiChatClose').onclick=close;
-    mask.onclick=ev=>{if(ev.target===mask)close();};
+    // 键盘自适应：软键盘弹出时把抽屉高度压到可视区内，避免输入区被顶出屏幕
+    // （部分 WebView 不会因 keyboard 事件收缩 fixed 视口，需手动同步）
+    const kbSync=()=>{
+      const vv=window.visualViewport;
+      if(!vv)return;
+      const h=vv.height;
+      const top=vv.offsetTop||0;
+      mask.style.height=Math.max(220,h)+'px';
+      mask.style.top=top+'px';
+      msgBox.scrollTop=msgBox.scrollHeight;
+    };
+    let _vvActive=false;
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',kbSync);
+      window.visualViewport.addEventListener('scroll',kbSync);
+      _vvActive=true;
+      kbSync();
+    }
+    const closeWithKb=()=>{
+      if(_vvActive&&window.visualViewport){
+        window.visualViewport.removeEventListener('resize',kbSync);
+        window.visualViewport.removeEventListener('scroll',kbSync);
+      }
+      close();
+    };
+    panel.querySelector('#aiChatClose').onclick=closeWithKb;
+    mask.onclick=ev=>{if(ev.target===mask)closeWithKb();};
+    input.addEventListener('blur',()=>{
+      // 输入结束后恢复整屏高度（部分浏览器 blur 不触发 viewport 回弹）
+      setTimeout(()=>{
+        const vv=window.visualViewport;
+        if(vv&&vv.height>=window.innerHeight-40){mask.style.height='';mask.style.top='';}
+      },120);
+    });
+    // 下拉关闭手势：抓住头部区域向下拖，超过阈值即关闭（原生抽屉的肌肉记忆）
+    const head=panel.querySelector('.ai-chat-header');
+    if(head){
+      let sy=0,dy=0,dragging=false;
+      head.style.touchAction='none';
+      head.addEventListener('pointerdown',e=>{
+        if(e.target.closest('button'))return;
+        dragging=true;sy=e.clientY;dy=0;panel.style.transition='none';
+        head.setPointerCapture&&head.setPointerCapture(e.pointerId);
+      });
+      head.addEventListener('pointermove',e=>{
+        if(!dragging)return;
+        dy=Math.max(0,e.clientY-sy);
+        panel.style.transform='translateY('+dy+'px)';
+        mask.style.opacity=String(Math.max(0,1-dy/360));
+      });
+      const endDrag=()=>{
+        if(!dragging)return;
+        dragging=false;
+        panel.style.transition='transform .24s var(--ease-out),opacity .24s var(--ease-out)';
+        if(dy>110){closeWithKb();panel.style.transform='';mask.style.opacity='';}
+        else{panel.style.transform='';mask.style.opacity='';}
+        dy=0;
+      };
+      head.addEventListener('pointerup',endDrag);
+      head.addEventListener('pointercancel',endDrag);
+    }
     // 若有预设问题，自动发送
     if(opts.initialQuestion){
       setTimeout(()=>send(opts.initialQuestion),120);
@@ -2974,6 +3349,8 @@
     return panel;
   }
   function copyText(txt){
+    // 小工具容器禁剪贴板 API：引导选中文本手动复制
+    if(window.XUANJUE_CONTAINER){toast('长按文本可手动复制');return;}
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).catch(()=>fallbackCopy(txt));}
     else fallbackCopy(txt);
   }
@@ -3316,13 +3693,17 @@
       myJudge:'',actions:[],signals:plain.signals,
       reviewDue:Date.now()+plain.reviewDays*86400000,
       result:'',verified:'',unhit:'',reflect:'',tags:[],favor:false,
-      aiReading:a.aiReading||''
+      aiReading:a.aiReading||'',
+      // 关联的 AI 追问线程 id（若保存前已生成过深度解读）；
+      // 新起的线程沿用同一 threadId，使案例详情与追问会话指向同一份上下文
+      chatThread:a._chatThreadId||null
     };
     Store.saveCase(obj);
     a.savedCaseId=obj.id;
     // 若含八字，将出生信息回写到个人信息（便于下次自动带入）
     if(a.shushu&&a.shushu.includes('八字')&&a.extra&&a.extra.birth){syncProfileFromBirth(a.extra.birth);}
-    toast('案例已保存');
+    haptic(14);
+    toast('案例已保存','ok');
     state.viewCaseId=obj.id;state.tab='me';state.subPage='case';renderTab();setTimeout(openCaseDetail,30);
   }
   function serializeShu(res){return{name:res.name,result:res.result};}
@@ -3338,6 +3719,8 @@
     return n+'盘面';
   }
   function exportShuShuText(res){
+    // 小工具容器禁文件下载：提示改用选中文本复制
+    if(window.XUANJUE_CONTAINER){toast('小工具环境不支持导出文件');return;}
     const L=[];
     L.push('=== 玄决 · '+res.name+' ===');
     L.push('时间：'+fmtDateTime(new Date()));
@@ -3360,6 +3743,8 @@
   function serializeKe(comp){return{dateStr:comp.ke.dateStr,sc:comp.sc,baZi:comp.baZi,yueJiang:comp.ke.yueJiang,zhanShi:comp.ke.zhanShi,guiRen:comp.ke.guiRen,kongWang:comp.ke.kongWang,geju:comp.ke.geju,lessons:comp.ke.lessons,sanChuan:comp.ke.sanChuan,shenSha:comp.ke.shenSha,leishenName:comp.ke.leishenName,leishenShen:comp.ke.leishenShen};}
 
   function exportBoardText(comp){
+    // 小工具容器禁文件下载：提示改用选中文本复制
+    if(window.XUANJUE_CONTAINER){toast('小工具环境不支持导出文件');return;}
     const ke=comp.ke,p=comp.plain;
     const L=[];
     L.push('=== 玄决 · 大六壬盘面 ===');
@@ -3490,7 +3875,7 @@
     function calc(){
       const m=parseInt($('#starMonth').value,10);
       const d=parseInt($('#starDay').value,10);
-      if(!m||!d){toast('请输入有效的农历月日');return;}
+      if(!m||!d){toast('请输入有效的农历月日','err');return;}
       const idx=((m-1)*2+d)%28;
       const name=XIU[idx];
       const out=$('#starResult');if(out)out.innerHTML=`<div class="game-title">二十八宿：${name}宿</div><div class="game-text">${XIU_TEXT[name]}</div>`;
@@ -3720,6 +4105,56 @@
     };
     const bs=$('#btnStat');if(bs)bs.onclick=()=>openStats();
   }
+  // 「当时问 → 现在回看」时间线：把 问事起课 / AI 解读 / 我的追问 / 复盘 串成一条线
+  // 让用户在复盘时能一眼看到「当初问的是什么、当时怎么判的、后来实际怎样」，
+  // 而不是三个互不相干的区域。
+  function renderCaseTimeline(c){
+    const items=[];
+    items.push({
+      t:'问事',ts:c.createdAt,
+      d:(c.desc||c.title||'未填写描述')+'（'+(c.questionType||'其他')+'）'
+    });
+    if(c.aiReading)items.push({t:'AI 解读',ts:c.createdAt+86400000*0.02,d:firstLine(c.aiReading)});
+    // 关联会话中的追问（若有）：取最近若干条 user 消息
+    if(c.chatThread){
+      const msgs=Store.getChat(c.chatThread)||[];
+      const asks=msgs.filter(m=>m.role==='user').slice(-3);
+      asks.forEach(m=>items.push({t:'我的追问',ts:m.ts,d:trimStr(m.content,80)}));
+    }
+    if(c.myJudge&&c.myJudge.trim()){
+      items.push({t:'我的判断',ts:c.createdAt+86400000*0.5,d:trimStr(c.myJudge,80)});
+    }
+    if(c.reviewed&&c.review){
+      items.push({t:'复盘 · '+(c.review.result||''),ts:parseReviewTs(c.review.reviewTime)||Date.now(),
+        d:trimStr(c.review.actual||c.review.reflect||'已复盘',90)});
+    }else if(c.reviewDue){
+      items.push({t:'待复盘',ts:c.reviewDue,d:'到期后回来填写实际结果，检验当初的判断'});
+    }
+    if(items.length<2)return '';
+    items.sort((a,b)=>a.ts-b.ts);
+    let h='<div class="card detail-sec"><h4>当时问 → 现在回看</h4><div class="case-timeline">';
+    items.forEach(it=>{
+      h+='<div class="ct-item '+(it.t.indexOf('待复盘')===0?'ct-todo':'')+'">'
+        +'<div class="ct-dot"></div>'
+        +'<div class="ct-body">'
+        +'<div class="ct-head"><span class="ct-t">'+esc(it.t)+'</span><span class="ct-date">'+fmtDate(new Date(it.ts))+'</span></div>'
+        +'<div class="ct-d">'+esc(it.d)+'</div>'
+        +'</div></div>';
+    });
+    h+='</div></div>';
+    return h;
+  }
+  // 取文本第一行（用于时间线摘要）
+  function firstLine(s){
+    return String(s||'').split('\n').map(x=>x.replace(/^[#*\s>-]+/,'').trim()).filter(Boolean)[0]||'';
+  }
+  function trimStr(s,n){return String(s||'').length>n?String(s).slice(0,n)+'…':String(s||'');}
+  // 复盘日期字符串（YYYY-MM-DD）→ 时间戳；解析失败返回 null
+  function parseReviewTs(s){
+    const m=String(s||'').match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/);
+    if(!m)return null;
+    return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).getTime();
+  }
   function openCaseDetail(id){
     if(id===undefined)id=state.viewCaseId;
     const c=Store.getCase(id);if(!c){toast('案例不存在');return;}
@@ -3793,15 +4228,19 @@
       h+=`<button class="btn primary block mt8" id="btnReview">立即复盘</button>`;
     }
     h+=`</div>`;
-    h+=`<div class="card"><button class="btn block" id="btnToggleFavor">${c.favor?'取消收藏':'收藏案例'}</button><button class="btn block mt8" id="btnExportCase">导出本案例</button><button class="btn danger block mt8" id="btnDelCase">删除案例</button></div>`;
+    // 「当时问 → 现在回看」时间线：把问事、AI 解读、复盘串成一条线，形成反馈闭环
+    h+=renderCaseTimeline(c);
+    h+=`<div class="card"><button class="btn block" id="btnShareCase">生成分享卡片</button><button class="btn block mt8" id="btnToggleFavor">${c.favor?'取消收藏':'收藏案例'}</button><button class="btn block mt8" id="btnExportCase">导出本案例</button><button class="btn danger block mt8" id="btnDelCase">删除案例</button></div>`;
     container.innerHTML=h;
     $('#backList').onclick=()=>{navBack();};
     $('#myJudge').oninput=ev=>{c.myJudge=ev.target.value;Store.saveCase(c);};
     if($('#btnReview'))$('#btnReview').onclick=()=>openReview(id);
     if($('#btnReviewAgain'))$('#btnReviewAgain').onclick=()=>openReview(id);
     $('#btnToggleFavor').onclick=()=>{c.favor=!c.favor;Store.saveCase(c);openCaseDetail(id);toast(c.favor?'已收藏':'已取消收藏');};
+    const btnShare=$('#btnShareCase');
+    if(btnShare)btnShare.onclick=()=>shareCase(c);
     $('#btnExportCase').onclick=()=>exportCase(c);
-    $('#btnDelCase').onclick=()=>{modal('删除案例','确定删除该案例？此操作不可恢复。',(m)=>{Store.deleteCase(id);closeModal();toast('已删除');renderTab();});};
+    $('#btnDelCase').onclick=()=>{modal('删除案例','确定删除该案例？此操作不可恢复。',(m)=>{Store.deleteCase(id);closeModal();toast('已删除','ok');renderTab();});};
   }
   function openReview(id){
     const c=Store.getCase(id);if(!c)return;
@@ -3823,14 +4262,14 @@
     let chosenTags=initTags.slice();
     modal('复盘',body,(m)=>{
       const actual=$('#rActual').value,unhit=$('#rUnhit').value,reflect=$('#rReflect').value;
-      if(!chosen){toast('请选择应验程度');return;}
+      if(!chosen){toast('请选择应验程度','err');return;}
       Store.addReview(id,{
         actual,unhit,reflect,result:chosen,
         score:chosenScore||null,
         tags:chosenTags,
         reviewTime:fmtDate(new Date())
       });
-      closeModal();toast('复盘已保存');openCaseDetail(id);
+      closeModal();haptic(14);toast('复盘已保存','ok');openCaseDetail(id);
     },true,'保存复盘');
     setTimeout(()=>{
       // 应验程度 chips
@@ -3855,7 +4294,7 @@
       const addBtn=$('#rTagAdd');
       if(addBtn)addBtn.onclick=()=>{
         const v=(input&&input.value||'').trim();
-        if(!v){toast('请输入标签');return;}
+        if(!v){toast('请输入标签','err');return;}
         if(v.length>20){toast('标签过长');return;}
         const custom=getCustomReviewTags();
         if(!custom.includes(v)){custom.push(v);saveCustomReviewTags(custom);}
@@ -4006,7 +4445,241 @@
     h+=`</div>`;
     return h;
   }
+  // ---------- 盘面分享卡片：canvas 绘制 1080×1620 竖版图，含免责角标 ----------
+  // 小工具容器内禁文件下载，仅提供「保存到相册」的等价路径说明
+  const SHARE_W=1080,SHARE_H=1620,SHARE_PAD=72;
+  // 自动换行（按像素宽度切分，兼容中日韩全角字符）
+  function shareWrap(ctx,text,maxW){
+    const out=[];
+    let line='';
+    for(const ch of String(text||'')){
+      if(ch==='\n'){out.push(line);line='';continue;}
+      if(ctx.measureText(line+ch).width>maxW&&line){out.push(line);line=ch;}
+      else line+=ch;
+    }
+    if(line)out.push(line);
+    return out;
+  }
+  function shareRoundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+  function buildShareCanvas(c){
+    const cv=document.createElement('canvas');
+    cv.width=SHARE_W;cv.height=SHARE_H;
+    const ctx=cv.getContext('2d');
+    // 背景：深墨底 + 金色氛围渐变
+    const bg=ctx.createLinearGradient(0,0,SHARE_W,SHARE_H);
+    bg.addColorStop(0,'#14100A');bg.addColorStop(.5,'#0B0906');bg.addColorStop(1,'#100C07');
+    ctx.fillStyle=bg;ctx.fillRect(0,0,SHARE_W,SHARE_H);
+    // 罗盘氛围：同心圆 + 刻度
+    ctx.save();
+    ctx.translate(SHARE_W-60,120);
+    ctx.strokeStyle='rgba(217,169,78,.13)';ctx.lineWidth=1;
+    [80,150,220,290].forEach(r=>{ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();});
+    for(let i=0;i<24;i++){
+      const a=(i/24)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*80,Math.sin(a)*80);
+      ctx.lineTo(Math.cos(a)*220,Math.sin(a)*220);
+      ctx.globalAlpha=i%3===0?.5:.22;
+      ctx.stroke();
+    }
+    ctx.restore();
+    // 金色发丝线（顶部）
+    const topLine=ctx.createLinearGradient(SHARE_PAD,0,SHARE_W-SHARE_PAD,0);
+    topLine.addColorStop(0,'rgba(217,169,78,0)');topLine.addColorStop(.5,'rgba(217,169,78,.55)');topLine.addColorStop(1,'rgba(217,169,78,0)');
+    ctx.fillStyle=topLine;ctx.fillRect(SHARE_PAD,64,SHARE_W-SHARE_PAD*2,2);
+
+    let y=170;
+    // 品牌字标
+    ctx.fillStyle='#F0E6D2';
+    ctx.font='600 76px "Songti SC","STSong","SimSun",serif';
+    ctx.textAlign='left';ctx.textBaseline='alphabetic';
+    ctx.fillText('玄决',SHARE_PAD,y);
+    ctx.font='400 26px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle='rgba(240,230,210,.55)';
+    ctx.fillText('大六壬决策台',SHARE_PAD,y+42);
+    // 日期
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(240,230,210,.4)';
+    ctx.font='400 24px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText(fmtDate(new Date(c.createdAt)),SHARE_W-SHARE_PAD,y);
+    y+=104;
+    // 问题类型 + 标题
+    ctx.textAlign='left';
+    ctx.fillStyle='#D9A94E';
+    ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText(esc(c.questionType||'其他'),SHARE_PAD,y);
+    y+=54;
+    ctx.fillStyle='#F5EDDD';
+    ctx.font='600 52px -apple-system,"PingFang SC",sans-serif';
+    shareWrap(ctx,c.title||'未命名案例',SHARE_W-SHARE_PAD*2).slice(0,2).forEach(l=>{ctx.fillText(l,SHARE_PAD,y);y+=64;});
+    y+=10;
+    // 描述
+    if(c.desc){
+      ctx.fillStyle='rgba(240,230,210,.72)';
+      ctx.font='400 28px -apple-system,"PingFang SC",sans-serif';
+      shareWrap(ctx,c.desc,SHARE_W-SHARE_PAD*2).slice(0,3).forEach(l=>{ctx.fillText(l,SHARE_PAD,y);y+=42;});
+      y+=8;
+    }
+    // 盘面数据卡（大六壬）
+    if(c.board){
+      const b=c.board;
+      const rows=[
+        ['月将',b.yueJiang.zhi],
+        ['占时',b.zhanShi.zhi],
+        ['三传',b.sanChuan.chu.zhi+' → '+b.sanChuan.zhong.zhi+' → '+b.sanChuan.mo.zhi],
+        ['格局',(b.geju||[]).join(' · ')]
+      ];
+      const cardH=96+rows.length*62+28;
+      // 卡片底
+      ctx.fillStyle='rgba(255,255,255,.045)';
+      shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.fill();
+      ctx.strokeStyle='rgba(217,169,78,.28)';ctx.lineWidth=1.5;
+      shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.stroke();
+      let iy=y+56;
+      ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
+      rows.forEach(r=>{
+        ctx.textAlign='left';
+        ctx.fillStyle='rgba(217,169,78,.85)';
+        ctx.fillText(r[0],SHARE_PAD+32,iy);
+        ctx.textAlign='right';
+        ctx.fillStyle='#F0E6D2';
+        ctx.font='500 28px -apple-system,"PingFang SC",sans-serif';
+        ctx.fillText(String(r[1]),SHARE_W-SHARE_PAD-32,iy);
+        ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
+        iy+=62;
+      });
+      y+=cardH+34;
+    }else if(c.shushuBoard){
+      const sb=c.shushuBoard;
+      const one=sb&&sb.name?sb:(sb&&Object.keys(sb).length?sb[Object.keys(sb)[0]]:null);
+      if(one){
+        const lines=shareWrap(ctx,shuBoardSummary(one),SHARE_W-SHARE_PAD*2-64).slice(0,5);
+        const cardH=76+lines.length*44+28;
+        ctx.fillStyle='rgba(255,255,255,.045)';
+        shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.fill();
+        ctx.strokeStyle='rgba(217,169,78,.28)';
+        shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.stroke();
+        ctx.textAlign='left';
+        ctx.fillStyle='rgba(217,169,78,.85)';
+        ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
+        ctx.fillText('盘面 · '+esc(one.name||''),SHARE_PAD+32,y+52);
+        ctx.fillStyle='rgba(240,230,210,.75)';
+        ctx.font='400 26px -apple-system,"PingFang SC",sans-serif';
+        let ly=y+96;
+        lines.forEach(l=>{ctx.fillText(l,SHARE_PAD+32,ly);ly+=44;});
+        y+=cardH+34;
+      }
+    }
+    // 白话状态
+    if(c.plain&&c.plain.state){
+      ctx.textAlign='left';
+      ctx.fillStyle='rgba(240,230,210,.8)';
+      ctx.font='400 30px -apple-system,"PingFang SC",sans-serif';
+      shareWrap(ctx,c.plain.state,SHARE_W-SHARE_PAD*2).slice(0,3).forEach(l=>{ctx.fillText(l,SHARE_PAD,y);y+=44;});
+      y+=12;
+    }
+    // 我的判断（可选）
+    if(c.myJudge&&c.myJudge.trim()){
+      ctx.fillStyle='rgba(217,169,78,.9)';
+      ctx.font='500 24px -apple-system,"PingFang SC",sans-serif';
+      ctx.fillText('我的判断',SHARE_PAD,y);y+=40;
+      ctx.fillStyle='rgba(240,230,210,.72)';
+      ctx.font='400 26px -apple-system,"PingFang SC",sans-serif';
+      shareWrap(ctx,c.myJudge,SHARE_W-SHARE_PAD*2).slice(0,4).forEach(l=>{ctx.fillText(l,SHARE_PAD,y);y+=38;});
+    }
+    // 复盘结果徽标（若已复盘）
+    if(c.reviewed&&c.review&&c.review.result){
+      const label='复盘：'+c.review.result;
+      ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
+      const bw=ctx.measureText(label).width+44,bh=54;
+      const bx=SHARE_PAD,by=Math.min(y+16,SHARE_H-260);
+      ctx.fillStyle='rgba(217,169,78,.16)';
+      shareRoundRect(ctx,bx,by,bw,bh,bh/2);ctx.fill();
+      ctx.strokeStyle='rgba(217,169,78,.5)';
+      shareRoundRect(ctx,bx,by,bw,bh,bh/2);ctx.stroke();
+      ctx.fillStyle='#D9A94E';ctx.textAlign='left';
+      ctx.fillText(label,bx+22,by+35);
+    }
+    // 底部免责角标 + 应用署名
+    const botLine=ctx.createLinearGradient(SHARE_PAD,0,SHARE_W-SHARE_PAD,0);
+    botLine.addColorStop(0,'rgba(217,169,78,0)');botLine.addColorStop(.5,'rgba(217,169,78,.35)');botLine.addColorStop(1,'rgba(217,169,78,0)');
+    ctx.fillStyle=botLine;ctx.fillRect(SHARE_PAD,SHARE_H-186,SHARE_W-SHARE_PAD*2,1);
+    ctx.textAlign='left';
+    ctx.fillStyle='rgba(240,230,210,.45)';
+    ctx.font='400 22px -apple-system,"PingFang SC",sans-serif';
+    shareWrap(ctx,'仅供个人文化研究与娱乐参考，不构成医疗、法律、投资、婚姻、职业等重大决策依据。',SHARE_W-SHARE_PAD*2)
+      .slice(0,2).forEach((l,i)=>ctx.fillText(l,SHARE_PAD,SHARE_H-142+i*32));
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(217,169,78,.6)';
+    ctx.font='400 22px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText('玄决 · 大六壬决策台',SHARE_W-SHARE_PAD,SHARE_H-142);
+    return cv;
+  }
+  function shareCase(c){
+    if(!c){toast('案例不存在');return;}
+    let cv;
+    try{cv=buildShareCanvas(c);}catch(e){toast('生成卡片失败：'+(e&&e.message||e));return;}
+    const show=()=>{
+      const url=cv.toDataURL('image/png');
+      // 原生分享（移动端优先）：把 PNG 交给系统分享面板
+      const canNative=!!(navigator.share&&navigator.canShare);
+      const acts=[
+        '<button class="btn primary block" id="shSave" type="button">保存图片</button>',
+        canNative?'<button class="btn ghost block mt8" id="shNative" type="button">系统分享…</button>':'',
+        '<button class="btn ghost block mt8" id="shCopy" type="button">复制到剪贴板</button>'
+      ].join('');
+      modal('分享卡片已生成',
+        '<div class="share-preview"><img src="'+url+'" alt="分享卡片预览"></div>'
+        +'<div class="share-acts">'+acts+'</div>'
+        +'<div class="share-note">卡片含免责角标，分享时不携带你的出生信息。</div>',
+        null,true,'完成');
+      const save=$('#shSave');
+      if(save)save.onclick=()=>{
+        if(window.XUANJUE_CONTAINER){toast('小工具环境不支持保存文件');return;}
+        const a=document.createElement('a');
+        a.href=url;a.download='玄决分享卡-'+fmtDate(new Date(c.createdAt))+'.png';
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+        toast('图片已保存');
+      };
+      const nat=$('#shNative');
+      if(nat)nat.onclick=async()=>{
+        try{
+          cv.toBlob(async blob=>{
+            try{
+              const file=new File([blob],'xuanjue-share.png',{type:'image/png'});
+              if(!navigator.canShare({files:[file]})){toast('当前环境不支持分享图片');return;}
+              await navigator.share({files:[file],title:'玄决 · 大六壬决策台'});
+            }catch(e2){}
+          });
+        }catch(e3){toast('当前环境不支持分享图片');}
+      };
+      const cp=$('#shCopy');
+      if(cp)cp.onclick=async()=>{
+        try{
+          cv.toBlob(async blob=>{
+            try{
+              await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+              toast('已复制到剪贴板','ok');
+            }catch(e2){toast('当前环境不支持复制图片');}
+          });
+        }catch(e3){toast('当前环境不支持复制图片');}
+      };
+    };
+    // toDataURL 同步可用；个别浏览器需先让布局稳定一帧
+    if(document.body)requestAnimationFrame(()=>requestAnimationFrame(show));
+    else show();
+  }
   function exportCase(c){
+    // 小工具容器禁文件下载
+    if(window.XUANJUE_CONTAINER){toast('小工具环境不支持导出文件');return;}
     const data=JSON.stringify(c,null,2);
     const blob=new Blob([data],{type:'application/json'});
     const url=URL.createObjectURL(blob);
@@ -4018,6 +4691,7 @@
   function pageMe(){
     if(state.subPage==='important')return pageImportant();
     if(state.subPage==='case')return pageCaseList();
+    if(state.subPage==='methodology')return pageMethodology();
     const s=Store.getSettings(),p=Store.getProfile();
     const caseCount=Store.listCases().length;
     const importantCount=Store.listImportant().length;
@@ -4050,6 +4724,8 @@
     // ---- AI 顾问 ----
     h+=`<div class="gp-head">玄顾问</div>`;
     h+=`<div class="gp-card">`;
+    // 能力状态卡：让用户一眼看清当前处在哪一级（云端 AI / 真实模型 / 本地演示 / 规则化兜底）
+    h+=pageAiCapCard();
     h+=`<div class="gp-row" id="btnAiConfig"><span class="gp-ico">✦</span><div class="gp-main"><div class="gp-t">模型配置</div><div class="gp-d">${AI.PROVIDERS[s.aiProvider]?AI.PROVIDERS[s.aiProvider].label:'未配置'} · ${s.aiApiKey?'密钥已设置':'待填写密钥'}</div></div><span class="gp-chev" id="aiCfgChev">›</span></div>`;
     h+=`<div class="ai-config-wrap" id="aiConfigWrap">${pageAIConfigInner(s)}</div>`;
     h+=selectRow('解读语气','aiTone',['专业谨慎','温和陪伴','直接简洁','传统术数','心理探索']);
@@ -4092,6 +4768,10 @@
     h+=`<button class="btn-link-row danger" id="btnClear"><span class="gp-ico danger">✕</span>清除全部案例<span class="btn-x-chev">›</span></button>`;
     h+=`</div>`;
 
+    // ---- 云同步 ----
+    // 卡片内容随 Cloud.status() 变化：未配服务器 / 未登录 / 已登录未解锁 / 就绪
+    h+=pageCloudCard();
+
     // ---- 应用 ----
     h+=`<div class="gp-head">应用</div>`;
     h+=`<div class="gp-card">`;
@@ -4106,9 +4786,249 @@
 
     // ---- 版本信息 ----
     h+=`<div class="gp-card mt12">`;
-    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t dim">玄决 V1.5.0 · 大六壬决策台</div></div><span class="gp-val tiny">本地加密 · 离线可用</span></div>`;
+    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t dim">玄决 V1.5.0 · 大六壬决策台</div></div><span class="gp-val tiny">本地优先 · 离线可用</span></div>`;
     h+=`</div>`;
     return h;
+  }
+  // ---------- 云同步（纯令牌模型）----------
+  // 只显示状态与开关，不缓存令牌：令牌同时是客户端的派密口令，
+  // 落地到 DOM/storage 都会把账号控制权交出去，故一律由用户手输。
+  const CLOUD_STATES={
+    noconfig:{ico:'☁',t:'云同步未开启',d:'填入服务器地址后可开启云端备份'},
+    idle:{ico:'☁',t:'未登录',d:'用同步令牌登录，或用恢复口令找回账号'},
+    ready:{ico:'✓',t:'云同步已就绪',d:'数据明文备份到你的服务器，管理员可查看'}
+  };
+  function cloudSince(){
+    const t=window.Cloud&&Cloud.state.lastSyncAt;
+    if(!t)return '尚未同步';
+    const diff=Date.now()-t;
+    if(diff<60000)return '刚刚同步';
+    if(diff<3600000)return Math.floor(diff/60000)+' 分钟前';
+    if(diff<86400000)return Math.floor(diff/3600000)+' 小时前';
+    return Math.floor(diff/86400000)+' 天前';
+  }
+  function cloudStatus(){
+    const C=window.Cloud;
+    if(!C)return 'noconfig';
+    try{return C.status();}catch(e){return 'noconfig';}
+  }
+  // ---------- 玄顾问能力状态卡（云端 AI / 自带 Key / 本地演示 / 规则兜底） ----------
+  // 一张卡讲清「现在这条 AI 链路走哪、还能问几次」。四态按优先级取最高可用者：
+  //   cloud : 已登录云同步且服务端配了 Key —— 零配置即可用，服务端限流限次
+  //   model : 自己填了 Key，直连模型服务商
+  //   demo  : 无 Key 且代理不可用，本地演示回复（有限额）
+  //   local : 离线模式或小工具容器，只给规则化解读
+  const AI_CAP_STATES={
+    cloud:{cls:'cc-proxy',ico:'☁',t:'云端 AI 已就绪',d:'由站长提供的 Key 驱动，你无需填写任何密钥。'},
+    model:{cls:'cap-ok',ico:'✓',t:'大模型已就绪',d:'使用你自己配置的 API Key，直连模型服务商。'},
+    demo:{cls:'cap-demo',ico:'◐',t:'本地演示模式',d:''},
+    local:{cls:'cap-local',ico:'○',t:'本地规则模式',d:'离线或容器限制中，仅使用盘面规则化解读（不联网）。'}
+  };
+  // 代理能力的本地缓存（避免每次渲染都请求服务端）；_aiProxyCache 由 warmAiProxy 填充
+  let _aiProxyCache=null;
+  function aiProxyCache(){return _aiProxyCache;}
+  function aiCapMode(){
+    if(window.XUANJUE_CONTAINER)return 'local';
+    if(Store.getSettings().offlineMode)return 'local';
+    if(Store.getSettings().aiApiKey||Store.getSettings().aiProvider==='ollama')return 'model';
+    if(_aiProxyCache&&_aiProxyCache.available)return 'cloud';
+    if(window.Cloud){
+      try{ if(Cloud.isLoggedIn()&&_aiProxyCache===null)return 'cloud'; }catch(e){}
+    }
+    return 'demo';
+  }
+  function pageAiCapCard(){
+    const md=aiCapMode(),meta=AI_CAP_STATES[md]||AI_CAP_STATES.local;
+    let d=meta.d;
+    if(md==='demo')d='零配置体验中，剩余 '+AI.demoQuotaRemaining()+' 次本地演示回复。登录云同步即可零配置使用云端 AI。';
+    if(md==='cloud'&&_aiProxyCache&&_aiProxyCache.source==='site')d='使用云端提供的模型，无需自己申请 Key。'+(_aiProxyCache.daily_limit?('每天 '+_aiProxyCache.daily_limit+' 次提问上限。'):'');
+    let quotaRow='';
+    if(md==='cloud'){
+      const q=_aiProxyCache&&_aiProxyCache.quota;
+      if(q){
+        const left=Number(q.remaining),lim=Number(q.daily_limit);
+        const low=lim&&left<=Math.max(1,Math.ceil(lim*0.2));
+        quotaRow=`<div class="gp-row quota-row"><span class="gp-ico">▦</span><div class="gp-main"><div class="gp-t">今日剩余提问额度</div><div class="gp-d">每天 0 点重置，服务端限流 ${_aiProxyCache.rate_per_minute||'—'} 次/分钟</div></div><span class="gp-val num-val ${low?'warn':''}" id="aiQuotaVal">${left} / ${lim}</span></div>`;
+      }else{
+        quotaRow=`<div class="gp-row quota-row"><span class="gp-ico">▦</span><div class="gp-main"><div class="gp-t">今日剩余提问额度</div><div class="gp-d">正在向云端查询…</div></div><span class="gp-val dim" id="aiQuotaVal">—</span></div>`;
+      }
+    }
+    return `<div class="ai-cap-card ${meta.cls}" id="aiCapCard"><span class="ai-cap-ico">${meta.ico}</span><div class="ai-cap-main"><div class="ai-cap-t">${meta.t}</div><div class="ai-cap-d">${d}</div></div></div>`+quotaRow;
+  }
+  // 后台预热代理能力与额度：不阻塞首屏，失败静默（代理不可用只是链路退化，不是错误）
+  async function warmAiProxy(){
+    if(!window.AI||!AI.proxyConfig)return;
+    try{
+      const cfg=await AI.proxyConfig();
+      _aiProxyCache=cfg&&cfg.available?{available:true,source:cfg.source,daily_limit:cfg.daily_limit,rate_per_minute:cfg.rate_per_minute,quota:null}:{available:false};
+      const q=await AI.proxyQuota();
+      if(q&&_aiProxyCache)_aiProxyCache.quota=q;
+    }catch(e){}
+  }
+  function pageCloudCard(){
+    const st=cloudStatus(),meta=CLOUD_STATES[st]||CLOUD_STATES.noconfig;
+    const cls=st==='ready'?'cc-ok':(st==='noconfig'?'cc-off':'cc-lock');
+    let h=`<div class="gp-head">云同步</div>`;
+    h+=`<div class="gp-card">`;
+    h+=`<div class="ai-cap-card ${cls}" id="cloudCapCard"><span class="ai-cap-ico">${meta.ico}</span><div class="ai-cap-main"><div class="ai-cap-t">${meta.t}</div><div class="ai-cap-d">${meta.d}</div></div></div>`;
+    if(st==='noconfig'){
+      h+=`<button class="btn-link-row" id="btnCloudServer"><span class="gp-ico">⌂</span>设置服务器地址<span class="btn-x-chev">›</span></button>`;
+      h+=`<div class="gp-row disabled pad"><div class="gp-main"><div class="gp-d">不收邮箱手机号。数据明文备份到你的服务器，站点管理员可查看内容。</div></div></div>`;
+    }else if(st==='idle'){
+      h+=`<button class="btn-link-row" id="btnCloudReg"><span class="gp-ico">✦</span>创建同步令牌（免费）<span class="btn-x-chev">›</span></button>`;
+      h+=`<button class="btn-link-row" id="btnCloudUnlock"><span class="gp-ico">⌾</span>使用已有令牌登录<span class="btn-x-chev">›</span></button>`;
+      h+=`<button class="btn-link-row" id="btnCloudRecover"><span class="gp-ico">↺</span>令牌丢失，用恢复口令找回<span class="btn-x-chev">›</span></button>`;
+      h+=`<button class="btn-link-row" id="btnCloudServer"><span class="gp-ico">⌂</span>更换服务器地址<span class="btn-x-chev">›</span></button>`;
+    }else{
+      const sr=cloudSince();
+      h+=`<div class="gp-row"><span class="gp-ico">◷</span><div class="gp-main"><div class="gp-t">上次同步</div><div class="gp-d">设备 ${esc((Cloud.state.deviceName||'').slice(0,18))} · 账号前缀 ${esc(Cloud.state.prefix||'')}</div></div><span class="gp-val ${Cloud.state.status==='busy'?'gold':''}">${Cloud.state.status==='busy'?'同步中…':esc(sr)}</span></div>`;
+      h+=`<button class="btn-link-row" id="btnCloudSync"><span class="gp-ico">⇅</span>立即同步<span class="btn-x-chev">›</span></button>`;
+      h+=`<button class="btn-link-row" id="btnCloudLogout"><span class="gp-ico danger">⏻</span>退出云同步<span class="btn-x-chev">›</span></button>`;
+      if(Cloud.state.recoverNote)h+=`<div class="gp-row disabled pad"><div class="gp-main"><div class="gp-d">${esc(Cloud.state.recoverNote)}</div></div></div>`;
+    }
+    h+=`</div>`;
+    return h;
+  }
+  function cloudGuard(){
+    // 环境不具备时直接说明原因，不进流程（本地功能照常可用）
+    if(!window.Cloud){toast('云同步组件未加载','err');return false;}
+    const C=window.Cloud;
+    if(!C.fetchOk()){toast('当前环境不支持联网，无法使用云同步','err');return false;}
+    return true;
+  }
+  async function cloudThen(fn,okMsg){
+    try{await fn();}catch(e){toast((e&&e.message)||'操作失败','err');return;}
+    // 登录/注册/解锁会改变云端 AI 代理的可用性，重新探测一次
+    warmAiProxy();
+    if(okMsg)toast(okMsg,'ok');
+    closeModal();
+    if(state.tab==='me'&&!state.subPage)renderTab();
+  }
+  function openCloudServer(){
+    if(!cloudGuard())return;
+    const cur=Cloud.getServer()||'';
+    modal('服务器地址',
+      `<p class="guide-key-lead">云同步需要一个你信任的服务端。地址只存在本机，<b>不会</b>随数据上传。</p>
+       <div class="field"><label>服务器地址</label><input type="text" id="cloudSrvUrl" value="${escAttr(cur)}" placeholder="https://your-server.example.com"></div>
+       <div class="gp-d" style="line-height:1.7">可填自建后端或自托管实例。玄决官方不提供默认地址，也不设中转服务器；未填地址时云同步整体关闭，仅本机可用。</div>`,
+      m=>{
+        const v=$('#cloudSrvUrl').value.trim();
+        try{
+          Cloud.setServer(v);
+          if(v)cloudThen(()=>Cloud.init(),'服务器地址已保存');
+          else{closeModal();renderTab();}
+        }catch(e){toast(e.message||'地址无效','err');}
+      },true,'保存');
+  }
+  function openCloudRegister(){
+    if(!cloudGuard())return;
+    if(!Cloud.getServer()){openCloudServer();return;}
+    const token=Cloud.genToken(),recovery=Cloud.genRecovery();
+    modal('创建同步令牌',
+      `<p class="guide-key-lead">无需邮箱手机号，<b>完全免费</b>。令牌就是你的账号口令，服务端只存它的哈希，拿不到明文。</p>
+       <div class="cloud-secret">
+         <div class="cs-t">同步令牌</div>
+         <div class="cs-v mono" id="cloudNewToken">${esc(token)}</div>
+         <button class="btn ghost mini" id="btnCopyToken" type="button">复制</button>
+       </div>
+       <div class="cloud-secret">
+         <div class="cs-t">恢复口令</div>
+         <div class="cs-v mono" id="cloudNewRecovery">${esc(recovery)}</div>
+         <button class="btn ghost mini" id="btnCopyRec" type="button">复制</button>
+       </div>
+       <div class="cloud-warn">请立刻抄下这两串并妥善保存。<b>令牌与恢复口令都丢失 = 账号无法找回</b>（数据虽在服务器，但无法证明是你的）。</div>
+       <div class="field" style="margin-top:10px"><label>找回时需要提供令牌前 6 位</label><input type="text" id="cloudNewPrefix" value="${escAttr(Cloud.prefixOf(token))}" readonly></div>`,
+      m=>cloudThen(()=>Cloud.register(token,recovery),'云同步已开启'),
+      true,'我已保存，开启同步');
+    const ct=$('#btnCopyToken');if(ct)ct.onclick=()=>copyText(token);
+    const cr=$('#btnCopyRec');if(cr)cr.onclick=()=>copyText(recovery);
+  }
+  function openCloudUnlock(){
+    if(!cloudGuard())return;
+    if(!Cloud.getServer()){openCloudServer();return;}
+    modal('令牌登录',
+      `<p class="guide-key-lead">输入你保存的同步令牌即可登录。服务端只存令牌哈希，<b>不会</b>泄露令牌本身。</p>
+       <div class="field"><label>同步令牌</label><input type="text" id="cloudToken" placeholder="16-64 位字母、数字或 . _ -" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+       <div class="gp-d">令牌长度 16-64 位。换设备登录时直接用它；本机会话有效期内无需重复输入。</div>`,
+      m=>cloudThen(()=>Cloud.unlock($('#cloudToken').value),'已登录云同步'),
+      true,'登录');
+  }
+  function openCloudRecover(){
+    if(!cloudGuard())return;
+    if(!Cloud.getServer()){openCloudServer();return;}
+    modal('找回账号',
+      `<p class="guide-key-lead">用令牌前 6 位 + 恢复口令换发新令牌，云端数据随登录自动恢复。</p>
+       <div class="field"><label>令牌前 6 位</label><input type="text" id="cloudPrefix" maxlength="6" placeholder="例如 xj7k2p" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+       <div class="field" style="margin-top:10px"><label>恢复口令</label><input type="text" id="cloudRecovery" placeholder="注册时生成的恢复口令" autocomplete="off" spellcheck="false"></div>
+       <div class="gp-d">找回成功后请重新设置一个自己的同步令牌，并把恢复口令也一并更新。</div>`,
+      m=>cloudThen(()=>Cloud.recover($('#cloudPrefix').value,$('#cloudRecovery').value),'已找回账号'),
+      true,'找回');
+  }
+  function openCloudLogout(){
+    if(!window.Cloud)return;
+    modal('退出云同步',
+      `<p class="guide-key-lead">仅退出本机账号会话，<b>不会</b>删除云端备份，也不影响本地数据。</p>
+       <div class="gp-d">之后可用原令牌重新登录并继续同步。</div>`,
+      m=>cloudThen(async()=>{await Cloud.logout();stopCloudLoop();},'已退出云同步'),
+      true,'退出');
+  }
+  function bindCloud(){
+    const b1=$('#btnCloudServer');if(b1)b1.onclick=openCloudServer;
+    const b2=$('#btnCloudReg');if(b2)b2.onclick=openCloudRegister;
+    const b3=$('#btnCloudUnlock');if(b3)b3.onclick=openCloudUnlock;
+    const b4=$('#btnCloudRecover');if(b4)b4.onclick=openCloudRecover;
+    const b5=$('#btnCloudSync');if(b5)b5.onclick=()=>{
+      if(!cloudGuard())return;
+      const btn=$('#btnCloudSync');if(btn)btn.style.opacity='.5';
+      cloudThen(async()=>{await Cloud.syncAll();},'已同步').finally(()=>{if(btn)btn.style.opacity='';});
+    };
+    const b6=$('#btnCloudLogout');if(b6)b6.onclick=openCloudLogout;
+  }
+
+  // 「我们如何看待命理」方法论说明页：把产品的立场、边界与推理方式讲清楚，建立信任
+  function pageMethodology(){
+    let h=`<div class="phead"><div class="ptitle">我们如何看待命理</div><div class="psub">立场、边界与推理方式</div></div><button class="btn ghost sm" id="backMethod">返回</button>`;
+    h+=`<div class="card detail-sec"><h4>一句话立场</h4><div class="mth-lead">玄决把术数当作<b>整理思路的工具</b>，而不是预测命运的设备。它帮你把模糊的处境问得更清楚，把已经知道但没想透的信息重新排一遍，最后把判断权和责任留给你自己。</div></div>`;
+
+    h+=`<div class="card detail-sec"><h4>我们做什么，不做什么</h4>`;
+    h+=`<div class="mth-block"><div class="mth-block-t">做</div><ul class="mth-list">`
+      +`<li>按公开规则排盘：大六壬九法三传、八字大运流年、六爻纳甲六亲等，计算过程可查可复现</li>`
+      +`<li>白话转译盘面，指出需要你补充的事实与值得留意的风险</li>`
+      +`<li>把「当时的判断」和「后来的结果」放在一起，让你自己检验它到底有没有用</li>`
+      +`<li>数据默认只存本机，可一键导出与清除；开启云同步后明文备份到你自己的服务器</li></ul></div>`;
+    h+=`<div class="mth-block"><div class="mth-block-t">不做</div><ul class="mth-list">`
+      +`<li>不做必然性预言，不说「一定会怎样」</li>`
+      +`<li>不做恐吓式结论，不用灾祸话术施压</li>`
+      +`<li>不做改命、消灾、化解类收费引导</li>`
+      +`<li>不替你做重大决定（医疗、法律、投资、婚姻、职业）</li>`
+      +`<li>不经你主动开启云同步，不上传你的出生信息与案例内容</li></ul></div>`;
+    h+=`</div>`;
+
+    h+=`<div class="card detail-sec"><h4>一次解读是怎么来的</h4>`;
+    h+=`<div class="mth-block-d">盘面 → 规则化取象 → 白话转译 → 行动建议。前两步是确定性计算，同样输入必然得到同样结果；第三步是语言重组，不引入新信息；第四步只提供可执行的小动作，不做替你决定的结论。</div>`;
+    h+=`<div class="mth-quote">如果一段解读你读不出可验证的事实、也看不出下一步该做什么，那它对你就是无效信息——无论它说得多笃定。</div>`;
+    h+=`</div>`;
+
+    h+=`<div class="card detail-sec"><h4>为什么有「复盘」</h4>`;
+    h+=`<div class="mth-block-d">玄决设计的核心不是更准，而是让你能判断它准不准。每次问事保存后到期待你回来填写实际结果，案例库里会汇总应验比例与你的评分。统计出来的准确度属于你自己的经验数据，比任何宣传口径都可靠。</div>`;
+    h+=`<div class="mth-block-d mt8">若长期统计显示它在某类问题上稳定失灵，那就把这类问题交给更合适的工具——这也是我们希望你用出的结论。</div>`;
+    h+=`</div>`;
+
+    h+=`<div class="card detail-sec"><h4>关于 AI 解读</h4>`;
+    h+=`<div class="mth-block-d">有两种方式使用大模型。<b>云端 AI</b>：登录云同步账号后无需填写任何密钥，请求由你的浏览器发往你信任的服务端、再由它转发给模型服务商；服务端按问题难度自动选择厂商与模型，并有每日提问次数与每分钟频率限制。<b>自带 Key</b>：在「模型配置」中填入自己的 API Key，此时请求由你的浏览器直发模型服务商，Key 只明文存在本机。</div>`;
+    h+=`<div class="mth-block-d mt8">未配置且未登录时，应用退化为本地规则化解读，不联网也能完整走完排盘与转译流程。</div>`;
+    h+=`</div>`;
+
+    h+=`<div class="card detail-sec"><h4>边界</h4>`;
+    h+=`<div class="mth-block-d">${esc(AI.DISCLAIMER)}</div>`;
+    h+=`<div class="mth-block-d mt8">它是思考的辅助轮，不是方向盘。方向始终在你手里。</div>`;
+    h+=`</div>`;
+    return h;
+  }
+  // 方法论说明页返回：回到「我的」主界面
+  function bindMethodology(){
+    const back=$('#backMethod');
+    if(back)back.onclick=()=>{state.subPage='';renderTab();navBack();};
   }
   // 重要日期管理子页
   function pageImportant(){
@@ -4138,7 +5058,7 @@
       const id=b.dataset.del;
       Store.deleteImportant(id);
       renderTab();
-      toast('已删除');
+      toast('已删除','ok');
     });
     document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{
       const it=Store.getImportant(e.dataset.id);
@@ -4153,12 +5073,12 @@
     modal(item.id?'编辑重要日期':'添加重要日期',body,m=>{
       const name=$('#iName').value.trim(),date=$('#iDate').value,note=$('#iNote').value.trim();
       const lunar=$('#iLunar').checked,repeat=$('#iRepeat').checked?'year':'';
-      if(!name){toast('请输入名称');return;}
-      if(!date){toast('请选择日期');return;}
+      if(!name){toast('请输入名称','err');return;}
+      if(!date){toast('请选择日期','err');return;}
       // 农历日期格式校验：YYYY-MM-DD
       if(lunar && !/^\d{4}-\d{2}-\d{2}$/.test(date)){toast('农历日期请按 1990-05-20 格式填写');return;}
       Store.saveImportant({id:item.id,name,date,note,lunar,repeat});
-      closeModal();toast('已保存');renderTab();
+      closeModal();toast('已保存','ok');renderTab();
     },true,'保存');
   }
 
@@ -4185,15 +5105,26 @@
     // 密钥不直接落 DOM（防截图/审查泄露）；只显示掩码提示
     const keyMasked=s.aiApiKey?(s.aiApiKey.length>=9?(s.aiApiKey.slice(0,4)+'****'+s.aiApiKey.slice(-4)):'已设置'):'';
     let h=`<div class="ai-config-inner" id="aiConfigCard">`;
-    h+=`<div class="section-note">用户自带 Key，应用不内置密钥。兼容 OpenAI/DeepSeek/通义/Kimi/智谱/Ollama/中转站等。</div>`;
+    h+=`<div class="ai-quickstart">`
+      +`<div class="ai-qs-t">只需 3 步，约 30 秒</div>`
+      +`<ol class="ai-qs-l">`
+      +  `<li>选好下方<b>提供商</b>（地址与模型名会自动填好）</li>`
+      +  `<li>到该平台后台<b>复制 API Key</b>，粘贴到「API Key」输入框（自动保存）</li>`
+      +  `<li>点<b>测试连接</b>，出现 ✓ 即可关闭本页去使用</li>`
+      +`</ol>`
+      +`<div class="ai-qs-hint">用户自带 Key，本站不内置任何密钥；Key 仅明文存于本机 localStorage。</div>`
+      +`</div>`;
     h+=`<div class="field"><label>提供商</label><select id="aiProvider" data-set="aiProvider">${provOpts}</select></div>`;
+    h+=`<div class="field"><label>API Key ${keyMasked?'<span class="num-val">当前：'+keyMasked+'</span>':''}</label><div class="key-row"><input type="password" id="aiApiKey" data-set="aiApiKey" value="" placeholder="${keyMasked?'已设置（重新输入可覆盖）':'输入密钥'}"><button class="btn ghost mini" id="btnToggleKey" type="button">显示</button></div></div>`;
+    h+=`<div class="ai-adv-toggle" id="aiAdvToggle"><span class="ai-adv-arrow" id="aiAdvArrow">›</span>高级设置（接口地址 / 模型名 / 参数）</div>`;
+    h+=`<div class="ai-adv-wrap" id="aiAdvWrap">`;
     h+=`<div class="field"><label>API 协议</label><select id="aiProtocol" data-set="aiProtocol">${protoOpts}</select></div>`;
     h+=`<div class="field"><label>接口地址 BaseUrl</label><input type="text" id="aiBaseUrl" data-set="aiBaseUrl" value="${escAttr(s.aiBaseUrl)}" placeholder="如 https://api.deepseek.com/v1"></div>`;
-    h+=`<div class="field"><label>API Key ${keyMasked?'<span class="num-val">当前：'+keyMasked+'</span>':''}</label><div class="key-row"><input type="password" id="aiApiKey" data-set="aiApiKey" value="" placeholder="${keyMasked?'已设置（重新输入可覆盖）':'输入密钥'}"><button class="btn ghost mini" id="btnToggleKey" type="button">显示</button></div></div>`;
     h+=`<div class="field"><label>模型名</label><input type="text" id="aiModel" data-set="aiModel" value="${escAttr(s.aiModel)}" list="aiModelList" placeholder="如 deepseek-chat"><datalist id="aiModelList">${curModels.map(m=>`<option value="${escAttr(m)}">`).join('')}</datalist></div>`;
     h+=`<div class="field"><label>温度 Temperature（0-2，越高越随机）</label><input type="range" min="0" max="2" step="0.1" id="aiTemp" data-set="aiTemperature" value="${s.aiTemperature}"><span id="aiTempVal" class="num-val">${s.aiTemperature}</span></div>`;
     h+=`<div class="field"><label>最大输出长度 max_tokens</label><input type="number" min="100" max="8192" step="100" id="aiMaxTokens" data-set="aiMaxTokens" value="${s.aiMaxTokens}"></div>`;
     h+=`<div class="field"><label>请求超时（秒）</label><input type="number" min="5" max="300" step="5" id="aiTimeout" data-set="aiTimeout" value="${s.aiTimeout}"></div>`;
+    h+=`</div>`;
     h+=switchRow('流式输出（打字机效果）','aiStream',s.aiStream);
     h+=switchRow('备份导出含 API Key（默认不导出）','aiExportKey',s.aiExportKey);
     h+=`<div class="ai-btns"><button class="btn primary block" id="btnTestAI" type="button">测试连接</button></div>`;
@@ -4219,6 +5150,16 @@
     if(Object.keys(patch).length)Store.setSettings(patch);
   }
   function bindAIConfig(){
+    // 高级设置折叠：默认收起，只暴露「提供商 + Key」两项，降低首次配置门槛
+    const advToggle=$('#aiAdvToggle');
+    const advWrap=$('#aiAdvWrap');
+    if(advToggle&&advWrap){
+      advToggle.onclick=()=>{
+        const open=!advWrap.classList.contains('open');
+        advWrap.classList.toggle('open',open);
+        advToggle.classList.toggle('open',open);
+      };
+    }
     const prov=$('#aiProvider');
     const baseUrlInp=$('#aiBaseUrl');
     const modelInp=$('#aiModel');
@@ -4230,7 +5171,7 @@
         const curS=Store.getSettings();
         const patch=AI.applyProvider(k,curS);
         Store.setSettings(patch);
-        toast('已切换：'+(AI.PROVIDERS[k]?AI.PROVIDERS[k].label:'自定义'));
+        toast('已切换：'+(AI.PROVIDERS[k]?AI.PROVIDERS[k].label:'自定义'),'ok');
         // 不整个 renderTab，只更新当前页相关输入框，避免失焦/闪烁
         if(baseUrlInp)baseUrlInp.value=patch.aiBaseUrl;
         if(modelInp)modelInp.value=patch.aiModel;
@@ -4247,7 +5188,7 @@
       };
       temp.onchange=ev=>{
         Store.setSettings({aiTemperature:Number(ev.target.value)});
-        toast('已保存');
+        toast('已保存','ok');
       };
     }
     const toggle=$('#btnToggleKey');
@@ -4294,6 +5235,7 @@
   function bindMe(){
     if(state.subPage==='important'){bindImportant();return;}
     if(state.subPage==='case'){bindCaseList();return;}
+    if(state.subPage==='methodology'){bindMethodology();return;}
     const btnProfile=$('#btnProfile');
     if(btnProfile)btnProfile.onclick=()=>openProfile();
     const btnCaseList=$('#btnCaseList');
@@ -4319,7 +5261,7 @@
       if(['aiMaxTokens','aiTimeout'].includes(k))v=Number(v);
       // apiKey 留空时不清空原值
       if(k==='aiApiKey'&&!v)return;
-      Store.setSettings({[k]:v});toast('已保存');
+      Store.setSettings({[k]:v});toast('已保存','ok');
       if(['yueJiang','dlGuiRen','dlSheHai','zhenTaiyang'].includes(k))clearDlMinCache();
       if(k==='darkMode'){applyDarkMode();}
       if(k==='dailyTime'){
@@ -4331,7 +5273,7 @@
     // AI 模型配置折叠卡内的绑定在展开时调用
     $('#btnExport').onclick=()=>doExport();
     $('#btnImport').onclick=()=>doImport();
-    $('#btnClear').onclick=()=>{modal('清除全部案例','将删除所有案例数据（设置保留），不可恢复。',m=>{Store.clearAll();closeModal();toast('已清除全部案例');renderTab();});};
+    $('#btnClear').onclick=()=>{modal('清除全部案例','将删除所有案例数据（设置保留），不可恢复。',m=>{Store.clearAll();closeModal();toast('已清除全部案例','ok');renderTab();});};
     $('#btnReqNotify').onclick=()=>{requestNotificationPermission().then(()=>updateNotifyStatusText());};
     updateNotifyStatusText();
     const notifySw=$('[data-set="notificationEnabled"]');
@@ -4345,7 +5287,16 @@
       };
     }
     $('#btnLockSetting').onclick=()=>openLockSetting();
-    $('#btnAbout').onclick=()=>modal('关于玄决',aboutHtml(),null,true,'关闭');
+    bindCloud();
+    $('#btnAbout').onclick=()=>{
+      modal('关于玄决',aboutHtml(),null,true,'关闭');
+      const m=$('#btnMethodology');
+      if(m)m.onclick=()=>{
+        closeModal();
+        state.tab='me';state.subPage='methodology';renderTab();
+        navEnter(()=>{state.subPage='';state.tab='me';renderTab();},'methodology');
+      };
+    };
     const installBtn=$('#btnInstallPwa');
     if(installBtn)installBtn.onclick=async()=>{
       if(!state.deferredPrompt)return;
@@ -4360,6 +5311,7 @@
     <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + 玄学解读 + 个人复盘。</p>
     <p class="mt12"><span class="gold-text">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数、奇门遁甲（时家九宫星门神）</p>
     <p><span class="gold-text">古籍库</span>：10 本 / 150 段（RAG 盘面特征加权检索）</p>
+    <p class="gold-text mt12"><button class="btn-link-row" id="btnMethodology" type="button"><span class="gp-ico">◈</span>我们如何看待命理（方法论说明）<span class="btn-x-chev">›</span></button></p>
     <p class="gold-text mt12">免责声明</p>
     <p>${AI.DISCLAIMER}</p>
     <p>本应用不做必然性预测、不做恐吓式结论、不做改命消灾化解类营销、不诱导消费。所有数据本地保存。</p>`;
@@ -4369,7 +5321,7 @@
     const body=`<div class="field"><label>昵称</label><input type="text" id="pNick" value="${escAttr(p.nick)}"></div><div class="field"><label>出生日期时间</label><input type="datetime-local" id="pBirth" value="${escAttr(p.birth||'')}"></div><div class="field"><label>性别</label><select id="pGender"><option ${p.gender==='男'?'selected':''}>男</option><option ${p.gender==='女'?'selected':''}>女</option></select></div><div class="field"><label>常用地点</label><input type="text" id="pPlace" value="${escAttr(p.place)}"></div><div class="field"><label>年命（干支，可选）</label><input type="text" id="pNian" value="${escAttr(p.nianming)}"></div>`;
     modal('个人信息',body,m=>{
       Store.setProfile({nick:$('#pNick').value,birth:$('#pBirth').value,gender:$('#pGender').value,place:$('#pPlace').value,nianming:$('#pNian').value});
-      closeModal();toast('已保存');renderTab();
+      closeModal();toast('已保存','ok');renderTab();
     },true,'保存');
   }
   function openLockSetting(){
@@ -4390,7 +5342,7 @@
           if(newPin)Store.changePin(oldPin,newPin);
           Store.setLockState({bioLock:bio});
           if(enc!==lock.localEncrypt)Store.toggleLocalEncrypt(enc);
-          closeModal();toast('已保存');renderTab();
+          closeModal();toast('已保存','ok');renderTab();
         }catch(e){toast(e.message||'保存失败');}
       },true,'保存');
       setTimeout(()=>{
@@ -4423,6 +5375,8 @@
     }
   }
   function doExport(){
+    // 小工具容器禁文件下载
+    if(window.XUANJUE_CONTAINER){toast('小工具环境不支持导出文件');return;}
     const data=Store.exportBackup();
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
@@ -4444,11 +5398,11 @@
             try{
               const ret=Store.importBackup(obj);
               closeModal();
-              toast('已导入 '+(ret.added+ret.updated)+' 条案例（新增 '+ret.added+'，覆盖 '+ret.updated+'）');
+              toast('已导入 '+(ret.added+ret.updated)+' 条案例（新增 '+ret.added+'，覆盖 '+ret.updated+'）','ok');
               renderTab();
             }catch(e){
               closeModal();
-              toast('导入失败：'+(e&&e.message?e.message:'未知错误'));
+              toast('导入失败：'+(e&&e.message?e.message:'未知错误'),'err');
             }
           });
         }catch(e){toast('文件解析失败：'+(e&&e.message?e.message:'JSON 格式错误'));}
@@ -4470,12 +5424,10 @@
 
   // ---------- 典籍 AI 问答：RAG 检索本地古籍 → LLM 输出原文+解释 ----------
   async function askClassics(question){
+    // 典籍问答允许离线检索典籍原文，仅在无 Key 且需要 LLM 总结时提示；
+    // 检索结果本身可离线呈现，故不在此处阻断。
     const cfg=Store.getSettings();
-    if(cfg.offlineMode){toast('当前为离线模式，已禁用云端解读');return;}
-    if(!(cfg.aiApiKey||cfg.aiProvider==='ollama')){
-      modal('未配置 API Key','请在「我的 → 玄顾问 → 模型配置」中填写 API Key，即可让玄顾问基于典籍检索回答。',()=>{state.tab='me';renderTab();},()=>{},'去配置');
-      return;
-    }
+    if(aiMode()==='local'){notifyOfflineDegrade('典籍 AI 问答');}
     if(state.classics.aiBusy)return;
     state.classics.aiBusy=true;
     // 1) RAG 检索本地古籍段落

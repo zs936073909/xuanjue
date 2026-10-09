@@ -10,13 +10,18 @@ import { build as esbuild } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const WWW = path.join(ROOT, 'www');
 const JS_SRC = path.join(ROOT, 'js');
+const XHS_DIST = path.join(ROOT, 'dist-xhs');
 // 默认压缩：www 为部署产物（首屏 JS 需 < 500KB）；测试始终跑未压缩源码，便于排查
 const MINIFY = !process.argv.includes('--no-minify');
-const MODE = process.argv.includes('vendor') ? 'vendor' : 'www';
+// 小工具容器包排除的生物识别 WebAuthn 文件（容器禁凭据 API，扫描会被判 CRITICAL）
+const XHS_EXCLUDE_JS = ['bio-unlock.js'];
+let MODE = process.argv.includes('vendor') ? 'vendor' : 'www';
+if (process.argv.includes('xhs')) MODE = 'xhs';
 
 // 原样镜像到 www 的静态资源
 const STATIC_DIRS = ['css', 'data', 'img'];
@@ -157,5 +162,79 @@ async function buildWww() {
   if (jsSize > 500 * 1024) log('  ! 首屏 JS 超过 500KB 目标，可考虑进一步拆分（如结果页按需加载）');
 }
 
+// ---------- xhs：小红书小工具容器适配版 ----------
+// 与 www 的差异：容器禁内联脚本 / 禁凭据 API / 禁 SW / 禁 manifest，且不联网，
+// 因此去除 bio-unlock.js（WebAuthn）、service-worker.js、manifest.json 与 PWA 相关 meta，
+// 脚本目标降至面向容器最低基线的 ES2017，并压缩 zip（index.html 位于 zip 根目录）。
+function containerIndexHtml() {
+  let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const remove = [
+    '<meta name="theme-color" content="#0B0906">\n',
+    '<meta name="mobile-web-app-capable" content="yes">\n',
+    '<meta name="apple-mobile-web-app-capable" content="yes">\n',
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n',
+    '<meta name="apple-mobile-web-app-title" content="玄决">\n',
+    '<link rel="manifest" href="manifest.json">\n',
+    '<link rel="apple-touch-icon" href="icon-192.png">\n',
+    '<script src="js/bio-unlock.js"></script>\n'
+  ];
+  for (const line of remove) html = html.split(line).join(''); // 可缺失，逐一安全移除
+  if (html.includes('bio-unlock')) throw new Error('容器 index.html 仍包含 bio-unlock 引用');
+  return html;
+}
+
+async function copyJsForXhs() {
+  fs.mkdirSync(path.join(XHS_DIST, 'js'), { recursive: true });
+  for (const e of fs.readdirSync(JS_SRC, { withFileTypes: true })) {
+    const src = path.join(JS_SRC, e.name);
+    if (e.isDirectory()) { copyTree(src, path.join(XHS_DIST, 'js', e.name)); continue; }
+    if (!e.name.endsWith('.js')) continue;
+    if (XHS_EXCLUDE_JS.includes(e.name)) { log('  排除', e.name); continue; }
+    if (e.name.endsWith('.min.js')) { copyFile(src, path.join(XHS_DIST, 'js', e.name)); continue; }
+    const code = fs.readFileSync(src, 'utf8');
+    const res = await esbuild({
+      stdin: { contents: code, sourcefile: src, loader: 'js' },
+      bundle: false, minify: true, target: ['es2017'], charset: 'utf8',
+      write: false, logLevel: 'warning'
+    });
+    fs.writeFileSync(path.join(XHS_DIST, 'js', e.name), res.outputFiles[0].text);
+  }
+}
+
+function buildXhs() {
+  log('[xhs] 构建小工具容器适配版 →', path.relative(ROOT, XHS_DIST));
+  rmrf(XHS_DIST);
+  fs.mkdirSync(XHS_DIST, { recursive: true });
+  for (const d of STATIC_DIRS) {
+    const s = path.join(ROOT, d);
+    if (fs.existsSync(s)) copyTree(s, path.join(XHS_DIST, d));
+  }
+  for (const f of ['icon-192.png', 'icon-512.png']) {
+    const s = path.join(ROOT, f);
+    if (fs.existsSync(s)) copyFile(s, path.join(XHS_DIST, f));
+  }
+  fs.writeFileSync(path.join(XHS_DIST, 'index.html'), containerIndexHtml());
+  return copyJsForXhs();
+}
+
+function packZip(srcDir, zipPath) {
+  rmrf(zipPath);
+  fs.mkdirSync(path.dirname(zipPath), { recursive: true });
+  const tgt = path.join(ROOT, zipPath);
+  // 进入 dist 目录再压缩「内容」，保证 index.html 位于 zip 根（容器硬性要求）
+  execFileSync('zip', ['-q', '-r', tgt, '.'], {
+    cwd: srcDir,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  return kb(fs.statSync(tgt).size);
+}
+
 if (MODE === 'vendor') await buildVendor();
-else await buildWww();
+else if (MODE === 'xhs') {
+  await buildXhs();
+  const zip = 'releases/xuanjue-v1.5.0-xhs-tool.zip';
+  const size = packZip(XHS_DIST, zip);
+  const total = walkFiles(XHS_DIST, '', []).reduce((n, r) => n + fs.statSync(path.join(XHS_DIST, r)).size, 0);
+  log('[xhs] 完成：dist 解压 ' + kb(total) + '，zip ' + path.relative(ROOT, zip) + ' ' + size);
+  if (fs.statSync(path.join(ROOT, zip)).size > 10 * 1024 * 1024) log('  ! zip 超过 10MiB 上传上限');
+} else await buildWww();

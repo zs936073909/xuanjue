@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>玄决 · 管理后台</title>
+<style>
+  :root {
+    --paper: #f7f4ee;
+    --paper-raised: #fffdf9;
+    --ink: #26262e;
+    --ink-soft: #5c5c68;
+    --ink-faint: #8b8b96;
+    --line: #e4ddd0;
+    --line-strong: #cfc6b4;
+    --vermilion: #b1402c;
+    --vermilion-soft: #f3e2dc;
+    --pine: #2f6d54;
+    --pine-soft: #e2efe8;
+    --amber: #9a6b1f;
+    --amber-soft: #f5ecd9;
+    --slate: #3c5670;
+    --radius: 6px;
+    --shadow: 0 1px 2px rgba(38, 38, 46, .06), 0 4px 14px rgba(38, 38, 46, .07);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .01em; }
+  a { color: var(--vermilion); }
+  .hidden { display: none !important; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-soft); }
+  .faint { color: var(--ink-faint); }
+  .small { font-size: 12px; }
+
+  /* ---------- 登录 ---------- */
+  .login-wrap {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .login-card {
+    width: min(380px, 100%);
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 32px 28px;
+  }
+  .login-mark {
+    font-size: 13px;
+    letter-spacing: .35em;
+    color: var(--vermilion);
+    margin-bottom: 6px;
+  }
+  .login-card h1 { font-size: 22px; margin-bottom: 4px; }
+  .login-sub { color: var(--ink-soft); margin-bottom: 22px; }
+
+  /* ---------- 表单 ---------- */
+  label { display: block; font-size: 12px; color: var(--ink-soft); margin: 12px 0 4px; }
+  input, select, textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--vermilion);
+    box-shadow: 0 0 0 3px rgba(177, 64, 44, .12);
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--paper-raised);
+    color: var(--ink);
+    padding: 8px 14px;
+  }
+  button:hover { border-color: var(--ink-faint); }
+  button.primary {
+    background: var(--vermilion);
+    border-color: var(--vermilion);
+    color: #fff;
+  }
+  button.primary:hover { filter: brightness(1.06); }
+  button.danger { color: var(--vermilion); border-color: var(--vermilion); background: transparent; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--ink-soft); }
+  button.ghost:hover { color: var(--ink); border-color: var(--line); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- 布局 ---------- */
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper-raised);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .seal {
+    color: var(--vermilion);
+    letter-spacing: .3em;
+    font-size: 12px;
+    border: 1px solid var(--vermilion);
+    border-radius: 3px;
+    padding: 2px 6px 2px 9px;
+  }
+  .brand h1 { font-size: 17px; }
+  .nav { display: flex; gap: 2px; }
+  .nav button {
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+  }
+  .nav button.active { background: var(--vermilion-soft); color: var(--vermilion); font-weight: 600; }
+  .main { max-width: 1180px; margin: 0 auto; padding: 26px 22px 80px; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 18px; }
+  .section-head .hint { color: var(--ink-faint); font-size: 12px; }
+
+  /* ---------- 统计 ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 26px; }
+  .stat {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ink-faint);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .stat.vermilion { border-left-color: var(--vermilion); }
+  .stat.pine { border-left-color: var(--pine); }
+  .stat.amber { border-left-color: var(--amber); }
+  .stat .n { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .stat .t { color: var(--ink-soft); font-size: 12px; }
+
+  /* ---------- 表格 ---------- */
+  .panel {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 22px;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  .panel-head h3 { font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--ink-soft); font-weight: 600; background: rgba(228, 221, 208, .25); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr.clickable { cursor: pointer; }
+  tbody tr.clickable:hover { background: rgba(177, 64, 44, .05); }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 99px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .tag.ok { background: var(--pine-soft); color: var(--pine); }
+  .tag.warn { background: var(--amber-soft); color: var(--amber); }
+  .tag.bad { background: var(--vermilion-soft); color: var(--vermilion); }
+  .tag.neutral { background: #eee9df; color: var(--ink-soft); }
+
+  .empty { padding: 30px 16px; text-align: center; color: var(--ink-faint); }
+
+  /* ---------- 抽屉（用户详情） ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(38, 38, 46, .38);
+    display: grid; place-items: stretch; z-index: 50;
+  }
+  .drawer {
+    background: var(--paper);
+    width: min(560px, 100vw);
+    margin-left: auto;
+    height: 100vh;
+    overflow-y: auto;
+    border-left: 1px solid var(--line-strong);
+    box-shadow: -12px 0 32px rgba(38, 38, 46, .16);
+  }
+  .drawer-head {
+    position: sticky; top: 0; background: var(--paper-raised);
+    border-bottom: 1px solid var(--line);
+    padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .drawer-body { padding: 18px 20px 60px; }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; margin: 10px 0 18px; }
+  .kv dt { color: var(--ink-soft); font-size: 12px; }
+  .kv dd { margin: 0; word-break: break-all; }
+
+  details.data-block {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper-raised); margin-bottom: 10px;
+  }
+  details.data-block summary {
+    cursor: pointer; padding: 10px 14px; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  details.data-block pre {
+    margin: 0; padding: 12px 14px; border-top: 1px solid var(--line);
+    background: #fff; overflow-x: auto; font-family: var(--mono); font-size: 12px;
+    max-height: 320px;
+  }
+
+  /* ---------- toast ---------- */
+  #toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 99px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    z-index: 100; max-width: 84vw;
+  }
+  #toast.show { opacity: .96; }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .toolbar input { width: min(280px, 100%); }
+
+  @media (max-width: 720px) {
+    .top { flex-wrap: wrap; }
+    .nav { overflow-x: auto; }
+    th, td { padding: 8px 10px; }
+    .drawer { width: 100vw; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 登录 ============ -->
+<div class="login-wrap" id="loginView">
+  <form class="login-card" id="loginForm">
+    <div class="login-mark">玄 决</div>
+    <h1>管理后台</h1>
+    <div class="login-sub">账号管理 · 明文数据 · AI 模型池</div>
+    <label for="username">用户名</label>
+    <input id="username" name="username" autocomplete="username" required>
+    <label for="password">密码</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <div style="margin-top:20px">
+      <button class="primary" style="width:100%" type="submit">登 录</button>
+    </div>
+    <p class="small faint" style="margin-top:16px">连续失败 10 次将锁定 15 分钟。忘记密码请在服务器运行 <span class="mono">node scripts/admin-init.mjs --reset</span></p>
+  </form>
+</div>
+
+<!-- ============ 主界面 ============ -->
+<div class="hidden" id="appView">
+  <div class="top">
+    <div class="brand">
+      <span class="seal">玄决</span>
+      <h1>管理后台</h1>
+    </div>
+    <div class="nav" id="nav">
+      <button data-view="overview" class="active">总览</button>
+      <button data-view="users">账号</button>
+      <button data-view="pool">AI 模型池</button>
+      <button data-view="log">路由日志</button>
+    </div>
+    <div class="btn-row">
+      <span class="small muted" id="adminName"></span>
+      <button class="ghost" id="logoutBtn">退出</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- 总览 -->
+    <section id="view-overview">
+      <div class="section-head">
+        <h2>总览</h2>
+        <span class="hint" id="statsTime"></span>
+      </div>
+      <div class="stats" id="statsGrid">
+        <div class="stat vermilion"><div class="n" id="stTotal">–</div><div class="t">注册账号</div></div>
+        <div class="stat pine"><div class="n" id="stActive">–</div><div class="t">24 小时活跃</div></div>
+        <div class="stat amber"><div class="n" id="stCalls">–</div><div class="t">24 小时 AI 调用</div></div>
+        <div class="stat"><div class="n" id="stKeys">–</div><div class="t">可用 Key / 异常</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>常用操作</h3></div>
+        <div style="padding:14px 16px" class="btn-row">
+          <button class="primary" id="quickNewUser">开一个测试账号</button>
+          <button id="quickTest">试跑一次 AI</button>
+          <button id="quickRefresh">刷新统计</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 账号 -->
+    <section id="view-users" class="hidden">
+      <div class="section-head">
+        <h2>账号</h2>
+        <span class="hint">点击任意行查看详情与明文数据</span>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="toolbar">
+            <input id="userQuery" placeholder="搜索：令牌前 6 位 / 用户 ID / 恢复口令">
+            <button id="userSearch">搜索</button>
+          </div>
+          <button class="primary" id="newUserBtn">新建测试账号</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>令牌前缀</th><th>状态</th><th>今日 AI</th><th>限额（日/分钟）</th>
+              <th>设备</th><th>注册时间</th><th>最近活跃</th>
+            </tr>
+          </thead>
+          <tbody id="userRows"></tbody>
+        </table>
+        <div class="empty hidden" id="userEmpty">还没有账号，点右上角「新建测试账号」开一个。</div>
+      </div>
+      <div class="btn-row">
+        <button id="userPrev">上一页</button>
+        <span class="small muted" id="userPageInfo"></span>
+        <button id="userNext">下一页</button>
+      </div>
+    </section>
+
+    <!-- AI 模型池 -->
+    <section id="view-pool" class="hidden">
+      <div class="section-head">
+        <h2>AI 模型池</h2>
+        <span class="hint">厂商 → 档位模型 → Key；提问按难度走 easy / mid / hard，故障自动换厂商换 Key</span>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>推荐模板</h3>
+          <div class="btn-row">
+            <button class="ghost" id="viewPresets">看看有哪些</button>
+            <button class="primary" id="importPresets">一键导入模板</button>
+          </div>
+        </div>
+        <div style="padding:14px 16px">
+          <p class="small muted" style="margin:0">魔搭社区 / 阶跃星辰 / 书生 —— 三家厂商的端点与三档模型（easy / mid / hard）都配好了，导入后<b>只需贴各家的 API Key</b>。已导入过的不会重复创建。</p>
+          <div id="presetList" class="hidden" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>厂商</h3><span class="small faint">同一档位、同一优先级的厂商会轮着用</span></div>
+        <table>
+          <thead><tr><th>标识</th><th>名称</th><th>协议</th><th>Base URL</th><th>模型</th><th>Key</th><th>状态</th><th></th></tr></thead>
+          <tbody id="providerRows"></tbody>
+        </table>
+        <div class="empty hidden" id="providerEmpty">还没有厂商。点上方「一键导入模板」，或在下方手动添加。</div>
+
+        <div style="padding:14px 16px;border-top:1px solid var(--line)">
+          <div class="form-grid">
+            <div><label>标识 slug</label><input id="pSlug" placeholder="modelscope"></div>
+            <div><label>显示名</label><input id="pName" placeholder="魔搭社区"></div>
+            <div><label>协议</label>
+              <select id="pProtocol"><option value="openai">openai 兼容</option><option value="anthropic">anthropic</option></select>
+            </div>
+            <div><label>Base URL</label><input id="pBaseUrl" placeholder="https://api-inference.modelscope.cn/v1"></div>
+            <div><label>备注</label><input id="pNote"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px"><button class="primary" id="saveProvider">保存厂商</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>档位模型</h3><span class="small faint">easy：简单问答 · mid：常规 · hard：复合详批；priority 越小越优先</span></div>
+        <table>
+          <thead><tr><th>厂商</th><th>模型名</th><th>档位</th><th>优先级</th><th>状态</th><th></th></tr></thead>
+          <tbody id="modelRows"></tbody>
+        </table>
+        <div style="padding:14px 16px;border-top:1px solid var(--line)">
+          <div class="form-grid">
+            <div><label>厂商</label><select id="mProvider"></select></div>
+            <div><label>模型名</label><input id="mModel" placeholder="Qwen/Qwen3-30B-A3B"></div>
+            <div><label>档位</label>
+              <select id="mTier"><option value="easy">easy 简单</option><option value="mid" selected>mid 常规</option><option value="hard">hard 详批</option></select>
+            </div>
+            <div><label>优先级</label><input id="mPriority" type="number" value="100"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px"><button class="primary" id="saveModel">保存模型</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>API Key</h3>
+          <div class="btn-row">
+            <button class="ghost" id="revealKeys">显示全文</button>
+            <button class="primary" id="poolTest">试跑一次</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>厂商</th><th>标签</th><th>Key</th><th>状态</th><th>连续失败</th><th>最近成功</th><th></th></tr></thead>
+          <tbody id="keyRows"></tbody>
+        </table>
+        <div style="padding:14px 16px;border-top:1px solid var(--line)">
+          <div class="form-grid">
+            <div><label>厂商</label><select id="kProvider"></select></div>
+            <div><label>标签</label><input id="kLabel" placeholder="魔搭主 Key"></div>
+            <div><label>API Key</label><input id="kValue" placeholder="sk-..." autocomplete="off"></div>
+          </div>
+          <div class="btn-row" style="margin-top:12px"><button class="primary" id="saveKey">保存 Key</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 路由日志 -->
+    <section id="view-log" class="hidden">
+      <div class="section-head">
+        <h2>路由日志</h2>
+        <span class="hint">只记元信息（难度/厂商/模型/耗时），不记提问内容</span>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>最近调用</h3><button id="logRefresh">刷新</button></div>
+        <table>
+          <thead><tr><th>时间</th><th>难度</th><th>厂商</th><th>模型</th><th>状态</th><th>耗时</th><th>字符 in/out</th></tr></thead>
+          <tbody id="logRows"></tbody>
+        </table>
+        <div class="empty hidden" id="logEmpty">还没有调用记录。</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- 用户详情抽屉 -->
+<div class="overlay hidden" id="drawerOverlay">
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <h3 id="drawerTitle">账号详情</h3>
+      <button class="ghost" id="drawerClose">关闭</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+// ---------- 基础 ----------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime = (t) => t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : '—';
+
+let TOKEN = localStorage.getItem('xj_admin_token') || '';
+
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: {
+      'content-type': 'application/json',
+      ...(TOKEN ? { authorization: 'Bearer ' + TOKEN } : {})
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* 空响应 */ }
+  if (!res.ok) {
+    const err = new Error((data && data.error) || ('http_' + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ---------- 登录 ----------
+async function boot() {
+  if (!TOKEN) return;
+  try {
+    const me = await api('/v1/admin/auth/me');
+    enterApp(me.admin);
+  } catch {
+    TOKEN = '';
+    localStorage.removeItem('xj_admin_token');
+  }
+}
+
+function enterApp(admin) {
+  $('#loginView').classList.add('hidden');
+  $('#appView').classList.remove('hidden');
+  $('#adminName').textContent = admin.username + (admin.is_superadmin ? ' · 超管' : '');
+  showView('overview');
+}
+
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const r = await api('/v1/admin/auth/login', {
+      method: 'POST',
+      body: { username: $('#username').value.trim(), password: $('#password').value }
+    });
+    TOKEN = r.token;
+    localStorage.setItem('xj_admin_token', TOKEN);
+    enterApp(r.admin);
+  } catch (e) {
+    toast(e.message === 'bad_credentials' ? '用户名或密码错误' :
+          e.message === 'account_locked' ? '账号已锁定，请 15 分钟后再试' :
+          e.message === 'too_many_attempts' ? '尝试过于频繁，请稍后再试' : '登录失败：' + e.message);
+  }
+});
+
+$('#logoutBtn').addEventListener('click', () => {
+  TOKEN = '';
+  localStorage.removeItem('xj_admin_token');
+  location.reload();
+});
+
+// ---------- 视图切换 ----------
+function showView(name) {
+  for (const v of ['overview', 'users', 'pool', 'log']) {
+    $('#view-' + v).classList.toggle('hidden', v !== name);
+  }
+  for (const b of document.querySelectorAll('#nav button')) {
+    b.classList.toggle('active', b.dataset.view === name);
+  }
+  if (name === 'overview') loadStats();
+  if (name === 'users') loadUsers();
+  if (name === 'pool') loadPool();
+  if (name === 'log') loadLog();
+}
+$('#nav').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-view]');
+  if (b) showView(b.dataset.view);
+});
+
+// ---------- 总览 ----------
+async function loadStats() {
+  try {
+    const s = await api('/v1/admin/stats');
+    $('#stTotal').textContent = s.users.total;
+    $('#stActive').textContent = s.users.active_today;
+    $('#stCalls').textContent = s.ai_calls.last_24h;
+    $('#stKeys').textContent = s.pool.keys_active + ' / ' + s.pool.keys_suspect;
+    $('#statsTime').textContent = '统计时间 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (e) {
+    toast('统计加载失败：' + e.message);
+  }
+}
+$('#quickRefresh').addEventListener('click', loadStats);
+
+// ---------- 账号 ----------
+let userPage = 1;
+const PAGE_SIZE = 20;
+
+async function loadUsers() {
+  const query = $('#userQuery').value.trim();
+  try {
+    const r = await api('/v1/admin/users?page=' + userPage + '&page_size=' + PAGE_SIZE +
+      (query ? '&query=' + encodeURIComponent(query) : ''));
+    const rows = r.users.map(u => `
+      <tr class="clickable" data-id="${u.id}">
+        <td class="mono">${esc(u.token_prefix)}<span class="faint">…</span></td>
+        <td>${u.suspended ? '<span class="tag bad">已封禁</span>' : '<span class="tag ok">正常</span>'}</td>
+        <td class="num">${u.used_today ?? 0}</td>
+        <td class="num">${u.ai_daily_limit ?? '默认'} / ${u.ai_rate_per_min ?? '默认'}</td>
+        <td class="num">${u.devices}</td>
+        <td class="small muted">${fmtTime(u.created_at)}</td>
+        <td class="small muted">${fmtTime(u.last_seen_at)}</td>
+      </tr>`).join('');
+    $('#userRows').innerHTML = rows;
+    $('#userEmpty').classList.toggle('hidden', r.users.length > 0);
+    $('#userPageInfo').textContent = `第 ${r.page} 页 · 共 ${r.total} 个账号`;
+  } catch (e) {
+    toast('账号列表加载失败：' + e.message);
+  }
+}
+$('#userSearch').addEventListener('click', () => { userPage = 1; loadUsers(); });
+$('#userQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') { userPage = 1; loadUsers(); } });
+$('#userPrev').addEventListener('click', () => { if (userPage > 1) { userPage--; loadUsers(); } });
+$('#userNext').addEventListener('click', () => { userPage++; loadUsers(); });
+
+$('#userRows').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-id]');
+  if (tr) openUser(tr.dataset.id);
+});
+
+// ---------- 用户详情抽屉 ----------
+function closeDrawer() { $('#drawerOverlay').classList.add('hidden'); }
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#drawerOverlay').addEventListener('click', (e) => { if (e.target.id === 'drawerOverlay') closeDrawer(); });
+
+async function openUser(id) {
+  try {
+    const [detail, data] = await Promise.all([
+      api('/v1/admin/users/' + id),
+      api('/v1/admin/users/' + id + '/data')
+    ]);
+    renderUser(detail, data);
+  } catch (e) {
+    toast('加载失败：' + e.message);
+  }
+}
+
+function renderUser(detail, data) {
+  const u = detail.user;
+  $('#drawerTitle').innerHTML = `账号 <span class="mono">${esc(u.token_prefix)}…</span>`;
+  const snaps = data.snapshots || [];
+  const kindName = { cases: '案例', chats: '对话', profile: '生辰档案', important: '重要事项' };
+  // 数据量摘要：数组按条数、对象按字段数，一眼看出这账号有多少东西
+  const countLabel = (d) => {
+    if (d == null) return '空';
+    if (Array.isArray(d)) return d.length + ' 条';
+    if (typeof d === 'object') return Object.keys(d).length + ' 项';
+    return '1 项';
+  };
+  const snapHtml = snaps.length
+    ? snaps.map(s => {
+        const empty = s.data == null || (typeof s.data === 'object' && !Array.isArray(s.data) && !Object.keys(s.data).length) || (Array.isArray(s.data) && !s.data.length);
+        return `
+        <details class="data-block">
+          <summary>${kindName[s.kind] || s.kind}<span class="small faint">${countLabel(s.data)} · rev ${s.rev} · ${fmtTime(s.updated_at)}</span></summary>
+          ${empty ? '<div class="empty">这一类还没有内容。</div>' : `<pre>${esc(JSON.stringify(s.data, null, 2))}</pre>`}
+        </details>`;
+      }).join('')
+    : '<div class="empty">该账号还没有任何云端数据。等用户在 App 里产生案例 / 对话 / 生辰后就会出现在这里。</div>';
+
+  $('#drawerBody').innerHTML = `
+    <dl class="kv">
+      <dt>用户 ID</dt><dd class="mono small">${u.id}</dd>
+      <dt>状态</dt><dd>${u.suspended ? `<span class="tag bad">已封禁</span> ${esc(u.suspended_reason || '')}` : '<span class="tag ok">正常</span>'}</dd>
+      <dt>注册</dt><dd>${fmtTime(u.created_at)}</dd>
+      <dt>最近活跃</dt><dd>${fmtTime(u.last_seen_at)}</dd>
+      <dt>今日 AI</dt><dd class="mono">${(detail.ai_usage[0] && detail.ai_usage[0].day && String(detail.ai_usage[0].day).startsWith(new Date().toISOString().slice(0, 10))) ? detail.ai_usage[0].count : 0} 次</dd>
+    </dl>
+
+    <h3 style="margin:18px 0 8px">设备</h3>
+    ${detail.devices.length ? `<table style="border:1px solid var(--line);border-radius:6px"><tbody>
+      ${detail.devices.map(d => `<tr><td>${esc(d.device_name)}</td><td class="small muted">${esc(d.platform || '')}</td><td class="small muted">${fmtTime(d.last_sync_at)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">没有设备记录</div>'}
+
+    <h3 style="margin:22px 0 8px">明文数据</h3>
+    <p class="small faint" style="margin-top:0">业务数据明文落库（站长决策），这里展示与用户端一致的内容。</p>
+    ${snapHtml}
+
+    <h3 style="margin:22px 0 8px">限额</h3>
+    <div class="form-grid">
+      <div><label>每日次数（留空 = 用全局默认）</label><input id="dqDaily" type="number" value="${u.ai_daily_limit ?? ''}"></div>
+      <div><label>每分钟限速（留空 = 默认）</label><input id="dqRate" type="number" value="${u.ai_rate_per_min ?? ''}"></div>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="primary" id="saveQuota">保存限额</button>
+    </div>
+
+    <h3 style="margin:22px 0 8px">操作</h3>
+    <div class="btn-row">
+      <button id="impersonateBtn">模拟登录</button>
+      ${u.suspended ? `<button id="unsuspendBtn">解封</button>` : `<button class="danger" id="suspendBtn">封禁</button>`}
+      <button class="danger" id="deleteUserBtn">删除账号</button>
+    </div>
+    <p class="small faint">「模拟登录」会签发该账号的真实会话令牌，用它体验/排查 App 全部功能；操作会记入审计日志。</p>
+    <pre id="impResult" class="hidden" style="background:#fff;border:1px solid var(--line);padding:10px;border-radius:6px;font-size:12px;overflow-x:auto"></pre>
+  `;
+
+  $('#saveQuota').addEventListener('click', async () => {
+    try {
+      await api(`/v1/admin/users/${u.id}/quota`, {
+        method: 'POST',
+        body: {
+          ai_daily_limit: $('#dqDaily').value === '' ? null : Number($('#dqDaily').value),
+          ai_rate_per_min: $('#dqRate').value === '' ? null : Number($('#dqRate').value)
+        }
+      });
+      toast('限额已保存');
+    } catch (e) { toast('保存失败：' + e.message); }
+  });
+
+  $('#impersonateBtn').addEventListener('click', async () => {
+    try {
+      const r = await api(`/v1/admin/users/${u.id}/impersonate`, { method: 'POST' });
+      $('#impResult').classList.remove('hidden');
+      $('#impResult').textContent = 'access:\n' + r.access + '\n\nrefresh:\n' + r.refresh;
+      toast('会话已签发，可复制到 App 使用');
+    } catch (e) { toast('失败：' + e.message); }
+  });
+
+  const susBtn = $('#suspendBtn');
+  if (susBtn) susBtn.addEventListener('click', async () => {
+    const reason = prompt('封禁原因（用户登录时会看到）：', '该账号已被管理员停用。');
+    if (reason === null) return;
+    try {
+      await api(`/v1/admin/users/${u.id}/suspend`, { method: 'POST', body: { reason } });
+      toast('已封禁');
+      openUser(u.id);
+    } catch (e) { toast('失败：' + e.message); }
+  });
+
+  const unsBtn = $('#unsuspendBtn');
+  if (unsBtn) unsBtn.addEventListener('click', async () => {
+    try {
+      await api(`/v1/admin/users/${u.id}/unsuspend`, { method: 'POST' });
+      toast('已解封');
+      openUser(u.id);
+    } catch (e) { toast('失败：' + e.message); }
+  });
+
+  $('#deleteUserBtn').addEventListener('click', async () => {
+    if (!confirm('确定永久删除该账号？云端数据（案例/对话/生辰）会一并清空，不可恢复。')) return;
+    try {
+      await api('/v1/admin/users/' + u.id, { method: 'DELETE' });
+      toast('账号已删除');
+      closeDrawer();
+      loadUsers();
+    } catch (e) { toast('失败：' + e.message); }
+  });
+
+  $('#drawerOverlay').classList.remove('hidden');
+}
+
+// ---------- 新建测试账号 ----------
+async function createUser() {
+  try {
+    const r = await api('/v1/admin/users', { method: 'POST', body: { note: '后台创建' } });
+    alert('测试账号已创建（令牌只显示这一次，请保存）：\n\n令牌：' + r.token + '\n恢复口令：' + r.recovery);
+    loadUsers();
+  } catch (e) { toast('创建失败：' + e.message); }
+}
+$('#newUserBtn').addEventListener('click', createUser);
+$('#quickNewUser').addEventListener('click', createUser);
+
+// ---------- AI 模型池 ----------
+let REVEAL = false;
+
+async function loadPool() {
+  try {
+    const [ps, ms, ks] = await Promise.all([
+      api('/v1/admin/ai/providers'),
+      api('/v1/admin/ai/models'),
+      api('/v1/admin/ai/keys' + (REVEAL ? '?reveal=1' : ''))
+    ]);
+
+    $('#providerRows').innerHTML = ps.providers.map(p => `
+      <tr>
+        <td class="mono">${esc(p.slug)}</td>
+        <td>${esc(p.name)}</td>
+        <td class="small">${esc(p.protocol)}</td>
+        <td class="small mono">${esc(p.base_url)}</td>
+        <td class="num">${p.model_count}</td>
+        <td class="num">${p.key_count}</td>
+        <td>${p.enabled ? '<span class="tag ok">启用</span>' : '<span class="tag neutral">停用</span>'}</td>
+        <td><button class="ghost small" data-del-provider="${p.id}">删除</button></td>
+      </tr>`).join('');
+    $('#providerEmpty').classList.toggle('hidden', ps.providers.length > 0);
+
+    $('#modelRows').innerHTML = ms.models.map(m => `
+      <tr>
+        <td>${esc(m.provider_name)}</td>
+        <td class="mono small">${esc(m.model)}</td>
+        <td><span class="tag ${m.tier === 'hard' ? 'bad' : m.tier === 'easy' ? 'ok' : 'warn'}">${m.tier}</span></td>
+        <td class="num">${m.priority}</td>
+        <td>${m.enabled ? '<span class="tag ok">启用</span>' : '<span class="tag neutral">停用</span>'}</td>
+        <td><button class="ghost small" data-del-model="${m.id}">删除</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">还没有模型。可「一键导入模板」，或在下方手动添加。</td></tr>';
+
+    $('#keyRows').innerHTML = ks.keys.map(k => `
+      <tr>
+        <td>${esc(k.provider_slug)}</td>
+        <td>${esc(k.label || '')}</td>
+        <td class="mono small">${esc(REVEAL ? (k.key_plain || '') : k.hint)}</td>
+        <td>${k.status === 'active' ? '<span class="tag ok">正常</span>' :
+             k.status === 'suspect' ? '<span class="tag bad">可疑</span>' : '<span class="tag neutral">停用</span>'}</td>
+        <td class="num">${k.fails}</td>
+        <td class="small muted">${fmtTime(k.last_ok_at)}</td>
+        <td class="btn-row">
+          ${k.status !== 'active' ? `<button class="ghost small" data-key-activate="${k.id}">启用</button>` : `<button class="ghost small" data-key-disable="${k.id}">停用</button>`}
+          <button class="ghost small" data-del-key="${k.id}">删除</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">还没有 Key。</td></tr>';
+
+    const opts = ps.providers.map(p => `<option value="${p.id}">${esc(p.name)}（${esc(p.slug)}）</option>`).join('');
+    $('#mProvider').innerHTML = opts;
+    $('#kProvider').innerHTML = opts;
+  } catch (e) {
+    toast('模型池加载失败：' + e.message);
+  }
+}
+
+$('#revealKeys').addEventListener('click', () => {
+  REVEAL = !REVEAL;
+  $('#revealKeys').textContent = REVEAL ? '隐藏全文' : '显示全文';
+  loadPool();
+});
+
+$('#viewPresets').addEventListener('click', async () => {
+  const box = $('#presetList');
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  try {
+    const r = await api('/v1/admin/ai/presets');
+    box.innerHTML = r.presets.map(p => `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-weight:600">${esc(p.name)} <span class="mono small faint">${esc(p.slug)}</span></div>
+        <div class="small mono faint" style="margin:2px 0 6px">${esc(p.base_url)}</div>
+        <div class="small muted" style="margin-bottom:8px">${esc(p.note)}</div>
+        <div class="btn-row">${p.models.map(m => `<span class="tag ${m.tier === 'hard' ? 'bad' : m.tier === 'easy' ? 'ok' : 'warn'}">${m.tier} · ${esc(m.display_name || m.model)}</span>`).join('')}</div>
+      </div>`).join('');
+    box.classList.remove('hidden');
+  } catch (e) { toast('加载失败：' + e.message); }
+});
+
+$('#importPresets').addEventListener('click', async () => {
+  if (!confirm('导入三家推荐厂商（魔搭 / 阶跃 / 书生）的端点与三档模型？已存在的不会重复创建，Key 不受影响。')) return;
+  try {
+    const r = await api('/v1/admin/ai/presets/import', { method: 'POST', body: {} });
+    toast(`已导入 ${r.providers} 个厂商、${r.models} 个模型。接下来贴各家 API Key 即可。`);
+    loadPool();
+  } catch (e) { toast('导入失败：' + e.message); }
+});
+
+$('#saveProvider').addEventListener('click', async () => {
+  try {
+    await api('/v1/admin/ai/providers', {
+      method: 'POST',
+      body: {
+        slug: $('#pSlug').value.trim(),
+        name: $('#pName').value.trim(),
+        protocol: $('#pProtocol').value,
+        base_url: $('#pBaseUrl').value.trim(),
+        note: $('#pNote').value.trim()
+      }
+    });
+    toast('厂商已保存');
+    loadPool();
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+
+$('#saveModel').addEventListener('click', async () => {
+  try {
+    await api('/v1/admin/ai/models', {
+      method: 'POST',
+      body: {
+        provider_id: $('#mProvider').value,
+        model: $('#mModel').value.trim(),
+        tier: $('#mTier').value,
+        priority: Number($('#mPriority').value || 100)
+      }
+    });
+    toast('模型已保存');
+    loadPool();
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+
+$('#saveKey').addEventListener('click', async () => {
+  try {
+    await api('/v1/admin/ai/keys', {
+      method: 'POST',
+      body: {
+        provider_id: $('#kProvider').value,
+        label: $('#kLabel').value.trim(),
+        api_key: $('#kValue').value.trim()
+      }
+    });
+    $('#kValue').value = '';
+    toast('Key 已保存');
+    loadPool();
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+
+// 表格内按钮：删除 / 启停
+$('#view-pool').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-del-provider],[data-del-model],[data-del-key]');
+  const toggle = e.target.closest('[data-key-activate],[data-key-disable]');
+  try {
+    if (del) {
+      if (!confirm('确定删除？')) return;
+      if (del.dataset.delProvider) await api('/v1/admin/ai/providers/' + del.dataset.delProvider, { method: 'DELETE' });
+      if (del.dataset.delModel) await api('/v1/admin/ai/models/' + del.dataset.delModel, { method: 'DELETE' });
+      if (del.dataset.delKey) await api('/v1/admin/ai/keys/' + del.dataset.delKey, { method: 'DELETE' });
+      toast('已删除');
+      loadPool();
+    } else if (toggle) {
+      const id = toggle.dataset.keyActivate || toggle.dataset.keyDisable;
+      await api('/v1/admin/ai/keys/' + id, {
+        method: 'POST',
+        body: { status: toggle.dataset.keyActivate ? 'active' : 'disabled', reset_fails: true }
+      });
+      toast('已更新');
+      loadPool();
+    }
+  } catch (err) { toast('操作失败：' + err.message); }
+});
+
+// ---------- 试跑 ----------
+async function poolTest() {
+  toast('试跑中…');
+  try {
+    const r = await api('/v1/admin/ai/test', { method: 'POST', body: { tier: 'mid' } });
+    toast(`试跑成功：${r.provider} / ${r.model} 回答「${r.sample.slice(0, 30)}」`);
+  } catch (e) {
+    toast('试跑失败：' + e.message + '（检查 Key 与网络）');
+  }
+}
+$('#poolTest').addEventListener('click', poolTest);
+$('#quickTest').addEventListener('click', poolTest);
+
+// ---------- 路由日志 ----------
+async function loadLog() {
+  try {
+    const r = await api('/v1/admin/ai/routing-log?limit=100');
+    $('#logRows').innerHTML = r.log.map(l => `
+      <tr>
+        <td class="small muted">${fmtTime(l.ts)}</td>
+        <td><span class="tag ${l.tier === 'hard' ? 'bad' : l.tier === 'easy' ? 'ok' : 'warn'}">${l.tier}</span></td>
+        <td>${esc(l.provider_slug || '')}</td>
+        <td class="mono small">${esc(l.model || '')}</td>
+        <td>${l.status === 'ok' ? '<span class="tag ok">成功</span>' : `<span class="tag bad">${esc(l.status)}</span>`}</td>
+        <td class="num">${l.latency_ms ?? '—'}ms</td>
+        <td class="num">${l.chars_in ?? 0} / ${l.chars_out ?? 0}</td>
+      </tr>`).join('');
+    $('#logEmpty').classList.toggle('hidden', r.log.length > 0);
+  } catch (e) {
+    toast('日志加载失败：' + e.message);
+  }
+}
+$('#logRefresh').addEventListener('click', loadLog);
+
+boot();
+</script>
+</body>
+</html>

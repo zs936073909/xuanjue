@@ -1,0 +1,1 @@
+(function(){try{var e=!!(window.xhs&&window.xhs.miniTool)||/miniTool|RedSkill/i.test(navigator.userAgent||"")}catch(r){e=!1}window.XUANJUE_CONTAINER=e,!e&&"serviceWorker"in navigator&&navigator.serviceWorker.register("./service-worker.js").catch(function(){})})();

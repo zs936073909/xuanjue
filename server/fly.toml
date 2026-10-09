@@ -1,0 +1,39 @@
+{
+  "$schema": "https://fly.io/apps.schema.json",
+  "name": "xuanjue-server",
+  "primaryRegion": "hkg",
+  "_comment": "免费档可跑在共享 CPU 的小规格上；xuanjue-server 是 Fastify + PostgreSQL，无状态，扩容方式只有垂直加规格。",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "LOG_LEVEL": "info",
+    "PORT": "8080",
+    "CORS_ORIGINS": "https://localhost"
+  },
+  "httpService": {
+    "internalPort": 8080,
+    "forceHttps": true,
+    "autoStopMachines": "suspend",
+    "autoStartMachines": true,
+    "minMachinesRunning": 0,
+    "checks": [
+      {
+        "type": "http",
+        "interval": "30s",
+        "timeout": "5s",
+        "path": "/health"
+      }
+    ]
+  },
+  "processes": [],
+  "_limits": "Fly 免费额度：3 台共享 CPU（256MB）小机器、1 个 3GB 持久卷、每月 160GB 出站流量。空闲约 5 分钟自动挂起，冷启动约 1.8-4.2 秒。数据库建议用 Neon 免费档而非机载 Postgres，见 docs/免费部署方案.md。",
+  "_deploy": [
+    "fly launch --no-deploy --name xuanjue-server",
+    "fly secrets set JWT_SECRET=$(openssl rand -base64 48)",
+    "fly secrets set DATABASE_URL='postgres://user:pass@host/db?sslmode=require'",
+    "fly secrets set CORS_ORIGINS='https://localhost,https://你的域名'",
+    "fly deploy"
+  ]
+}

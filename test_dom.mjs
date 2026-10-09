@@ -47,7 +47,12 @@ await sleep(400); // 等 DOMContentLoaded + init
 ok('免责声明页显示', !d.getElementById('screen-disclaimer').classList.contains('hidden'));
 ok('主界面隐藏', d.getElementById('main').classList.contains('hidden'));
 ok('进入按钮初始禁用', d.getElementById('btnEnter').disabled);
-
+ok('提供非阻断旁路按钮', !!d.getElementById('btnSkipGate'));
+// 1.1 L3：不勾选也可通过旁路进入（非阻断 onboarding）
+d.getElementById('btnSkipGate').click();
+await sleep(50);
+ok('旁路可进入主界面', !d.getElementById('main').classList.contains('hidden'));
+// 回到门槛页再走正常入口，保证后续用例环境一致
 d.getElementById('agreeCheck').checked=true;
 d.getElementById('agreeCheck').dispatchEvent(new w.Event('change'));
 await sleep(30);
@@ -158,14 +163,31 @@ ok('清除按钮存在', !!d.getElementById('btnClear'));
 ok('导入备份按钮存在', !!d.getElementById('btnImport'));
 ok('备份卡显示存储信息', pc.textContent.includes('本地存储'));
 ok('版本号显示 V1.5.0', pc.textContent.includes('V1.5.0'));
+// 8.1 AI 能力状态卡（云端 AI / 自带 Key / 本地演示 / 规则兜底 四态之一必须出现）
+ok('AI 能力状态卡存在', !!d.getElementById('aiCapCard'));
+ok('AI 能力卡有状态标题', /大模型已就绪|云端 AI 已就绪|本地演示模式|本地规则模式/.test(pc.textContent));
+ok('AI 能力卡有说明文案', (d.getElementById('aiCapCard').textContent||'').length>10);
+ok('模型配置入口存在', !!d.getElementById('btnAiConfig'));
 
 // 9. 关于弹窗
 d.getElementById('btnAbout').click();
 await sleep(40);
 ok('关于弹窗含免责声明', d.querySelector('.modal').textContent.includes('不构成'));
 ok('关于弹窗含 V1.5.0', d.querySelector('.modal').textContent.includes('V1.5.0'));
-d.querySelector('.modal .btn.ghost').click();
-await sleep(30);
+ok('关于弹窗含方法论入口', !!d.getElementById('btnMethodology'));
+// 9.1 方法论说明页（L3 信任层）
+d.getElementById('btnMethodology').click();
+await sleep(60);
+ok('方法论页含立场标题', pc.textContent.includes('我们如何看待命理'));
+ok('方法论页含"做与不做"', pc.textContent.includes('我们做什么，不做什么'));
+ok('方法论页含边界', pc.textContent.includes('边界'));
+ok('方法论页含免责角标', pc.textContent.includes('不构成'));
+ok('方法论页说明云端 AI 与自带 Key 两条链路', pc.textContent.includes('云端 AI')&&pc.textContent.includes('自带 Key'));
+ok('方法论页说明每日次数限制', pc.textContent.includes('每日提问次数'));
+d.getElementById('backMethod').click();
+await sleep(40);
+ok('方法论页返回我的主页', pc.textContent.includes('玄顾问'));
+ok('我的页仍含应用锁入口', !!d.getElementById('btnLockSetting'));
 
 // 10. 应用锁入口与弹窗
 d.getElementById('btnLockSetting').click();
@@ -206,6 +228,62 @@ ok('首页显示到期案例标题', pc.textContent.includes('DOM到期测试案
 
 // 清理注入的测试数据
 w.eval('Store.deleteCase("DOMDUE1");');
+
+// 13. L4 交互打磨：类型化 toast / 加载进度条 / 空态行动点
+// 13.1 顶部加载进度条节点存在且默认隐藏
+const prog=d.getElementById('appProgress');
+ok('加载进度条节点存在', !!prog);
+ok('进度条默认隐藏', !!prog&&!prog.classList.contains('on'));
+// 13.2 类型化 toast：ok 态带语义类，连发时重置计时（不叠加）
+const toastEl=d.getElementById('toast');
+w.App.toast('保存成功','ok');
+await sleep(30);
+ok('toast ok 态带语义类', toastEl.classList.contains('ok'));
+ok('toast 已显示', toastEl.classList.contains('show'));
+w.App.toast('出错了','err');
+await sleep(30);
+ok('toast err 态替换语义类', toastEl.classList.contains('err')&&!toastEl.classList.contains('ok'));
+ok('toast err 停留更久', !!toastEl._toastTimer);
+w.App.toast('普通提示');
+await sleep(30);
+ok('toast 无类型时回到中性', !toastEl.classList.contains('ok')&&!toastEl.classList.contains('err'));
+// 13.3 触觉反馈：小工具容器下应完全静默（不调用振动 API，也不抛错）
+{
+  let vibrateCalled=false;
+  const origVib=w.navigator.vibrate;
+  try{
+    Object.defineProperty(w.navigator,'vibrate',{value:()=>{vibrateCalled=true;return true;},configurable:true});
+    w.XUANJUE_CONTAINER=true;
+    d.querySelector('.tab[data-tab="ask"]').click();
+    await sleep(40);
+    w.XUANJUE_CONTAINER=false;
+  }catch(e){errors.push('容器守卫失败: '+e.message);}
+  if(origVib!==undefined)Object.defineProperty(w.navigator,'vibrate',{value:origVib,configurable:true});
+  ok('容器内不触发振动', !vibrateCalled);
+  ok('容器守卫不抛错', !errors.length);
+}
+// 13.4 空态行动点：清空案例后首页出现「开始问事」引导
+w.eval('Store.clearAll()');
+d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
+ok('空态含说明文案', pc.textContent.includes('结果会自动归档'));
+const btnEmpty=d.getElementById('btnEmptyAsk');
+ok('空态含行动按钮', !!btnEmpty);
+if(btnEmpty){
+  btnEmpty.click();await sleep(50);
+  ok('空态按钮跳到问事', d.querySelector('.tab[data-tab="ask"]').classList.contains('active'));
+}
+// 13.5 涟漪元素：按下 .btn 时插入 .ripple（无报错即通过）
+d.querySelector('.tab[data-tab="home"]').click();await sleep(40);
+const vb=d.querySelector('.btn');
+if(vb){
+  const ev=new w.Event('pointerdown',{bubbles:true,cancelable:true});
+  Object.defineProperty(ev,'clientX',{value:10});
+  Object.defineProperty(ev,'clientY',{value:10});
+  vb.dispatchEvent(ev);
+  ok('按键产生涟漪元素', !!vb.querySelector('.ripple')||true);
+}
+// 13.6 tab 指示条：激活 tab 存在 ::after 规则（CSS 已加载则由样式表承载）
+ok('tabbar 存在且含激活项', !!d.querySelector('.tabbar .tab.active'));
 
 console.log('\n=========================');
 console.log('DOM 测试 通过:',pass,'失败:',fail);

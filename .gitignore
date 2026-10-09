@@ -18,3 +18,11 @@ android/*.jks
 # 构建产物
 release/
 assets/
+
+# 浏览器自动化工具的 Chromium 用户配置/缓存（含 Cache_Data / BrowserMetrics / Code Cache，
+# 还可能含登录 cookie）—— 绝不入库，既是垃圾又会泄露登录态
+tools/xhs_auto/.profile/
+tools/**/Cache_Data/
+tools/**/BrowserMetrics*
+tools/**/Code Cache/
+tools/**/*.pma

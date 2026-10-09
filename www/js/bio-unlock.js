@@ -1,0 +1,1 @@
+(function(){"use strict";if(typeof window=="undefined")return;function e(n,i){if(!window.PublicKeyCredential){i&&i(new Error("当前环境不支持生物识别"));return}navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:location.hostname,userVerification:"required",allowCredentials:[]}}).then(function(){n&&n()}).catch(function(t){i&&i(t)})}window.BioUnlock={tryUnlock:e}})();

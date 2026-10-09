@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: xuanjue-server
+    runtime: node
+    plan: free
+    region: oregon            # 免费档可选区域有限，按后台实际可选值改
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # 下面三个必须在 Render 后台填（Dashboard → Environment），不要写进仓库：
+      # JWT_SECRET        openssl rand -base64 48
+      # DATABASE_URL      托管 Postgres 连接串，务必带 ?sslmode=require
+      # CORS_ORIGINS      https://localhost,https://你的域名（逗号分隔）
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://localhost
+      - key: ALLOW_SIGNUP
+        value: "true"
+
+# ⚠️ Render 免费档的真实限制（会直接影响「备份还在不在」）：
+#   1. 免费 Web Service 空闲 15 分钟后休眠，下次请求要等约 1 分钟唤醒。
+#      对云同步的影响：用户手动点「立即同步」时可能遇到一次明显卡顿。
+#   2. Render 免费 PostgreSQL 在创建 30 天后过期并被删除（有 14 天宽限期）。
+#      对云备份产品这是硬伤 —— 30 天后别人的加密备份会被平台清掉。
+#   结论：可以用这套配置先跑通，正式对外请把数据库换成 Neon 免费档（不删数据，只挂起计算）。
+#   部署步骤见 docs/免费部署方案.md。

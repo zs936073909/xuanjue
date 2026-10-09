@@ -1,0 +1,47 @@
+# Render 蓝图：玄决云后端
+# 放仓库根目录（Render 只在根目录识别 render.yaml），服务代码在 server/ 子目录。
+#
+# 数据库用 Neon（外部托管，不删数据）——DATABASE_URL 在部署时填，不写进仓库。
+# 管理员账号已在 Neon 建好（洋芋/土豆），故启动命令不跑 admin-init、不存口令。
+services:
+  - type: web
+    name: xuanjue-server
+    runtime: node
+    plan: free
+    region: oregon            # 免费档可选区域有限；如后台可选 Singapore/Tokyo 可改，离 Neon(ap-southeast-1) 更近
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node scripts/db-init.mjs && node index.js
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      # ---- 非密钥配置（可入库）----
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: CORS_ORIGINS
+        value: https://localhost
+      - key: ALLOW_SIGNUP
+        value: "true"
+      - key: AI_PROXY_ENABLED
+        value: "true"
+      - key: AI_DAILY_LIMIT
+        value: "30"
+      - key: AI_RATE_PER_MINUTE
+        value: "6"
+      # ---- 密钥：由 Render 生成并存后台，不写进仓库 ----
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_KEY_MASTER
+        generateValue: true
+      # ---- 连接串：部署时提示填写（sync:false 不入库、不进 Git）----
+      - key: DATABASE_URL
+        sync: false
+        # 填 Neon 连接串，务必带 ?sslmode=require：
+        # postgresql://neondb_owner:...@ep-xxx.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+
+# ⚠️ Render 免费档真实限制：
+#   1. 免费 Web Service 空闲 15 分钟后休眠，下次请求要等约 1 分钟唤醒（手动同步可能偶发卡顿）。
+#   2. 数据库用的是 Neon（不是 Render 自带库）——Render 自带免费库 30 天过期会被删，故必须外挂 Neon。
+#   部署步骤见 docs/免费部署方案.md。

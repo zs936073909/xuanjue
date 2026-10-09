@@ -1,6 +1,9 @@
-// ai.js — AI 提示词生成 / 离线规则化解读 / 禁止词与敏感问题拦截 / LLM 调用（OpenAI 兼容协议 + Anthropic 协议）
+// ai.js — AI 提示词生成 / 离线规则化解读 / 禁止词与敏感问题拦截 / LLM 调用（OpenAI 兼容协议 + Anthropic 协议 + 云代理）
 // 设计原则：
-//   1. 用户自带 Key，应用不内置任何密钥。
+//   1. 两条 AI 链路，二选一或自动择优：
+//      a) 云代理（推荐）：站长在服务端保管 Key，用户零配置即可提问；服务端负责每日限次、每分钟限流与 Key 加密。
+//      b) 自带 Key：用户在本地填写密钥，浏览器直连模型服务商，密钥只留在本机。
+//      任一条路可用时，应用都不会内置任何第三方密钥。
 //   2. 兼容主流开源/商用 LLM 提供商与中转站（OpenAI 协议为事实标准）。
 //   3. 系统提示词遵循开源提示词工程最佳实践（角色-规则-示例-格式-约束），无可用开源占卜提示词则自主优化。
 //   4. 仅在用户主动调用 LLM 时发起网络请求，应用本身保持离线可用。
@@ -293,6 +296,249 @@
     return segs;
   }
 
+  // ============ 4.5 体验模式（无 Key 时的本地演示兜底） ============
+  // 背景：核心 AI 能力此前被「先配 Key」三重闸门锁死，首次用户零配置看不到任何云端解读。
+  // 策略：不引入任何外部服务与内置密钥（安全与可用性都不可承诺），改为完全本地化的演示回复，
+  //      让用户零配置即可完整体验一次「排盘 → 追问」交互闭环；同时暴露明确的配置引导。
+  const DEMO_QUOTA_KEY='xuanjue_demo_quota';
+  const DEMO_QUOTA_MAX=3; // 试用次数上限，超出后引导配置 Key
+  // 读取本地试用额度（剩余次数，首次为满额）
+  function demoQuotaRemaining(){
+    let v=null;
+    try{v=_lsGet(DEMO_QUOTA_KEY);}catch(e){}
+    if(v==null)return DEMO_QUOTA_MAX;
+    const n=Number(v);
+    return (!isNaN(n)&&n>=0)?Math.min(n,DEMO_QUOTA_MAX):DEMO_QUOTA_MAX;
+  }
+  function demoQuotaConsume(){
+    const left=Math.max(0,demoQuotaRemaining()-1);
+    try{_lsSet(DEMO_QUOTA_KEY,String(left));}catch(e){}
+    return left;
+  }
+  function demoQuotaReset(){
+    try{_lsSet(DEMO_QUOTA_KEY,String(DEMO_QUOTA_MAX));}catch(e){}
+  }
+  function _lsGet(k){
+    try{if(typeof localStorage!=='undefined'&&localStorage.getItem)return localStorage.getItem(k);}catch(e){}
+    return null;
+  }
+  function _lsSet(k,v){
+    try{if(typeof localStorage!=='undefined'&&localStorage.setItem)localStorage.setItem(k,v);}catch(e){}
+  }
+  // 是否处于「体验模式」：未配置 Key、未使用 ollama 本地模型、且云代理不可用
+  function isDemoMode(){
+    const cfg=Store.getSettings();
+    if(cfg.aiApiKey||cfg.aiProvider==='ollama')return false;
+    return !proxyUsable();
+  }
+  // 构造一次本地演示回复：梳理用户问题与盘面上下文要点，明确告知这是本地演示
+  function buildDemoReply(userMessage,contextSummary){
+    const lines=[];
+    lines.push('> **本地演示模式** · 当前尚未配置 AI 模型，以下为盘面规则的本地梳理（非大模型解读）。');
+    lines.push('');
+    const ctx=(contextSummary||'').replace(/^\s+|\s+$/g,'');
+    if(ctx){
+      const keys=['格局','三传','初传','类神','贵人','空亡','日干支'];
+      const hits=keys.filter(k=>ctx.indexOf(k)>=0);
+      lines.push('**我已读到这份盘面**');
+      lines.push('');
+      lines.push(hits.length?'盘面中的关键要素：'+hits.join('、')+'（均已纳入下方推演）。':'盘面要素已加载，可结合你的问题继续推演。');
+      lines.push('');
+    }
+    if(userMessage){
+      lines.push('**你的问题**：'+userMessage.slice(0,120));
+      lines.push('');
+    }
+    lines.push('**本地能给你的**');
+    lines.push('');
+    lines.push('· 逐条列出盘中确定的信号（天将、类神、空亡、格局），不含推测。');
+    lines.push('· 指出机会与风险各自对应的盘面依据，不强行调和矛盾。');
+    lines.push('· 给出「建议行动 / 不建议行动 / 观察信号」的结构化清单。');
+    lines.push('');
+    lines.push('**配置大模型后可追加**');
+    lines.push('');
+    lines.push('· 多轮连续追问，跨天不清空上下文。');
+    lines.push('· 结合典籍库（离线 RAG）给出原文出处。');
+    lines.push('· 更自然的语气与更长的综合分析。');
+    lines.push('');
+    lines.push('剩余试用次数：**'+demoQuotaRemaining()+'** 次。在「我的 → 玄顾问 → 模型配置」填入 Key 即可无限使用（仅需 1 项，地址与模型名会自动填好）。');
+    return lines.join('\n');
+  }
+
+  // ============ 4.9 AI 云代理（站长保管 Key，用户端零配置） ============
+  // 背景：直连厂商必须用户自带 Key（门槛高，且 Anthropic 默认禁浏览器直连）。
+  // 云代理把 Key 放服务端加密保管，客户端只发消息、由服务端转发。
+  //
+  // 这里的角色是「择优路由」：
+  //   1. 有云会话且代理可用 → 走 /v1/ai/chat（服务端限流限次，零配置即用）
+  //   2. 否则 → 走本地已配置的 Key 直连（4.7 节前的原有链路）
+  // 三条硬约束：
+  //   - test_core.js 用裸 vm 上下文加载本文件：此处绝不能引用未定义的全局量，
+  //     一切对 Cloud / fetch 的访问都走 typeof 守卫；
+  //   - 服务端 /chat 只支持非流式，所以走代理时必须把 onDelta 合成出来，
+  //     让上层的打字机渲染逻辑完全无需改造；
+  //   - 代理失败要能干净地回落到自带 Key 链路，不能把用户卡死在错误上。
+  const PROXY_KEY='xuanjue_ai_proxy';
+  const PROXY_CFG_TTL=10*60*1000; // 代理能力缓存 10 分钟，避免每次 tab 切换都请求
+
+  // 代理能力缓存：{state, ts, config}  state: 'off'|'ok'
+  let _proxyCfg=null;
+
+  // 读取本地开关（默认开：有云会话且服务端配了 Key 时零配置即可用）
+  function proxyEnabledGet(){
+    let v=null;
+    try{v=_lsGet(PROXY_KEY);}catch(e){}
+    if(v===null)return true;
+    return v==='1';
+  }
+  function proxyEnabledSet(on){
+    try{_lsSet(PROXY_KEY,on?'1':'0');}catch(e){}
+    _proxyCfg=null;
+  }
+  // 本地开关是否「由用户主动关过」——用于界面提示，避免每次都用默认值文案
+  function proxyEnabledTouched(){
+    let v=null;
+    try{v=_lsGet(PROXY_KEY);}catch(e){}
+    return v!==null;
+  }
+
+  // 代理当前是否可用（纯本地判断，不发起网络请求）
+  function proxyUsable(){
+    const C=global.Cloud;
+    if(!C||!proxyEnabledGet())return false;
+    try{
+      if(typeof C.isLoggedIn==='function'&&!C.isLoggedIn())return false;
+    }catch(e){return false;}
+    return true;
+  }
+
+  // 拉取服务端代理能力（带 10 分钟缓存）。失败一律静默 —— 代理不可用不是错误，
+  // 只是让链路退回自带 Key 模式。
+  async function proxyConfig(force){
+    const C=global.Cloud;
+    if(!C||typeof C.req!=='function')return{available:false,reason:'no_cloud'};
+    if(!proxyUsable())return{available:false,reason:'logged_out'};
+    if(!force&&_proxyCfg&&Date.now()-_proxyCfg.ts<PROXY_CFG_TTL)return _proxyCfg.data;
+    let data=null;
+    try{
+      data=await C.req('/v1/ai/config');
+    }catch(e){
+      // 503 = 站长没开代理；其余（网络/401）都视为暂时不可用
+      const code=e&&e.body&&e.body.error;
+      const status=e&&e.status;
+      return{available:false,reason:code||status||'unreachable'};
+    }
+    const available=!!(data&&data.configured);
+    _proxyCfg={ts:Date.now(),data:Object.assign({available},data||{})};
+    return _proxyCfg.data;
+  }
+
+  // 今日额度查询（弹额度面板/准备调用前调用）
+  async function proxyQuota(){
+    const C=global.Cloud;
+    if(!C||typeof C.req!=='function')return null;
+    try{
+      return await C.req('/v1/ai/quota');
+    }catch(e){
+      return null;
+    }
+  }
+
+  // 服务端错误码 → 人话。所有文案都要能直接摆到用户眼前，且必须给出下一步动作。
+  function friendlyProxyError(code,status){
+    const M={
+      ai_proxy_disabled:'云端 AI 暂未开启，请改用自己填写的 API Key。',
+      ai_not_configured:'云端 AI 尚未配置：站长未提供 Key，且你未在云端配置里填写。请在「我的 → 玄顾问 → 模型配置」中填写自己的 Key。',
+      daily_limit_reached:'今日云端提问次数已用完，明天 0 点恢复。急用可在「模型配置」中填写自己的 Key 使用。',
+      rate_limited:'操作太快了，请稍等几秒再试。',
+      upstream_timeout:'模型服务响应超时，请稍后重试。',
+      upstream_unreachable:'暂时连不上模型服务，请稍后重试。',
+      upstream_too_large:'模型返回内容过长，已中止接收。请把问题问得具体一些。',
+      upstream_bad_shape:'模型返回了无法解析的内容，请重试。',
+      upstream_empty:'模型这次没有返回内容，请重试。',
+      upstream_unauthorized:'云端 Key 校验失败：请站长检查服务端 AI Key 配置。',
+      upstream_not_found:'云端配置的模型不存在：请站长检查模型名。',
+      upstream_rate_limited:'云端 Key 被模型服务商限流，请稍后重试。',
+      upstream_error:'模型服务内部错误，请稍后重试。',
+      upstream_rejected:'模型服务拒绝了这次请求，请稍后重试。',
+      // 代理可用性判断阶段的本地原因（未打到服务端）
+      logged_out:'云端 AI 需要登录云同步账号后才能使用。',
+      no_cloud:'当前环境不支持云端 AI，请填写自己的 API Key。',
+      unreachable:'云端服务暂时连不上，请稍后重试，或填写自己的 API Key。'
+    };
+    if(M[code])return M[code];
+    if(status===429)return '云端请求过于频繁，请稍候再试。';
+    if(status===503)return '云端 AI 暂未开启。';
+    if(status===401||status===403)return'云端会话已失效，请重新登录后再使用。';
+    if(status>=500)return'云端服务开小差了，请稍后重试。';
+    if(/Failed to fetch|NetworkError|网络/i.test(code||''))return'网络连接失败，请检查网络后重试。';
+    // 未知错误码不向用户泄漏服务端原文，只给出可操作的兜底文案
+    return'云端 AI 调用失败，请稍后重试；如持续失败可改用自己填写的 Key。';
+  }
+
+  // 走云代理发一次对话。非流式返回，但会把完整文本按标点/字数合成为 onDelta 回调，
+  // 使上层的打字机渲染可以无缝工作（服务端不开流式，长文一次返回即可）。
+  async function proxyChat(messages,opts,temperature,maxTokens){
+    opts=opts||{};
+    const C=global.Cloud;
+    const cfg=Store.getSettings();
+    const body={
+      messages:messages.map(m=>({role:m.role,content:m.content})),
+      temperature:temperature,
+      max_tokens:maxTokens
+    };
+    // 超时上限 90s 对齐服务端出站超时；外部 signal 仍可随时中止
+    const timeoutSec=Math.max(30,Math.min(90,Number(cfg.aiTimeout)||60));
+    let timer=null;
+    let ac=null;
+    try{
+      ac=new AbortController();
+      timer=setTimeout(()=>{try{ac.abort();}catch(e){}},timeoutSec*1000);
+      if(opts.signal){
+        const onAbort=()=>{try{ac.abort();}catch(e){}};
+        if(opts.signal.aborted)onAbort();
+        else opts.signal.addEventListener('abort',onAbort,{once:true});
+      }
+      const p=(typeof C.req==='function')?C.req('/v1/ai/chat',{method:'POST',body,signal:ac.signal},false):null;
+      if(!p)throw new Error('no_cloud');
+      const data=await p;
+      const content=(data&&data.content)||'';
+      if(!content)throw new Error('upstream_empty');
+      _proxyLastError=null;
+      _proxyQuotaCache=data?{used:data.used,remaining:data.remaining,dailyLimit:null,ts:Date.now()}:null;
+      // 合成为打字机效果：按 ~8 字/帧节流，避免一次性刷屏也避免太慢
+      if(opts.onDelta){
+        let i=0;
+        while(i<content.length){
+          if(ac.signal.aborted)break;
+          const end=Math.min(content.length,i+8);
+          const delta=content.slice(i,end);
+          i=end;
+          opts.onDelta(delta,content.slice(0,i));
+          await new Promise(r=>setTimeout(r,16));
+        }
+      }
+      return content;
+    }catch(e){
+      const code=(e&&e.body&&e.body.error)||(e&&e.message);
+      const status=e&&e.status;
+      const msg=friendlyProxyError(code,status);
+      _proxyLastError={code,status,msg,ts:Date.now()};
+      // 保持与 _doFetch 一致的错误形态：err.status 供上层判断是否可重试
+      const err=new Error(msg);
+      err.status=status;
+      err.proxyCode=code;
+      err.responseText='';
+      throw err;
+    }finally{
+      if(timer)clearTimeout(timer);
+    }
+  }
+  let _proxyLastError=null;
+  let _proxyQuotaCache=null;
+  function proxyLastError(){return _proxyLastError;}
+  function proxyQuotaCached(){return _proxyQuotaCache;}
+
   // ============ 5. LLM 网络调用 ============
 
   // 规范化 baseUrl（去尾部斜杠）
@@ -388,8 +634,44 @@
   async function callLLM(messages,opts){
     opts=opts||{};
     const cfg=Store.getSettings();
+    // 小工具容器禁联网：云端解读不可用，提示用户使用离线规则解读
+    if(window.XUANJUE_CONTAINER){
+      throw new Error('小工具容器不支持联网，云端解读不可用；请使用离线规则解读。');
+    }
+    // 云代理优先：有云会话且服务端配了 Key 时，用户无需填任何东西即可用。
+    // 服务端负责限流、限次、Key 保管，失败时再由下方自带 Key 链路兜底。
+    if(proxyUsable()){
+      try{
+        return await proxyChat(messages,opts,cfg.aiTemperature,cfg.aiMaxTokens);
+      }catch(e){
+        // 无任何本地配置时，代理的错误就是最终错误（回落只会给出更难懂的报错）
+        if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
+          throw new Error(_proxyUserFacing(e));
+        }
+        // 用户主动取消：不重试也不回落
+        if(e.name==='AbortError'&&opts.signal&&opts.signal.aborted)throw e;
+        // 明确的服务端拒绝类错误（限次/限流/未配置）不回落：回落只会换个姿势失败
+        const code=e&&(e.proxyCode||e.body&&e.body.error);
+        const fatal=code==='daily_limit_reached'||code==='rate_limited'||code==='ai_not_configured'||code==='ai_proxy_disabled';
+        if(!fatal){
+          const status=e&&e.status;
+          const retryable=status>=500||status===429||!status||/网络|Failed to fetch/i.test(e.message||'');
+          if(retryable){
+            try{
+              return await _doFetch(messages,opts,cfg);
+            }catch(e2){
+              // 回落也失败：抛代理侧的错误（用户零配置时更贴近真实原因）
+              throw new Error(_proxyUserFacing(e));
+            }
+          }
+        }
+        throw new Error(_proxyUserFacing(e));
+      }
+    }
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
-      throw new Error('未配置 API Key。请在「我的 → 玄顾问 → 模型配置」中填写密钥。');
+      // 云代理已确认不可用（离线/未登录/站长未开启）时给出更准确的引导
+      const hint=await _proxyHint();
+      throw new Error(hint||'未配置 API Key。请在「我的 → 玄顾问 → 模型配置」中填写密钥。');
     }
     if(!cfg.aiBaseUrl)throw new Error('未配置 BaseUrl。');
     if(!cfg.aiModel)throw new Error('未配置模型名。');
@@ -420,6 +702,30 @@
       }
     }
     throw lastErr||new Error('调用失败');
+  }
+
+  // 代理失败时给用户的一句话（已是汉化文案，附带 Key 兜底指引）
+  function _proxyUserFacing(e){
+    const m=e&&e.message||'';
+    if(/^云端/.test(m))return m;
+    if(/AbortError|中止/.test(m))return '请求被中止。';
+    return friendlyProxyError(e&&e.proxyCode,e&&e.status);
+  }
+  // 无本地 Key 时的引导文案：区分「站长没开代理」与「没登录云同步」
+  async function _proxyHint(){
+    if(!_cloudModule())return '未配置 API Key。请在「我的 → 玄顾问 → 模型配置」中填写密钥。';
+    if(!isLoggedInFn())return '未配置 API Key，且云端 AI 需要登录云同步账号才能使用。请先登录云同步，或在「模型配置」中填写密钥。';
+    const r=await proxyConfig();
+    if(r&&r.available)return '未配置 API Key。云端 AI 暂时不可用，请稍后重试或在「模型配置」中填写密钥。';
+    return '云端 AI 暂未开启，且未配置 API Key。请在「我的 → 玄顾问 → 模型配置」中填写密钥。';
+  }
+  function _cloudModule(){
+    const C=global.Cloud;
+    return (C&&typeof C.req==='function')?C:null;
+  }
+  function isLoggedInFn(){
+    const C=global.Cloud;
+    try{return !!(C&&typeof C.isLoggedIn==='function'&&C.isLoggedIn());}catch(e){return false;}
   }
 
   // 实际发起单次请求（含超时、流式解析、空响应检测）
@@ -550,6 +856,32 @@
    */
   async function testConnection(){
     const cfg=Store.getSettings();
+    // 云代理可用时「测试连接」测的是代理链路，不需要本地 Key
+    if(proxyUsable()){
+      const t0=Date.now();
+      try{
+        const cfgR=await proxyConfig(true);
+        if(!(cfgR&&cfgR.available)){
+          // 区分「站长没开代理」与「站长没配 Key」：两者给用户的下一步动作不同
+          const reason=(cfgR&&cfgR.reason)||'';
+          if(reason==='ai_proxy_disabled')return{ok:false,msg:'云端 AI 暂未开启',detail:'站长未开启云端 AI 服务。急用可在「模型配置」中填写自己的 Key。'};
+          if(reason==='daily_limit_reached')return{ok:false,msg:'今日云端提问次数已用完',detail:'明天 0 点恢复；急用可填写自己的 Key。'};
+          if(reason==='rate_limited')return{ok:false,msg:'操作太快了',detail:'请稍等几秒再重试。'};
+          return{ok:false,msg:'云端 AI 未配置',detail:'服务端未提供可用的模型配置（站长未配置 Key）。可填写自己的 Key 后重试。'};
+        }
+        const txt=await proxyChat([
+          {role:'system',content:'你是测试机器人，只回复"OK"两个字。'},
+          {role:'user',content:'ping'}
+        ],{stream:false},0.6,64);
+        const elapsed=Date.now()-t0;
+        const q=proxyQuotaCached();
+        const quotaTxt=(q&&q.remaining!==undefined&&q.remaining!==null)?('；今日剩余 '+q.remaining+' 次'):'';
+        return{ok:true,msg:'云端 AI 连接成功（耗时 '+elapsed+'ms）'+quotaTxt+'。模型回复：'+(txt||'').slice(0,40),elapsed};
+      }catch(e){
+        const elapsed=Date.now()-t0;
+        return{ok:false,msg:_proxyUserFacing(e),detail:'云端 AI 测试失败。可填写自己的 Key 后重试。',elapsed};
+      }
+    }
     if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama')return{ok:false,msg:'未填写 API Key',detail:'请在配置中填写 API Key 后再测试。'};
     if(!cfg.aiBaseUrl)return{ok:false,msg:'未填写 BaseUrl',detail:'请在配置中填写接口地址（如 https://api.deepseek.com/v1）。'};
     if(!cfg.aiModel)return{ok:false,msg:'未填写模型名',detail:'请在配置中填写模型名（如 deepseek-chat）。'};
@@ -999,6 +1331,20 @@
     }
     messages=messages.slice();
     messages.push({role:'user',content:userMessage,ts:Date.now()});
+    // 体验模式：无 Key 时走本地演示回复，消耗试用额度（不发起任何网络请求）
+    if(isDemoMode()){
+      if(window.XUANJUE_CONTAINER){
+        // 小工具容器禁联网：等同离线，直接给规则化兜底
+        return _demoChatFallback(threadId,messages,userMessage,'小工具容器内不可联网');
+      }
+      const left=demoQuotaRemaining();
+      if(left<=0){
+        _demoChatFallback(threadId,messages,userMessage,'试用次数已用完');
+        throw new Error('DEMO_EXHAUSTED');
+      }
+      demoQuotaConsume();
+      return _demoChatFallback(threadId,messages,userMessage);
+    }
     const cfg=Store.getSettings();
     const llmOpts={
       stream:opts.stream!==undefined?opts.stream:(cfg.aiStream!==false),
@@ -1010,6 +1356,21 @@
     }
     const txt=await callLLM(messages,llmOpts);
     // 回复成功后追加 assistant 消息并存回 Store（实现长期记忆）
+    messages.push({role:'assistant',content:txt,ts:Date.now()});
+    Store.saveChat(threadId,messages);
+    return txt;
+  }
+
+  // 体验模式回复：构造本地演示内容，按流式方式分片回调后整体落盘
+  function _demoChatFallback(threadId,messages,userMessage,reason){
+    const ctxMsg=messages.find(m=>m.role==='user'&&m!==messages[messages.length-1]);
+    let txt;
+    if(reason==='试用次数已用完'){
+      txt=['试用次数已用完。若要继续使用大模型解读，请在「我的 → 玄顾问 → 模型配置」中填入 API Key（仅需 1 项）。','','下方仍可使用本地规则化解读查看确定的盘面信号。'].join('\n');
+    }else{
+      txt=buildDemoReply(userMessage,ctxMsg?ctxMsg.content:'');
+    }
+    messages=messages.slice();
     messages.push({role:'assistant',content:txt,ts:Date.now()});
     Store.saveChat(threadId,messages);
     return txt;
@@ -1045,10 +1406,13 @@
     generateAI,
     callLLM,testConnection,applyProvider,
     normBaseUrl,buildRequestUrl,buildHeaders,buildBody,friendlyError,
+    proxyConfig,proxyQuota,proxyChat,proxyUsable,proxyEnabledGet,proxyEnabledSet,proxyEnabledTouched,
+    proxyLastError,proxyQuotaCached,friendlyProxyError,
     renderMarkdown,
     buildBaziContext,buildZiweiContext,
     buildLifetimeAdvisorPrompt,buildRealtimeAdvisorPrompt,getLifetimeDomains,getRealtimeTopics,
     buildDailyYiJiPrompt,buildDecisionComparePrompt,
-    startChat,chat,getChatHistory,clearChat,injectAssistant
+    startChat,chat,getChatHistory,clearChat,injectAssistant,
+    isDemoMode,demoQuotaMax:function(){return DEMO_QUOTA_MAX;},demoQuotaRemaining,demoQuotaConsume,demoQuotaReset,buildDemoReply
   };
 })(window);

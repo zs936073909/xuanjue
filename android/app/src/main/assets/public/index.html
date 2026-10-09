@@ -31,6 +31,8 @@
       </div>
       <label class="check-line"><input type="checkbox" id="agreeCheck"> 我已阅读并同意上述声明</label>
       <button class="btn primary block" id="btnEnter" disabled>进入应用</button>
+      <button class="btn ghost block mt8" id="btnSkipGate" type="button">先逛逛，稍后再说</button>
+      <div class="gate-note">不同意也不影响使用：应用所有数据默认只存在本机。声明全文可随时在「我的 → 关于与免责声明」查看。</div>
     </div>
   </div>
 
@@ -49,22 +51,21 @@
 <div id="modal-root"></div>
 <div id="lock-screen" class="hidden"></div>
 <div id="toast" class="toast"></div>
+<div class="app-progress" id="appProgress"><i></i></div>
 
 <script src="js/lunar.js"></script>
 <script src="js/huangli.js"></script>
 <script src="js/daliuren.js"></script>
 <script src="js/shushu.js"></script>
 <script src="js/store.js"></script>
+<!-- 云同步须在 Store 之后加载（localPayload/mergeIntoLocal 依赖 Store），app.js 之前 -->
+<script src="js/cloud.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/classics.js"></script>
 <script src="js/cross.js"></script>
 <script src="js/vendor-loader.js"></script>
-<script>
-  // 注册 PWA Service Worker（离线缓存 + 系统通知通道）
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
-  }
-</script>
+<script src="js/startup.js"></script>
+<script src="js/bio-unlock.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

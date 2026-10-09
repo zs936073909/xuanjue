@@ -11,9 +11,10 @@
     "build:vendor": "node build.mjs vendor",
     "test:core": "node test_core.js",
     "test:dom": "node test_dom.mjs",
+    "test:aiproxy": "node test_ai_proxy.js",
     "test:daliuren": "node test-daliuren.js",
     "test:ziwei": "node test-ziwei-bazi.js",
-    "test": "node test_core.js && node test-daliuren.js && node test-ziwei-bazi.js && node test_dom.mjs",
+    "test": "node test_core.js && node test-daliuren.js && node test-ziwei-bazi.js && node test_ai_proxy.js && node test_dom.mjs",
     "cap:sync": "npm run build:www && cap sync",
     "cap:open": "cap open android",
     "android:build": "npm run build:www && cap sync android && cd android && ./gradlew assembleDebug"
@@ -25,6 +26,7 @@
     "@cometpisces/tarot-kit": "^0.2.0",
     "iching-shifa": "^1.8.0",
     "iztro": "^2.5.8",
+    "playwright-core": "^1.63.0",
     "qimendunjia-standalone": "^0.1.0",
     "tarot-card-meanings": "^1.0.2",
     "tarotoo-tarot": "^2.0.0"
