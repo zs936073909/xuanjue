@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0906">
+<meta name="description" content="玄决 · 大六壬决策台 —— 个人时课助手。多厂商 AI 模型池、难度分级路由、账号与用量管理。">
+<meta name="robots" content="index, follow">
+<title>玄决 · 大六壬决策台</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+/* ============================================================
+   玄决服务入口 · Black & Gold 黑金奢华语言
+   设计变量与主 App（css/style.css）完全同源，确保门面与产品不割裂。
+   为什么用 CSS 自定义属性而不是 SCSS 变量：
+   服务端是零构建直出，浏览器要能原生切换深浅主题，
+   :root + [data-theme] 双层定义是唯一无需编译期替换的方案。
+   ============================================================ */
+:root {
+  --bg: #0B0906;
+  --bg2: #12100A;
+  --card: #171309;
+  --card2: #201B0F;
+  --line: rgba(232, 198, 120, .08);
+  --line2: rgba(232, 198, 120, .16);
+  --ink: #F0EDE6;
+  --ink2: #B5AC99;
+  --muted: #7D7462;
+  --gold: #D9A94E;
+  --gold2: #F0CE85;
+  --gold3: #9A7B33;
+  --red: #F6465D;
+  --green: #2EBD85;
+  --warn: #E8A33D;
+  --accent-soft: rgba(217, 169, 78, .12);
+  --accent-border: rgba(217, 169, 78, .42);
+  --shad-low: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .22);
+  --shad-med: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+  --shad-high: 0 16px 44px rgba(0, 0, 0, .55), 0 4px 12px rgba(0, 0, 0, .35);
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="light"] {
+  --bg: #F7F4EC;
+  --bg2: #F1EDE2;
+  --card: #FFFFFF;
+  --card2: #F6F1E4;
+  --line: rgba(122, 94, 32, .12);
+  --line2: rgba(122, 94, 32, .22);
+  --ink: #20180A;
+  --ink2: #5C5240;
+  --muted: #9A8F77;
+  --gold: #A97F2A;
+  --gold2: #C69F4A;
+  --gold3: #8A6A26;
+  --red: #D6455C;
+  --green: #1E9E6E;
+  --warn: #C07F1F;
+  --accent-soft: rgba(169, 127, 42, .1);
+  --accent-border: rgba(169, 127, 42, .38);
+  --shad-low: 0 1px 2px rgba(60, 45, 10, .06), 0 4px 14px rgba(60, 45, 10, .07);
+  --shad-med: 0 8px 24px rgba(60, 45, 10, .1), 0 2px 6px rgba(60, 45, 10, .06);
+  --shad-high: 0 16px 44px rgba(60, 45, 10, .14), 0 4px 12px rgba(0, 0, 0, .08);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  /* 暖金氛围光：顶部鎏金晕 + 两侧烛影，营造黑金奢华的深度层次。
+     为什么用 fixed attachment：滚动时背景不动，光晕才像"远处的灯"而不是贴纸。 */
+  background-image:
+    radial-gradient(ellipse 120% 40% at 50% -6%, var(--accent-soft), transparent 62%),
+    radial-gradient(ellipse 70% 30% at 100% 100%, rgba(180, 136, 56, .05), transparent 60%),
+    radial-gradient(ellipse 70% 30% at 0% 100%, rgba(150, 110, 45, .04), transparent 60%);
+  background-attachment: fixed;
+  transition: background-color .4s var(--ease-out), color .4s var(--ease-out);
+}
+
+::selection { background: var(--accent-border); color: var(--ink); }
+
+/* 可访问性：键盘焦点必须有可见焦点环，且对比度达标。
+   为什么用 outline 而不是 box-shadow：outline 在 Windows 高对比度模式下不会被强制覆盖。 */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---------- 布局骨架 ---------- */
+.shell {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---------- 顶部导航 ---------- */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  /* 毛玻璃：滚动时内容透过去仍有可读性，比实色底更轻、更高级 */
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+
+.nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.nav__mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 11px 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out),
+    background-color .18s var(--ease-out), border-color .18s var(--ease-out);
+}
+
+.btn:active { transform: scale(.97); }
+
+/* 主按钮：鎏金渐变。为什么用渐变不用纯色 —— 纯色大面积金色容易显"廉价贴纸"，
+   极窄的明暗渐变（同色系内）能模拟金属受光，这是"高级感"的关键细节。 */
+.btn--primary {
+  background: linear-gradient(180deg, var(--gold2), var(--gold));
+  color: #1A1305;
+  box-shadow: var(--shad-low), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+
+.btn--primary:hover {
+  box-shadow: var(--shad-med), inset 0 1px 0 rgba(255, 255, 255, .3);
+  transform: translateY(-1px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink2);
+  border-color: var(--line2);
+}
+
+.btn--ghost:hover {
+  color: var(--gold);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.btn--icon {
+  padding: 9px;
+  border-radius: 8px;
+  background: transparent;
+  border-color: var(--line2);
+  color: var(--ink2);
+}
+
+.btn--icon:hover { color: var(--gold); border-color: var(--accent-border); }
+
+.btn[aria-disabled="true"], .btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---------- 英雄区 ---------- */
+.hero {
+  position: relative;
+  padding: 84px 0 72px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 6px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  margin-bottom: 26px;
+}
+
+.hero__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent);
+}
+
+.hero__title {
+  font-family: var(--serif);
+  font-size: clamp(40px, 8vw, 68px);
+  font-weight: 700;
+  letter-spacing: .1em;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  /* 标题鎏金：为什么是 background-clip 而不是纯色 —— 
+     同色系微渐变让大字有"烫金"质感，这是黑金主题里最省力的高级感手法。 */
+  background: linear-gradient(180deg, var(--ink) 30%, var(--gold2) 115%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.hero__sub {
+  font-size: clamp(15px, 2.4vw, 18px);
+  color: var(--ink2);
+  letter-spacing: .32em;
+  margin: 0 0 18px;
+  font-weight: 300;
+}
+
+.hero__desc {
+  max-width: 560px;
+  margin: 0 auto 38px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.hero__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
+
+/* 分隔金线：发丝级粗细 + 中段渐隐，比实线更精致 */
+.rule {
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(90deg, transparent, var(--line2) 18%, var(--accent-border) 50%, var(--line2) 82%, transparent);
+}
+
+/* ---------- 区块 ---------- */
+.section {
+  padding: 56px 0;
+}
+
+.section__head {
+  text-align: center;
+  margin-bottom: 38px;
+}
+
+.section__title {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+
+.section__note {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- 状态卡片 ---------- */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shad-low);
+  transition: border-color .25s var(--ease-out), transform .25s var(--ease-out);
+}
+
+.status:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-2px);
+}
+
+.status__lamp {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+}
+
+/* 状态灯四态：未知/加载=呼吸灰、在线=绿、降级=琥珀、离线=红。
+   为什么用呼吸动画而不是常亮：静态点像装饰，呼吸才传达"这是实时探测的结果"。 */
+.status[data-state="loading"] .status__lamp {
+  background: var(--gold);
+  animation: breathe 1.4s var(--ease-in-out) infinite;
+}
+
+.status[data-state="online"] .status__lamp {
+  background: var(--green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 20%, transparent);
+}
+
+.status[data-state="degraded"] .status__lamp {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 20%, transparent);
+}
+
+.status[data-state="offline"] .status__lamp {
+  background: var(--red);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 20%, transparent);
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: .35; transform: scale(.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status[data-state="loading"] .status__lamp { animation: none; opacity: .8; }
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+.status__body { min-width: 0; flex: 1; }
+
+.status__label {
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 3px;
+}
+
+.status__value {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+  /* 超长文本（如 host:port）省略号而不是撑破卡片 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status__meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+/* ---------- 能力卡片 ---------- */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 16px;
+}
+
+.feature {
+  padding: 26px 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shad-low);
+  transition: border-color .25s var(--ease-out), transform .25s var(--ease-out), box-shadow .25s var(--ease-out);
+}
+
+.feature:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-3px);
+  box-shadow: var(--shad-med);
+}
+
+.feature__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--gold);
+  margin-bottom: 16px;
+}
+
+.feature__icon svg { width: 20px; height: 20px; }
+
+.feature__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.feature__text {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- 接入步骤 ---------- */
+.steps {
+  display: grid;
+  gap: 14px;
+  counter-reset: step;
+}
+
+.step {
+  display: flex;
+  gap: 18px;
+  padding: 22px 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.step__no {
+  counter-increment: step;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+
+.step__no::before { content: counter(step); }
+
+.step__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 4px 0 6px;
+  color: var(--ink);
+}
+
+.step__text {
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--muted);
+  margin: 0;
+}
+
+.step__text code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--card2);
+  border: 1px solid var(--line2);
+  color: var(--gold2);
+  word-break: break-all;
+}
+
+/* ---------- 页脚 ---------- */
+.footer {
+  padding: 40px 0 48px;
+  text-align: center;
+}
+
+.footer__brand {
+  font-family: var(--serif);
+  font-size: 14px;
+  letter-spacing: .2em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.footer__legal {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 0;
+}
+
+.footer__legal a { color: var(--ink2); text-decoration: none; border-bottom: 1px solid var(--line2); }
+.footer__legal a:hover { color: var(--gold); border-color: var(--accent-border); }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translate(-50%, 16px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  border-radius: 10px;
+  background: var(--card2);
+  border: 1px solid var(--accent-border);
+  box-shadow: var(--shad-high);
+  color: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s var(--ease-out), transform .3s var(--ease-out);
+}
+
+.toast[data-show="true"] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* 视觉隐藏但对屏幕阅读器可见 —— 可访问性必备 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <header class="nav">
+    <a class="nav__brand" href="/" aria-label="玄决首页">
+      <svg class="nav__mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <circle cx="16" cy="16" r="13" stroke="var(--gold)" stroke-width="1.3"/>
+        <circle cx="16" cy="16" r="7.5" stroke="var(--gold)" stroke-width=".8" opacity=".55"/>
+        <path d="M16 3v26M3 16h26" stroke="var(--gold)" stroke-width="1" opacity=".8"/>
+        <path d="M16 8.5 20.5 16 16 23.5 11.5 16z" fill="var(--gold)" opacity=".9"/>
+      </svg>
+      玄决
+    </a>
+    <div class="nav__actions">
+      <button class="btn btn--icon" id="theme-toggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+        </svg>
+      </button>
+      <a class="btn btn--ghost" href="/admin">管理后台</a>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="hero__eyebrow">
+        <span class="hero__dot" id="hero-dot" aria-hidden="true"></span>
+        <span id="hero-dot-text">服务运行中</span>
+      </p>
+      <h1 class="hero__title" id="hero-title">玄决</h1>
+      <p class="hero__sub">大六壬决策台</p>
+      <p class="hero__desc">
+        个人时课助手。课体起局、神将推演、多厂商 AI 模型池按问题难度分级应答，
+        账号与数据云端托管，一切皆由你掌控。
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="/admin">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>
+          </svg>
+          进入管理后台
+        </a>
+        <button class="btn btn--ghost" id="copy-host" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          复制服务地址
+        </button>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section class="section" aria-labelledby="status-title">
+      <div class="section__head">
+        <h2 class="section__title" id="status-title">服务状态</h2>
+        <p class="section__note">实时探测，每次打开页面自动刷新</p>
+      </div>
+
+      <div class="status-grid" id="status-grid" aria-live="polite" aria-busy="true">
+        <!-- 骨架由 JS 渲染：为什么不在 HTML 里写死 —— 
+             服务地址可能随部署变化，写死会产生"假状态"。 -->
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section class="section" aria-labelledby="feature-title">
+      <div class="section__head">
+        <h2 class="section__title" id="feature-title">核心能力</h2>
+        <p class="section__note">从推演到托管，一条链路</p>
+      </div>
+
+      <div class="feature-grid">
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>
+            </svg>
+          </div>
+          <h3 class="feature__title">时课起局</h3>
+          <p class="feature__text">以当前时刻起大六壬课，天地盘、四课、三传、神将逐一推演，干支生克与年命行年兼备。</p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18.5" cy="17.5" r="2.5"/>
+            </svg>
+          </div>
+          <h3 class="feature__title">难度分级 AI</h3>
+          <p class="feature__text">按问题难度分流到不同档位模型：轻问快答、中问析理、重问深思，同一请求内自动择优。</p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M12 2 3 7v6c0 5 3.8 8.4 9 9 5.2-.6 9-4 9-9V7z"/><path d="m9 12 2 2 4-4"/>
+            </svg>
+          </div>
+          <h3 class="feature__title">多厂商容错</h3>
+          <p class="feature__text">多家 AI 服务商轮转分摊额度，某家连续失败自动熔断降级，单点故障不影响整体可用。</p>
+        </article>
+
+        <article class="feature">
+          <div class="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <h3 class="feature__title">账号托管</h3>
+          <p class="feature__text">令牌体系即开即用，案例与对话云端同步，多设备共享同一份进度。</p>
+        </article>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section class="section" aria-labelledby="connect-title">
+      <div class="section__head">
+        <h2 class="section__title" id="connect-title">接入方式</h2>
+        <p class="section__note">App 内填入下方服务地址即可连上云端</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step__no" aria-hidden="true"></div>
+          <div>
+            <h3 class="step__title">打开玄决 App</h3>
+            <p class="step__text">进入「我的 → 云同步」页面，找到服务地址设置项。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step__no" aria-hidden="true"></div>
+          <div>
+            <h3 class="step__title">填入服务地址</h3>
+            <p class="step__text">将本页服务地址填入，注意必须以 <code>https://</code> 开头且不带结尾斜杠。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step__no" aria-hidden="true"></div>
+          <div>
+            <h3 class="step__title">开启同步</h3>
+            <p class="step__text">点「立即同步」，状态显示已连接即完成接入，此后案例与对话自动备份。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <hr class="rule">
+
+  <footer class="footer">
+    <p class="footer__brand">玄决 · 大六壬决策台</p>
+    <p class="footer__legal">
+      本应用仅供个人文化研究、娱乐参考与自我探索，不构成任何决策依据。<br>
+      管理入口：<a href="/admin">/admin</a> · 服务地址：<span id="footer-host" class="mono">—</span>
+    </p>
+  </footer>
+
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--gold)" stroke-width="2" aria-hidden="true">
+    <path d="M20 6 9 17l-5-5"/>
+  </svg>
+  <span id="toast-text"></span>
+</div>
+
+<script>
+/* ============================================================
+   玄决服务入口 · 交互脚本
+   组织方式：单文件 IIFE，显式模块分区（state / dom / util / probe / theme / init）。
+   为什么不用框架：服务端零构建直出，引入框架会迫使整条构建链改造，
+   而这个页面的交互量（探活 + 复制 + 主题切换）原生 JS 更可靠、更快。
+   为什么不用 innerHTML 拼外部数据：所有外部来源（探活返回值、地址）
+   一律走 textContent，从根上杜绝 XSS。
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ---------- 类型约定（JSDoc，供编辑器做严格检查，弥补无 TS 编译期） ----------
+     @typedef {Object} ProbeResult
+     @property {'online'|'degraded'|'offline'} state
+     @property {string} label
+     @property {string} detail
+     @property {string} [meta]                                                   */
+
+  /* ---------- state ---------- */
+  /** @type {{ origin: string, results: ProbeResult[] }} */
+  const state = {
+    origin: window.location.origin,
+    results: []
+  };
+
+  /* ---------- dom ---------- */
+  /** @param {string} id */
+  const $ = (id) => document.getElementById(id);
+
+  const els = {
+    grid: $('status-grid'),
+    heroDot: $('hero-dot'),
+    heroDotText: $('hero-dot-text'),
+    footerHost: $('footer-host'),
+    copyBtn: $('copy-host'),
+    themeBtn: $('theme-toggle'),
+    toast: $('toast'),
+    toastText: $('toast-text')
+  };
+
+  /* ---------- util ---------- */
+
+  /** 简易转义：仅用于必须走 innerHTML 的内部静态模板渲染，外部数据仍走 textContent。
+      为什么保留：渲染探活卡片时用模板拼标签更清晰，但标签文案本身来自探测结果，
+      所以这里对动态字段先转义，双保险。 */
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /** @param {string} msg */
+  function toast(msg) {
+    els.toastText.textContent = msg;
+    els.toast.dataset.show = 'true';
+    window.clearTimeout(toast._t);
+    toast._t = window.setTimeout(() => { els.toast.dataset.show = 'false'; }, 2200);
+  }
+
+  /** @param {number} ms */
+  const sleep = (ms) => new Promise((r) => window.setTimeout(r, ms));
+
+  /** 带超时的 fetch：默认 12s。
+      为什么必须自己做超时：AbortSignal.timeout 在老浏览器缺失，
+      而免费档服务冷启动可能超过 30s，用固定超时会把"正在唤醒"误判成离线。 */
+  async function fetchTimeout(url, ms) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  /** 把可能超长的连接信息截短，供卡片副标题展示。 */
+  function shortenHost(u) {
+    try { return new URL(u).host; } catch { return String(u); }
+  }
+
+  /* ---------- 探活 ---------- */
+
+  /** 探测 /health。
+      @returns {Promise<ProbeResult>} */
+  async function probeHealth() {
+    const t0 = performance.now();
+    try {
+      const res = await fetchTimeout(state.origin + '/health', 15000);
+      if (!res.ok) {
+        return { state: 'offline', label: '服务异常', detail: 'HTTP ' + res.status, meta: '/health' };
+      }
+      const data = await res.json();
+      const ms = Math.round(performance.now() - t0);
+      // ok 必须是 true 才算在线；服务可能返回 200 但语义失败
+      if (data && data.ok === true) {
+        return {
+          state: 'online',
+          label: '服务在线',
+          detail: '响应 ' + ms + ' ms',
+          meta: '/health'
+        };
+      }
+      return { state: 'degraded', label: '服务降级', detail: '返回语义异常', meta: '/health' };
+    } catch (err) {
+      const aborted = err && err.name === 'AbortError';
+      return {
+        state: 'offline',
+        label: aborted ? '服务唤醒中' : '服务离线',
+        detail: aborted ? '请求超时，可重试' : '无法连接',
+        meta: '/health'
+      };
+    }
+  }
+
+  /** 探测管理后台是否可访问（只读 200 判断，不登录、不取内容）。 */
+  async function probeAdmin() {
+    try {
+      const res = await fetchTimeout(state.origin + '/admin', 15000);
+      if (res.ok) {
+        return { state: 'online', label: '后台可访问', detail: 'HTTP ' + res.status, meta: '/admin' };
+      }
+      return { state: 'degraded', label: '后台受限', detail: 'HTTP ' + res.status, meta: '/admin' };
+    } catch (err) {
+      const aborted = err && err.name === 'AbortError';
+      return {
+        state: 'offline',
+        label: aborted ? '后台唤醒中' : '后台不可达',
+        detail: aborted ? '请求超时' : '无法连接',
+        meta: '/admin'
+      };
+    }
+  }
+
+  /** 渲染一张状态卡片。
+      为什么动态字段走 textContent 赋值而不是 innerHTML：
+      label/detail 来自探活结果（可能含服务端返回的字符串），
+      走 textContent 保证即使服务端被污染也无法注入脚本。 */
+  function renderCard(r) {
+    const card = document.createElement('div');
+    card.className = 'status';
+    card.dataset.state = r.state;
+
+    const lamp = document.createElement('span');
+    lamp.className = 'status__lamp';
+
+    const body = document.createElement('div');
+    body.className = 'status__body';
+
+    const label = document.createElement('p');
+    label.className = 'status__label';
+    label.textContent = r.label;
+
+    const value = document.createElement('p');
+    value.className = 'status__value';
+    value.textContent = shortenHost(state.origin);
+
+    const meta = document.createElement('p');
+    meta.className = 'status__meta';
+    meta.textContent = r.detail + (r.meta ? ' · ' + r.meta : '');
+
+    body.append(label, value, meta);
+    card.append(lamp, body);
+    return card;
+  }
+
+  /** 骨架屏：探测期间的占位，避免布局跳动（CLS）。
+      为什么需要：没有骨架时卡片区域高度为 0，探活回来后整页下跳，
+      免费档冷启动慢时这个跳动格外明显。 */
+  function renderSkeleton() {
+    const card = document.createElement('div');
+    card.className = 'status';
+    card.dataset.state = 'loading';
+
+    const lamp = document.createElement('span');
+    lamp.className = 'status__lamp';
+
+    const body = document.createElement('div');
+    body.className = 'status__body';
+
+    const label = document.createElement('p');
+    label.className = 'status__label';
+    label.textContent = '探测中';
+
+    const value = document.createElement('p');
+    value.className = 'status__value';
+    value.textContent = shortenHost(state.origin);
+
+    body.append(label, value);
+    card.append(lamp, body);
+    return card;
+  }
+
+  /** 同步英雄区指示灯：任一核心项离线即整体示警。 */
+  function syncHero() {
+    const bad = state.results.some((r) => r.state === 'offline');
+    const warn = state.results.some((r) => r.state === 'degraded');
+    if (bad) {
+      els.heroDot.style.background = 'var(--red)';
+      els.heroDotText.textContent = '服务异常';
+    } else if (warn) {
+      els.heroDot.style.background = 'var(--warn)';
+      els.heroDotText.textContent = '服务降级';
+    } else {
+      els.heroDot.style.background = 'var(--green)';
+      els.heroDotText.textContent = '服务运行中';
+    }
+  }
+
+  /** 空状态：探测失败且无任何结果时展示，保证"四态"完整。 */
+  function renderEmpty() {
+    els.grid.textContent = '';
+    const p = document.createElement('p');
+    p.className = 'section__note';
+    p.style.gridColumn = '1 / -1';
+    p.style.textAlign = 'center';
+    p.textContent = '暂无探测结果，请稍后重试。';
+    els.grid.append(p);
+  }
+
+  async function runProbe() {
+    els.grid.textContent = '';
+    els.grid.setAttribute('aria-busy', 'true');
+    els.grid.append(renderSkeleton(), renderSkeleton());
+
+    // 并行探测：两项互不依赖，串行会把等待时间翻倍
+    const results = await Promise.all([probeHealth(), probeAdmin()]);
+    state.results = results;
+
+    els.grid.textContent = '';
+    if (results.length === 0) {
+      renderEmpty();
+    } else {
+      results.forEach((r) => els.grid.append(renderCard(r)));
+    }
+    els.grid.setAttribute('aria-busy', 'false');
+    syncHero();
+  }
+
+  /* ---------- 复制 ---------- */
+
+  async function copyHost() {
+    const text = state.origin;
+    try {
+      // clipboard API 在非安全上下文（http://）下不可用，必须保留降级路径
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.append(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      toast('服务地址已复制');
+    } catch {
+      toast('复制失败，请手动选择地址');
+    }
+  }
+
+  /* ---------- 主题 ---------- */
+
+  const THEME_KEY = 'xuanjue-landing-theme';
+
+  /** @param {'dark'|'light'} next */
+  function applyTheme(next) {
+    document.documentElement.dataset.theme = next;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', next === 'dark' ? '#0B0906' : '#F7F4EC');
+    try { window.localStorage.setItem(THEME_KEY, next); } catch { /* 隐私模式下忽略 */ }
+  }
+
+  function initTheme() {
+    let saved = null;
+    try { saved = window.localStorage.getItem(THEME_KEY); } catch { /* 忽略 */ }
+    // 默认跟随系统，仅在用户显式切换后才固定
+    if (saved !== 'dark' && saved !== 'light') {
+      saved = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    applyTheme(saved);
+  }
+
+  /* ---------- init ---------- */
+
+  function init() {
+    initTheme();
+    els.footerHost.textContent = state.origin;
+    els.copyBtn.addEventListener('click', copyHost);
+    els.themeBtn.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+    });
+
+    // 手动重试按钮：免费档冷启动时用户可主动再探一次，
+    // 不必刷新整页（刷新会丢失当前滚动位置）
+    runProbe();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>

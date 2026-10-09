@@ -64,6 +64,19 @@ export async function build() {
   app.get('/admin', serveAdmin);
   app.get('/admin/', serveAdmin);
 
+  // 服务入口落地页：对外门面（品牌 + 后台入口 + 实时状态 + 接入说明）。
+  // 为什么和 /admin 一样用 readFileSync + send 而不是 @fastify/static：
+  // 这里只需要托管两个静态文件（落地页 + 图标），为一个图标引入整个静态插件
+  // 会让依赖树多一层、也要重新 npm install；内联 send 与现有模式一致、零新增依赖。
+  const landingHtml = fs.readFileSync(new URL('./public/index.html', import.meta.url), 'utf8');
+  const serveLanding = async (req, reply) => reply.type('text/html; charset=utf-8').send(landingHtml);
+  app.get('/', serveLanding);
+  app.get('/index.html', serveLanding);
+  // 图标单独一路：SVG 走 text 类型，否则浏览器按 HTML 解析会显示成空白页
+  const favicon = fs.readFileSync(new URL('./public/icon.svg', import.meta.url));
+  app.get('/favicon.ico', async (req, reply) => reply.type('image/svg+xml').send(favicon));
+  app.get('/icon.svg', async (req, reply) => reply.type('image/svg+xml').send(favicon));
+
   // 错误处理器必须先于路由注册：子作用域在注册时绑定错误处理器，
   // 后置 set 会让路由用 Fastify 默认形状（{error:'Bad Request'}）而不是统一的 {error:'具体原因'}。
   app.setErrorHandler((err, req, reply) => {
