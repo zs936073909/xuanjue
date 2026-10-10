@@ -59,7 +59,8 @@ body{
   background:var(--bg);color:var(--ink);
   font-size:15px;line-height:1.55;
   font-variant-numeric:tabular-nums;
-  max-width:480px;margin:0 auto;position:relative;
+  /* 桌面不再钉死手机窄列：只给内容列限宽，body 自身铺满以承载侧导航（见文末桌面壳层适配） */
+  position:relative;
   overscroll-behavior-y:none;-webkit-overscroll-behavior-y:none;
   /* 暖金氛围光：顶部鎏金晕 + 底部烛影，营造黑金奢华的深度 */
   background-image:
@@ -69,7 +70,8 @@ body{
   background-attachment:fixed;
 }
 .hidden{display:none!important}
-#app{min-height:100%}
+/* 手机：内容列限宽居中（原 body max-width 语义改由容器承担，桌面才铺得开，见文末桌面壳层） */
+#app{max-width:480px;margin:0 auto;min-height:100%}
 .network-bar{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--red);color:#fff;text-align:center;font-size:12px;padding:4px;transform:translateY(-100%);transition:transform .25s ease}
 .network-bar.offline{transform:translateY(0)}
 .network-bar.hidden{display:none}
@@ -1934,5 +1936,113 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .card,.stat-big-card,.stat-group{animation:none}
   .toast.show{transform:translateX(-50%)}
+}
+
+/* ============================================================
+   桌面壳层（≥1024px）—— Phone → Desktop 适配
+   ------------------------------------------------------------
+   原实现把 body 钉死在 480px 手机窄列，桌面宽屏两侧全是黑底，
+   已有 720px 双栏首页也因此从未生效。这里做壳层改造：
+   ① 侧导航常驻（手机底栏的逻辑位置，桌面按平台惯例移到左侧）
+   ② 内容列限宽居中（max-width 收在容器上，不在 body 上）
+   ③ 卡片 hover 抬升、发丝金线、深色氛围光，匹配黑金的桌面气质
+   ④ 固定定位元素（进度条/toast/AI 面板）改为跟随内容列边界
+   ============================================================ */
+@media (min-width:1024px){
+  /* 壳层不参与限宽：侧导航 fixed 在屏幕左缘，内容列自己收宽居中。
+     若在此给 #app 设 max-width，会把 fixed 侧栏一起挤进居中容器里 */
+  #app{max-width:none;padding:0}
+  /* 内容列：解掉手机的 480px 上限，收到 1080px 桌面舒适阅读宽 */
+  #main{max-width:1080px;margin-left:216px;padding:0 40px}
+  /* 免责声明闸门页同样受益于桌面宽列 */
+  #screen-disclaimer{max-width:760px;margin:0 auto;padding:32px 24px}
+
+  /* 侧导航：复用 tabbar 的 DOM 与激活态逻辑，只改布局语义 */
+  .tabbar{
+    position:fixed;top:0;left:0;bottom:0;
+    width:216px;max-width:none;
+    flex-direction:column;
+    justify-content:flex-start;
+    gap:4px;
+    padding:28px 14px;
+    background:linear-gradient(180deg,var(--bg2),var(--bg));
+    border-top:none;
+    border-right:1px solid var(--line2);
+    transform:none;
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+  }
+  [data-theme="light"] .tabbar{background:linear-gradient(180deg,#fff,var(--bg2))}
+  /* 侧栏品牌区：字标 + tagline。
+     tabbar 是 flex column，::before/::after 会成为 flex item，需 flex:none 防止被压缩 */
+  .tabbar::before{
+    content:"玄决";display:block;flex:none;
+    font-family:var(--serif);font-size:30px;font-weight:700;letter-spacing:6px;
+    color:var(--ink);text-align:center;
+    padding:6px 0 10px;margin-bottom:6px;
+    border-bottom:1px solid var(--line);
+  }
+  .tabbar::after{
+    content:"大六壬决策台";display:block;flex:none;
+    font-size:11px;letter-spacing:2px;color:var(--muted);
+    text-align:center;margin-bottom:18px;
+    white-space:nowrap;
+  }
+  .tab{
+    flex:none;display:flex;align-items:center;gap:14px;
+    text-align:left;padding:13px 16px;border-radius:12px;
+    color:var(--ink2);transition:background .16s var(--ease-out),color .16s var(--ease-out);
+  }
+  .tab-ico{
+    font-size:18px;width:24px;text-align:center;flex-shrink:0;
+    font-family:var(--serif);
+  }
+  .tab-txt{font-size:14px;margin-top:0;letter-spacing:1.5px;font-weight:500}
+  /* 激活态：左移指示条改竖向，位置从底栏的「下方」换成侧栏的「左缘」 */
+  .tab.active::after{
+    left:0;top:50%;bottom:auto;
+    width:3px;height:20px;border-radius:0 3px 3px 0;
+    transform:translateY(-50%);
+    animation:tabRailIn .22s var(--ease-out);
+  }
+  @keyframes tabRailIn{from{height:0;opacity:0}to{height:20px;opacity:1}}
+  .tab:hover{background:rgba(232,198,120,.06);color:var(--ink)}
+  [data-theme="light"] .tab:hover{background:rgba(122,94,32,.06)}
+
+  /* 主区左移让位侧导航；底部不必再给底栏留 84px */
+  #page-container{padding:28px 8px 64px}
+
+  /* 卡片：桌面用 hover 抬升替代触屏的 :active 缩放 */
+  #page-container .card{transition:transform .18s var(--ease-out),box-shadow .18s var(--ease-out),border-color .18s var(--ease-out)}
+  #page-container .card:hover{
+    transform:translateY(-2px);
+    border-color:var(--line2);
+    box-shadow:0 2px 4px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  #page-container .card:active{transform:none}
+
+  /* 大标题导航：桌面放大字号，让首页像桌面应用的仪表盘 */
+  .phead.ios-head .ptitle{font-size:36px;letter-spacing:5px}
+  .phead.ios-head{padding:8px 2px 22px}
+  .phead .ptitle{font-size:24px}
+
+  /* 固定定位元素：跟随内容列边界，不再钉屏幕中线 */
+  .app-progress{left:auto;right:0;width:auto;transform:none;max-width:none}
+  /* 桌面 toast 抬高：底部没有 84px 底栏，84px 会悬太空 */
+  .toast{bottom:32px;max-width:52vw}
+  /* 桌面弹层放宽：400px 是手机阅读宽，桌面信息密度可以更高 */
+  .modal{max-width:560px}
+  /* AI 对话：桌面改居中浮层，不再是从底部抽出的抽屉 */
+  .ai-chat-mask{align-items:center}
+  .ai-chat-panel{
+    max-width:720px;height:min(78vh,760px);
+    border-radius:18px;border-bottom:1px solid var(--line);
+    animation:modalIn .25s var(--ease-out);
+  }
+  .ai-chat-panel .ai-chat-header::before{display:none}
+}
+
+/* 宽桌面（≥1440px）：内容列进一步放宽，双栏首页更舒展 */
+@media (min-width:1440px){
+  #main{max-width:1240px}
 }
 
