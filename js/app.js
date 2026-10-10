@@ -4475,12 +4475,12 @@
     const ctx=cv.getContext('2d');
     // 背景：深墨底 + 金色氛围渐变
     const bg=ctx.createLinearGradient(0,0,SHARE_W,SHARE_H);
-    bg.addColorStop(0,'#14100A');bg.addColorStop(.5,'#0B0906');bg.addColorStop(1,'#100C07');
+    bg.addColorStop(0,'#262624');bg.addColorStop(.5,'#1F1E1D');bg.addColorStop(1,'#232120');
     ctx.fillStyle=bg;ctx.fillRect(0,0,SHARE_W,SHARE_H);
     // 罗盘氛围：同心圆 + 刻度
     ctx.save();
     ctx.translate(SHARE_W-60,120);
-    ctx.strokeStyle='rgba(217,169,78,.13)';ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(217,119,87,.13)';ctx.lineWidth=1;
     [80,150,220,290].forEach(r=>{ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();});
     for(let i=0;i<24;i++){
       const a=(i/24)*Math.PI*2;
@@ -4493,12 +4493,12 @@
     ctx.restore();
     // 金色发丝线（顶部）
     const topLine=ctx.createLinearGradient(SHARE_PAD,0,SHARE_W-SHARE_PAD,0);
-    topLine.addColorStop(0,'rgba(217,169,78,0)');topLine.addColorStop(.5,'rgba(217,169,78,.55)');topLine.addColorStop(1,'rgba(217,169,78,0)');
+    topLine.addColorStop(0,'rgba(217,119,87,0)');topLine.addColorStop(.5,'rgba(217,119,87,.55)');topLine.addColorStop(1,'rgba(217,119,87,0)');
     ctx.fillStyle=topLine;ctx.fillRect(SHARE_PAD,64,SHARE_W-SHARE_PAD*2,2);
 
     let y=170;
     // 品牌字标
-    ctx.fillStyle='#F0E6D2';
+    ctx.fillStyle='#F5F4EE';
     ctx.font='600 76px "Songti SC","STSong","SimSun",serif';
     ctx.textAlign='left';ctx.textBaseline='alphabetic';
     ctx.fillText('玄决',SHARE_PAD,y);
@@ -4513,11 +4513,11 @@
     y+=104;
     // 问题类型 + 标题
     ctx.textAlign='left';
-    ctx.fillStyle='#D9A94E';
+    ctx.fillStyle='#D97757';
     ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
     ctx.fillText(esc(c.questionType||'其他'),SHARE_PAD,y);
     y+=54;
-    ctx.fillStyle='#F5EDDD';
+    ctx.fillStyle='#F5F4EE';
     ctx.font='600 52px -apple-system,"PingFang SC",sans-serif';
     shareWrap(ctx,c.title||'未命名案例',SHARE_W-SHARE_PAD*2).slice(0,2).forEach(l=>{ctx.fillText(l,SHARE_PAD,y);y+=64;});
     y+=10;
@@ -4541,16 +4541,16 @@
       // 卡片底
       ctx.fillStyle='rgba(255,255,255,.045)';
       shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.fill();
-      ctx.strokeStyle='rgba(217,169,78,.28)';ctx.lineWidth=1.5;
+      ctx.strokeStyle='rgba(217,119,87,.28)';ctx.lineWidth=1.5;
       shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.stroke();
       let iy=y+56;
       ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
       rows.forEach(r=>{
         ctx.textAlign='left';
-        ctx.fillStyle='rgba(217,169,78,.85)';
+        ctx.fillStyle='rgba(217,119,87,.85)';
         ctx.fillText(r[0],SHARE_PAD+32,iy);
         ctx.textAlign='right';
-        ctx.fillStyle='#F0E6D2';
+        ctx.fillStyle='#F5F4EE';
         ctx.font='500 28px -apple-system,"PingFang SC",sans-serif';
         ctx.fillText(String(r[1]),SHARE_W-SHARE_PAD-32,iy);
         ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
@@ -4565,10 +4565,10 @@
         const cardH=76+lines.length*44+28;
         ctx.fillStyle='rgba(255,255,255,.045)';
         shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.fill();
-        ctx.strokeStyle='rgba(217,169,78,.28)';
+        ctx.strokeStyle='rgba(217,119,87,.28)';
         shareRoundRect(ctx,SHARE_PAD,y,SHARE_W-SHARE_PAD*2,cardH,20);ctx.stroke();
         ctx.textAlign='left';
-        ctx.fillStyle='rgba(217,169,78,.85)';
+        ctx.fillStyle='rgba(217,119,87,.85)';
         ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
         ctx.fillText('盘面 · '+esc(one.name||''),SHARE_PAD+32,y+52);
         ctx.fillStyle='rgba(240,230,210,.75)';
@@ -4588,7 +4588,7 @@
     }
     // 我的判断（可选）
     if(c.myJudge&&c.myJudge.trim()){
-      ctx.fillStyle='rgba(217,169,78,.9)';
+      ctx.fillStyle='rgba(217,119,87,.9)';
       ctx.font='500 24px -apple-system,"PingFang SC",sans-serif';
       ctx.fillText('我的判断',SHARE_PAD,y);y+=40;
       ctx.fillStyle='rgba(240,230,210,.72)';
@@ -4601,16 +4601,16 @@
       ctx.font='500 26px -apple-system,"PingFang SC",sans-serif';
       const bw=ctx.measureText(label).width+44,bh=54;
       const bx=SHARE_PAD,by=Math.min(y+16,SHARE_H-260);
-      ctx.fillStyle='rgba(217,169,78,.16)';
+      ctx.fillStyle='rgba(217,119,87,.16)';
       shareRoundRect(ctx,bx,by,bw,bh,bh/2);ctx.fill();
-      ctx.strokeStyle='rgba(217,169,78,.5)';
+      ctx.strokeStyle='rgba(217,119,87,.5)';
       shareRoundRect(ctx,bx,by,bw,bh,bh/2);ctx.stroke();
-      ctx.fillStyle='#D9A94E';ctx.textAlign='left';
+      ctx.fillStyle='#D97757';ctx.textAlign='left';
       ctx.fillText(label,bx+22,by+35);
     }
     // 底部免责角标 + 应用署名
     const botLine=ctx.createLinearGradient(SHARE_PAD,0,SHARE_W-SHARE_PAD,0);
-    botLine.addColorStop(0,'rgba(217,169,78,0)');botLine.addColorStop(.5,'rgba(217,169,78,.35)');botLine.addColorStop(1,'rgba(217,169,78,0)');
+    botLine.addColorStop(0,'rgba(217,119,87,0)');botLine.addColorStop(.5,'rgba(217,119,87,.35)');botLine.addColorStop(1,'rgba(217,119,87,0)');
     ctx.fillStyle=botLine;ctx.fillRect(SHARE_PAD,SHARE_H-186,SHARE_W-SHARE_PAD*2,1);
     ctx.textAlign='left';
     ctx.fillStyle='rgba(240,230,210,.45)';
@@ -4618,7 +4618,7 @@
     shareWrap(ctx,'仅供个人文化研究与娱乐参考，不构成医疗、法律、投资、婚姻、职业等重大决策依据。',SHARE_W-SHARE_PAD*2)
       .slice(0,2).forEach((l,i)=>ctx.fillText(l,SHARE_PAD,SHARE_H-142+i*32));
     ctx.textAlign='right';
-    ctx.fillStyle='rgba(217,169,78,.6)';
+    ctx.fillStyle='rgba(217,119,87,.6)';
     ctx.font='400 22px -apple-system,"PingFang SC",sans-serif';
     ctx.fillText('玄决 · 大六壬决策台',SHARE_W-SHARE_PAD,SHARE_H-142);
     return cv;

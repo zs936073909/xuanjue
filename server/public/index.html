@@ -3,40 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0B0906">
+<meta name="theme-color" content="#1F1E1D">
 <meta name="description" content="玄决 · 大六壬决策台 —— 个人时课助手。多厂商 AI 模型池、难度分级路由、账号与用量管理。">
 <meta name="robots" content="index, follow">
 <title>玄决 · 大六壬决策台</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
 /* ============================================================
-   玄决服务入口 · Black & Gold 黑金奢华语言
+   玄决服务入口 · Claude 式暖色语言（暖奶 · 暖墨 · 朱砂陶土）
    设计变量与主 App（css/style.css）完全同源，确保门面与产品不割裂。
    为什么用 CSS 自定义属性而不是 SCSS 变量：
    服务端是零构建直出，浏览器要能原生切换深浅主题，
    :root + [data-theme] 双层定义是唯一无需编译期替换的方案。
    ============================================================ */
 :root {
-  --bg: #0B0906;
-  --bg2: #12100A;
-  --card: #171309;
-  --card2: #201B0F;
-  --line: rgba(232, 198, 120, .08);
-  --line2: rgba(232, 198, 120, .16);
-  --ink: #F0EDE6;
-  --ink2: #B5AC99;
-  --muted: #7D7462;
-  --gold: #D9A94E;
-  --gold2: #F0CE85;
-  --gold3: #9A7B33;
-  --red: #F6465D;
-  --green: #2EBD85;
-  --warn: #E8A33D;
-  --accent-soft: rgba(217, 169, 78, .12);
-  --accent-border: rgba(217, 169, 78, .42);
-  --shad-low: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .22);
-  --shad-med: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
-  --shad-high: 0 16px 44px rgba(0, 0, 0, .55), 0 4px 12px rgba(0, 0, 0, .35);
+  color-scheme: dark;
+  --bg: #1F1E1D;
+  --bg2: #262624;
+  --card: #262624;
+  --card2: #30302E;
+  --line: rgba(245, 244, 238, .09);
+  --line2: rgba(245, 244, 238, .16);
+  --ink: #F5F4EE;
+  --ink2: #C2BFB8;
+  --muted: #8F8B81;
+  --accent: #D97757;
+  --accent-2: #E8956F;
+  --accent-3: #B25B38;
+  --red: #E5615B;
+  --green: #43A67E;
+  --warn: #E0A45E;
+  --accent-soft: rgba(217, 119, 87, .12);
+  --accent-border: rgba(217, 119, 87, .42);
+  --shad-low: 0 1px 2px rgba(0, 0, 0, .28), 0 4px 14px rgba(0, 0, 0, .18);
+  --shad-med: 0 8px 24px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .2);
+  --shad-high: 0 16px 44px rgba(0, 0, 0, .4), 0 4px 12px rgba(0, 0, 0, .24);
   --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -45,26 +46,27 @@
 }
 
 [data-theme="light"] {
-  --bg: #F7F4EC;
-  --bg2: #F1EDE2;
+  color-scheme: light;
+  --bg: #F5F4EE;
+  --bg2: #EFEDE6;
   --card: #FFFFFF;
-  --card2: #F6F1E4;
-  --line: rgba(122, 94, 32, .12);
-  --line2: rgba(122, 94, 32, .22);
-  --ink: #20180A;
-  --ink2: #5C5240;
-  --muted: #9A8F77;
-  --gold: #A97F2A;
-  --gold2: #C69F4A;
-  --gold3: #8A6A26;
-  --red: #D6455C;
-  --green: #1E9E6E;
-  --warn: #C07F1F;
-  --accent-soft: rgba(169, 127, 42, .1);
-  --accent-border: rgba(169, 127, 42, .38);
-  --shad-low: 0 1px 2px rgba(60, 45, 10, .06), 0 4px 14px rgba(60, 45, 10, .07);
-  --shad-med: 0 8px 24px rgba(60, 45, 10, .1), 0 2px 6px rgba(60, 45, 10, .06);
-  --shad-high: 0 16px 44px rgba(60, 45, 10, .14), 0 4px 12px rgba(0, 0, 0, .08);
+  --card2: #FAF9F5;
+  --line: rgba(61, 57, 41, .10);
+  --line2: rgba(61, 57, 41, .18);
+  --ink: #3D3929;
+  --ink2: #6B6752;
+  --muted: #8A8578;
+  --accent: #B25B38;
+  --accent-2: #A04E2E;
+  --accent-3: #8F4628;
+  --red: #C94F48;
+  --green: #2E8B63;
+  --warn: #B97F2C;
+  --accent-soft: rgba(178, 91, 56, .10);
+  --accent-border: rgba(178, 91, 56, .38);
+  --shad-low: 0 1px 2px rgba(63, 58, 48, .06), 0 4px 14px rgba(63, 58, 48, .07);
+  --shad-med: 0 8px 24px rgba(63, 58, 48, .1), 0 2px 6px rgba(63, 58, 48, .06);
+  --shad-high: 0 16px 44px rgba(63, 58, 48, .14), 0 4px 12px rgba(0, 0, 0, .08);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -95,7 +97,7 @@ body {
 /* 可访问性：键盘焦点必须有可见焦点环，且对比度达标。
    为什么用 outline 而不是 box-shadow：outline 在 Windows 高对比度模式下不会被强制覆盖。 */
 :focus-visible {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
 }
@@ -173,7 +175,7 @@ body {
 /* 主按钮：鎏金渐变。为什么用渐变不用纯色 —— 纯色大面积金色容易显"廉价贴纸"，
    极窄的明暗渐变（同色系内）能模拟金属受光，这是"高级感"的关键细节。 */
 .btn--primary {
-  background: linear-gradient(180deg, var(--gold2), var(--gold));
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
   color: #1A1305;
   box-shadow: var(--shad-low), inset 0 1px 0 rgba(255, 255, 255, .25);
 }
@@ -190,7 +192,7 @@ body {
 }
 
 .btn--ghost:hover {
-  color: var(--gold);
+  color: var(--accent);
   border-color: var(--accent-border);
   background: var(--accent-soft);
 }
@@ -203,7 +205,7 @@ body {
   color: var(--ink2);
 }
 
-.btn--icon:hover { color: var(--gold); border-color: var(--accent-border); }
+.btn--icon:hover { color: var(--accent); border-color: var(--accent-border); }
 
 .btn[aria-disabled="true"], .btn:disabled {
   opacity: .5;
@@ -228,7 +230,7 @@ body {
   font-weight: 500;
   letter-spacing: .18em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--accent);
   padding: 6px 14px;
   border: 1px solid var(--accent-border);
   border-radius: 999px;
@@ -253,7 +255,7 @@ body {
   margin: 0 0 6px;
   /* 标题鎏金：为什么是 background-clip 而不是纯色 —— 
      同色系微渐变让大字有"烫金"质感，这是黑金主题里最省力的高级感手法。 */
-  background: linear-gradient(180deg, var(--ink) 30%, var(--gold2) 115%);
+  background: linear-gradient(180deg, var(--ink) 30%, var(--accent-2) 115%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -351,7 +353,7 @@ body {
 /* 状态灯四态：未知/加载=呼吸灰、在线=绿、降级=琥珀、离线=红。
    为什么用呼吸动画而不是常亮：静态点像装饰，呼吸才传达"这是实时探测的结果"。 */
 .status[data-state="loading"] .status__lamp {
-  background: var(--gold);
+  background: var(--accent);
   animation: breathe 1.4s var(--ease-in-out) infinite;
 }
 
@@ -438,7 +440,7 @@ body {
   border-radius: 10px;
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
-  color: var(--gold);
+  color: var(--accent);
   margin-bottom: 16px;
 }
 
@@ -485,7 +487,7 @@ body {
   font-family: var(--serif);
   font-size: 15px;
   font-weight: 600;
-  color: var(--gold);
+  color: var(--accent);
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
 }
@@ -513,7 +515,7 @@ body {
   border-radius: 5px;
   background: var(--card2);
   border: 1px solid var(--line2);
-  color: var(--gold2);
+  color: var(--accent-2);
   word-break: break-all;
 }
 
@@ -539,7 +541,7 @@ body {
 }
 
 .footer__legal a { color: var(--ink2); text-decoration: none; border-bottom: 1px solid var(--line2); }
-.footer__legal a:hover { color: var(--gold); border-color: var(--accent-border); }
+.footer__legal a:hover { color: var(--accent); border-color: var(--accent-border); }
 
 /* ---------- Toast ---------- */
 .toast {
@@ -589,10 +591,10 @@ body {
   <header class="nav">
     <a class="nav__brand" href="/" aria-label="玄决首页">
       <svg class="nav__mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <circle cx="16" cy="16" r="13" stroke="var(--gold)" stroke-width="1.3"/>
-        <circle cx="16" cy="16" r="7.5" stroke="var(--gold)" stroke-width=".8" opacity=".55"/>
-        <path d="M16 3v26M3 16h26" stroke="var(--gold)" stroke-width="1" opacity=".8"/>
-        <path d="M16 8.5 20.5 16 16 23.5 11.5 16z" fill="var(--gold)" opacity=".9"/>
+        <circle cx="16" cy="16" r="13" stroke="var(--accent)" stroke-width="1.3"/>
+        <circle cx="16" cy="16" r="7.5" stroke="var(--accent)" stroke-width=".8" opacity=".55"/>
+        <path d="M16 3v26M3 16h26" stroke="var(--accent)" stroke-width="1" opacity=".8"/>
+        <path d="M16 8.5 20.5 16 16 23.5 11.5 16z" fill="var(--accent)" opacity=".9"/>
       </svg>
       玄决
     </a>
@@ -760,7 +762,7 @@ body {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite">
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--gold)" stroke-width="2" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent)" stroke-width="2" aria-hidden="true">
     <path d="M20 6 9 17l-5-5"/>
   </svg>
   <span id="toast-text"></span>
@@ -1038,7 +1040,7 @@ body {
   function applyTheme(next) {
     document.documentElement.dataset.theme = next;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', next === 'dark' ? '#0B0906' : '#F7F4EC');
+    if (meta) meta.setAttribute('content', next === 'dark' ? '#1F1E1D' : '#F5F4EE');
     try { window.localStorage.setItem(THEME_KEY, next); } catch { /* 隐私模式下忽略 */ }
   }
 

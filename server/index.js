@@ -146,13 +146,13 @@ export async function build() {
   // 为什么先声明再被路由引用：函数体内引用 const 有 TDZ 风险，按声明顺序排干净。
   const app404 = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>未找到 · 玄决</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0B0906;color:#F0EDE6;
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#1F1E1D;color:#F5F4EE;
 font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC",sans-serif;text-align:center;padding:24px}
-.m{font-family:"Noto Serif SC","Songti SC",serif;font-size:44px;letter-spacing:.2em;color:#D9A94E;margin:0 0 10px}
-p{color:#7D7462;font-size:14px;line-height:1.8;margin:0 0 22px}
-a{color:#D9A94E;border:1px solid rgba(217,169,78,.42);border-radius:8px;padding:10px 22px;
+.m{font-family:"Noto Serif SC","Songti SC",serif;font-size:44px;letter-spacing:.2em;color:#D97757;margin:0 0 10px}
+p{color:#8F8B81;font-size:14px;line-height:1.8;margin:0 0 22px}
+a{color:#D97757;border:1px solid rgba(217,119,87,.42);border-radius:8px;padding:10px 22px;
 font-size:14px;text-decoration:none;display:inline-flex;align-items:center}
-a:hover{background:rgba(217,169,78,.12)}</style></head>
+a:hover{background:rgba(217,119,87,.12)}</style></head>
 <body><div><p class="m">玄决</p>
 <p>这里没有对应内容。<br>可能链接已失效，或资源尚未随本次部署发布。</p>
 <a href="${APP_PREFIX}">回到玄决 App</a></div></body></html>`;

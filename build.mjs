@@ -169,7 +169,7 @@ async function buildWww() {
 function containerIndexHtml() {
   let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const remove = [
-    '<meta name="theme-color" content="#0B0906">\n',
+    '<meta name="theme-color" content="#1F1E1D">\n',
     '<meta name="mobile-web-app-capable" content="yes">\n',
     '<meta name="apple-mobile-web-app-capable" content="yes">\n',
     '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n',
