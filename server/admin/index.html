@@ -232,6 +232,24 @@
     max-height: 320px;
   }
 
+  /* ---------- 新建账号令牌交付 ---------- */
+  .cred-row {
+    display: grid; grid-template-columns: 84px 1fr auto; gap: 10px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--line);
+  }
+  .cred-row:last-of-type { border-bottom: 0; }
+  .cred-k { color: var(--ink-soft); font-size: 12px; }
+  /* 令牌必须可整行选中、可复制，不允许换行截断；窄屏下允许断行但保留等宽 */
+  .cred-v {
+    font-size: 13px; word-break: break-all; user-select: all;
+    background: var(--paper-raised); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 8px 10px; margin: 0;
+  }
+  @media (max-width: 720px) {
+    .cred-row { grid-template-columns: 72px 1fr; }
+    .cred-row button { grid-column: 2; justify-self: start; }
+  }
+
   /* ---------- toast ---------- */
   #toast {
     position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
@@ -463,7 +481,61 @@
   </div>
 </div>
 
+<!-- 新建账号的令牌交付模态：令牌只出现一次，必须给用户一个"能抄走、能复制、看完能确认"的容器，
+     原生 alert() 做不到复制与逐行阅读，且移动端会被系统对话框裁掉长字符串。 -->
+<div class="overlay hidden" id="credOverlay" role="dialog" aria-modal="true" aria-labelledby="credTitle">
+  <div class="drawer" id="credBox">
+    <div class="drawer-head">
+      <h3 id="credTitle">账号已创建</h3>
+      <button class="ghost" id="credClose">关闭</button>
+    </div>
+    <div class="drawer-body">
+      <p class="small faint" style="margin:0 0 14px">令牌与恢复口令<b>只显示这一次</b>。请立刻复制或抄下并转交给使用者，关闭后无法再次查看。</p>
+      <div class="cred-row">
+        <span class="cred-k">同步令牌</span>
+        <code class="cred-v mono" id="credToken"></code>
+        <button class="ghost small" id="credCopyToken" type="button">复制</button>
+      </div>
+      <div class="cred-row">
+        <span class="cred-k">恢复口令</span>
+        <code class="cred-v mono" id="credRecovery"></code>
+        <button class="ghost small" id="credCopyRecovery" type="button">复制</button>
+      </div>
+      <div class="cred-row">
+        <span class="cred-k">令牌前 6 位</span>
+        <code class="cred-v mono" id="credPrefix"></code>
+        <button class="ghost small" id="credCopyPrefix" type="button">复制</button>
+      </div>
+      <div style="margin-top:18px">
+        <button class="primary" id="credDone" type="button" style="width:100%">我已保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
+
+<!-- 通用询问模态：封禁要填原因、删除要二次确认。
+     原生 prompt/confirm 在各浏览器样式割裂、无法校验、移动端体验差，故统一收口到这一个组件。 -->
+<div class="overlay hidden" id="askOverlay" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+  <div class="drawer" id="askBox" style="width:min(440px,100vw)">
+    <div class="drawer-head">
+      <h3 id="askTitle">请确认</h3>
+      <button class="ghost" id="askClose">关闭</button>
+    </div>
+    <div class="drawer-body">
+      <p id="askMsg" style="margin:0 0 14px;line-height:1.75"></p>
+      <div id="askFieldWrap" class="hidden">
+        <label id="askFieldLabel" for="askField"></label>
+        <input id="askField" type="text" autocomplete="off">
+      </div>
+      <div class="btn-row" style="margin-top:18px;justify-content:flex-end">
+        <button class="ghost" id="askCancel" type="button">取消</button>
+        <button class="primary" id="askOk" type="button">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -713,7 +785,12 @@ function renderUser(detail, data) {
 
   const susBtn = $('#suspendBtn');
   if (susBtn) susBtn.addEventListener('click', async () => {
-    const reason = prompt('封禁原因（用户登录时会看到）：', '该账号已被管理员停用。');
+    const reason = await ask({
+      title: '封禁账号',
+      message: '封禁后该账号的所有设备都会立即失效，用户在 App 内会看到你填写的封禁原因。',
+      field: { label: '封禁原因（用户登录时会看到）', value: '该账号已被管理员停用。', required: true, requiredMsg: '请填写封禁原因' },
+      okText: '确认封禁'
+    });
     if (reason === null) return;
     try {
       await api(`/v1/admin/users/${u.id}/suspend`, { method: 'POST', body: { reason } });
@@ -732,7 +809,12 @@ function renderUser(detail, data) {
   });
 
   $('#deleteUserBtn').addEventListener('click', async () => {
-    if (!confirm('确定永久删除该账号？云端数据（案例/对话/生辰）会一并清空，不可恢复。')) return;
+    const ok = await ask({
+      title: '删除账号',
+      message: '确定永久删除该账号？云端数据（案例/对话/生辰）会一并清空，不可恢复。',
+      okText: '永久删除'
+    });
+    if (ok === null) return;
     try {
       await api('/v1/admin/users/' + u.id, { method: 'DELETE' });
       toast('账号已删除');
@@ -744,16 +826,121 @@ function renderUser(detail, data) {
   $('#drawerOverlay').classList.remove('hidden');
 }
 
+// ---------- 通用询问模态 ----------
+// 返回 Promise：确认 → 解析为用户输入（无输入框时为空串）；取消 → null
+function ask(opts) {
+  return new Promise((resolve) => {
+    const ov = $('#askOverlay');
+    $('#askTitle').textContent = opts.title || '请确认';
+    $('#askMsg').textContent = opts.message || '';
+    const wrap = $('#askFieldWrap');
+    const field = $('#askField');
+    if (opts.field) {
+      $('#askFieldLabel').textContent = opts.field.label || '';
+      field.value = opts.field.value || '';
+      wrap.classList.remove('hidden');
+    } else {
+      field.value = '';
+      wrap.classList.add('hidden');
+    }
+    $('#askOk').textContent = opts.okText || '确定';
+
+    let done = false;
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      ov.classList.add('hidden');
+      cleanup();
+      resolve(val);
+    };
+    const onOk = () => {
+      const v = wrap.classList.contains('hidden') ? '' : field.value.trim();
+      // 有输入框但必填且为空 → 不关闭，原地提示（不能让用户对着空原因点确定）
+      if (opts.field && opts.field.required && !v) {
+        toast(opts.field.requiredMsg || '请填写内容');
+        field.focus();
+        return;
+      }
+      finish(v);
+    };
+    const onCancel = () => finish(null);
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel();
+      else if (e.key === 'Enter' && !wrap.classList.contains('hidden')) { e.preventDefault(); onOk(); }
+    };
+    const onBackdrop = (e) => { if (e.target === e.currentTarget) onCancel(); };
+    function cleanup() {
+      $('#askOk').removeEventListener('click', onOk);
+      $('#askCancel').removeEventListener('click', onCancel);
+      $('#askClose').removeEventListener('click', onCancel);
+      ov.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+    }
+    $('#askOk').addEventListener('click', onOk);
+    $('#askCancel').addEventListener('click', onCancel);
+    $('#askClose').addEventListener('click', onCancel);
+    ov.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+
+    ov.classList.remove('hidden');
+    // 有输入框聚焦输入框，否则聚焦确定键：两种场景键盘流都最短
+    setTimeout(() => { (opts.field ? field : $('#askOk')).focus(); }, 0);
+  });
+}
+
 // ---------- 新建测试账号 ----------
+// 令牌只出现一次：用模态承载而不是 alert()，以便逐行展示 + 一键复制 + 关闭前确认已读。
+function openCred(r) {
+  $('#credToken').textContent = r.token || '';
+  $('#credRecovery').textContent = r.recovery || '';
+  $('#credPrefix').textContent = String(r.token || '').slice(0, 6);
+  $('#credOverlay').classList.remove('hidden');
+  // 打开即聚焦"我已保存"，回车即可关闭，键盘用户不必tab很远
+  setTimeout(() => { const b = $('#credDone'); if (b) b.focus(); }, 0);
+}
+function closeCred() { $('#credOverlay').classList.add('hidden'); }
+
+// 复制带降级：非安全上下文（http://）没有 clipboard API，退回 execCommand
+async function copyCred(text, label) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    toast(label + '已复制');
+  } catch {
+    toast('复制失败，请手动选中复制');
+  }
+}
+
 async function createUser() {
   try {
     const r = await api('/v1/admin/users', { method: 'POST', body: { note: '后台创建' } });
-    alert('测试账号已创建（令牌只显示这一次，请保存）：\n\n令牌：' + r.token + '\n恢复口令：' + r.recovery);
+    openCred(r);
     loadUsers();
   } catch (e) { toast('创建失败：' + e.message); }
 }
 $('#newUserBtn').addEventListener('click', createUser);
 $('#quickNewUser').addEventListener('click', createUser);
+
+$('#credCopyToken').addEventListener('click', () => copyCred($('#credToken').textContent, '同步令牌'));
+$('#credCopyRecovery').addEventListener('click', () => copyCred($('#credRecovery').textContent, '恢复口令'));
+$('#credCopyPrefix').addEventListener('click', () => copyCred($('#credPrefix').textContent, '令牌前 6 位'));
+$('#credDone').addEventListener('click', closeCred);
+$('#credClose').addEventListener('click', closeCred);
+$('#credOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeCred(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#credOverlay').classList.contains('hidden')) closeCred();
+});
 
 // ---------- AI 模型池 ----------
 let REVEAL = false;
@@ -835,7 +1022,12 @@ $('#viewPresets').addEventListener('click', async () => {
 });
 
 $('#importPresets').addEventListener('click', async () => {
-  if (!confirm('导入三家推荐厂商（魔搭 / 阶跃 / 书生）的端点与三档模型？已存在的不会重复创建，Key 不受影响。')) return;
+  const ok = await ask({
+    title: '导入推荐配置',
+    message: '导入三家推荐厂商（魔搭 / 阶跃 / 书生）的端点与三档模型？已存在的不会重复创建，Key 不受影响。',
+    okText: '导入'
+  });
+  if (ok === null) return;
   try {
     const r = await api('/v1/admin/ai/presets/import', { method: 'POST', body: {} });
     toast(`已导入 ${r.providers} 个厂商、${r.models} 个模型。接下来贴各家 API Key 即可。`);
@@ -898,7 +1090,10 @@ $('#view-pool').addEventListener('click', async (e) => {
   const toggle = e.target.closest('[data-key-activate],[data-key-disable]');
   try {
     if (del) {
-      if (!confirm('确定删除？')) return;
+      const what = del.dataset.delProvider ? '该厂商（其下模型与 Key 会一并删除）'
+        : del.dataset.delModel ? '该模型' : '该 API Key';
+      const ok = await ask({ title: '删除确认', message: '确定删除' + what + '？此操作不可恢复。', okText: '删除' });
+      if (ok === null) return;
       if (del.dataset.delProvider) await api('/v1/admin/ai/providers/' + del.dataset.delProvider, { method: 'DELETE' });
       if (del.dataset.delModel) await api('/v1/admin/ai/models/' + del.dataset.delModel, { method: 'DELETE' });
       if (del.dataset.delKey) await api('/v1/admin/ai/keys/' + del.dataset.delKey, { method: 'DELETE' });

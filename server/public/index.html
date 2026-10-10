@@ -620,12 +620,24 @@ body {
         账号与数据云端托管，一切皆由你掌控。
       </p>
       <div class="hero__cta">
-        <a class="btn btn--primary" href="/admin">
+        <!-- 主行动位给「打开 App」而不是「进后台」：对外访客的第一诉求是"现在就排一盘"，
+             后台是站长入口，降级为次级。这个顺序就是"能打开能用"的第一落点。 -->
+        <!-- 带尾斜杠是有意的：App 里所有资源都是相对路径引用（css/js/data），
+             只有 /app/ 能让这些相对路径落到 /app/ 前缀下；写 /app 会多吃一次 301 跳转。 -->
+        <a class="btn btn--primary" href="/app/">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>
+          </svg>
+          打开玄决 App
+        </a>
+        <a class="btn btn--ghost" href="/admin">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>
           </svg>
-          进入管理后台
+          管理后台
         </a>
+        <!-- 复制服务地址放在同一行：三个控件一个容器，视觉重量从左到右递减，
+             主 → 次 → 工具，符合"先打开、再管理、要地址给地址"的使用动线。 -->
         <button class="btn btn--ghost" id="copy-host" type="button">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
             <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -705,7 +717,7 @@ body {
     <section class="section" aria-labelledby="connect-title">
       <div class="section__head">
         <h2 class="section__title" id="connect-title">接入方式</h2>
-        <p class="section__note">App 内填入下方服务地址即可连上云端</p>
+        <p class="section__note">App 与云端同源部署，打开即已连上，无需手动填地址</p>
       </div>
 
       <div class="steps">
@@ -713,21 +725,21 @@ body {
           <div class="step__no" aria-hidden="true"></div>
           <div>
             <h3 class="step__title">打开玄决 App</h3>
-            <p class="step__text">进入「我的 → 云同步」页面，找到服务地址设置项。</p>
+            <p class="step__text">点上方「打开玄决 App」即进入完整应用，课体起局、典籍查询全部可用。</p>
           </div>
         </div>
         <div class="step">
           <div class="step__no" aria-hidden="true"></div>
           <div>
-            <h3 class="step__title">填入服务地址</h3>
-            <p class="step__text">将本页服务地址填入，注意必须以 <code>https://</code> 开头且不带结尾斜杠。</p>
+            <h3 class="step__title">云端自动连接</h3>
+            <p class="step__text">服务地址默认取当前站点同源地址，App 首次启动即自动识别，不必手动填写。</p>
           </div>
         </div>
         <div class="step">
           <div class="step__no" aria-hidden="true"></div>
           <div>
-            <h3 class="step__title">开启同步</h3>
-            <p class="step__text">点「立即同步」，状态显示已连接即完成接入，此后案例与对话自动备份。</p>
+            <h3 class="step__title">注册或登录账号</h3>
+            <p class="step__text">在「我的 → 云同步」注册账号，此后案例与对话自动备份，多设备共享同一份进度。</p>
           </div>
         </div>
       </div>

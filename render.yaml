@@ -3,15 +3,22 @@
 #
 # 数据库用 Neon（外部托管，不删数据）——DATABASE_URL 在部署时填，不写进仓库。
 # 管理员账号已在 Neon 建好（洋芋/土豆），故启动命令不跑 admin-init、不存口令。
+#
+# 【2026-10】为什么去掉 rootDir: server（这是 /app 能不能上线的分水岭）：
+#   Render 官方明确「服务根目录之外的文件，在构建期与运行期都不可用」。
+#   而 App 前端产物 www/（15MB，build.mjs 的输出，Capacitor 也用同一份）位于仓库根，
+#   一旦 rootDir: server，Render 的构建与运行环境里根本看不到 www/，
+#   server/www 又是指向 ../www 的符号链接且不入库 —— 结果 /app 必然 404。
+#   因此这里不设 rootDir，让服务根就是仓库根；www/ 已随仓库入库，直接可用，
+#   构建命令也就不需要在云端重建前端（省一次 esbuild 安装与构建，也少了构建漂移）。
 services:
   - type: web
     name: xuanjue-server
     runtime: node
     plan: free
     region: oregon            # 免费档可选区域有限；如后台可选 Singapore/Tokyo 可改，离 Neon(ap-southeast-1) 更近
-    rootDir: server
-    buildCommand: npm install
-    startCommand: node scripts/db-init.mjs && node index.js
+    buildCommand: npm install --prefix server --no-audit --no-fund
+    startCommand: cd server && node scripts/db-init.mjs && node index.js
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:

@@ -84,7 +84,15 @@
   function cryptoOk() { return true; }
 
   // ---------- 后端地址与会话持久化 ----------
-  function getServer() { return String(lsGet(KEY_CONFIG) || '').trim(); }
+  // 默认地址取「当前页面同源」：落地页 / App / 云端本来就部署在同一个 Render 服务下，
+  // 用户打开即已连上，不必手输地址 —— 这是「能打开就能用」的关键一步。
+  // 用相对地址 '' 表达同源，fetch 会自己解析成 origin，省掉一次 origin 拼接。
+  // 用户在设置里显式填过地址时，始终以用户填的为准（覆盖默认）。
+  function sameOriginDefault() { return ''; }
+  function getServer() {
+    const saved = String(lsGet(KEY_CONFIG) || '').trim();
+    return saved || sameOriginDefault();
+  }
   function setServer(url) {
     const u = String(url || '').trim().replace(/\/+$/, '');
     if (u && !/^https?:\/\//i.test(u)) throw new Error('服务器地址需以 http:// 或 https:// 开头');
@@ -96,7 +104,8 @@
   function saveSession() {
     if (!state.refresh) { lsDel(KEY_SESSION); return; }
     lsSaveJson(KEY_SESSION, {
-      server: state.server, userId: state.userId, prefix: state.prefix,
+      // server 为空串是合法值（同源部署），必须显式存 ''，不能靠默认值补
+      server: state.server || '', userId: state.userId, prefix: state.prefix,
       access: state.access, refresh: state.refresh, deviceName: state.deviceName,
       revs: state.revs, at: Date.now()
     });
@@ -104,7 +113,8 @@
 
   async function loadSession() {
     const s = lsJson(KEY_SESSION, null);
-    if (!s || !s.server || !s.refresh) return false;
+    // server 为 '' 合法（同源），只有"字段缺失"才算坏会话
+    if (!s || !s.refresh || typeof s.server !== 'string') return false;
     state.server = s.server;
     state.userId = s.userId || null;
     state.prefix = s.prefix || '';
@@ -136,9 +146,8 @@
     opts = opts || {};
     if (retry === undefined) retry = true;
     const base = state.server || getServer();
-    if (!base) throw new Error('请先填写服务器地址');
-
-    let url = base + path;
+    // base 为空串 = 同源（默认部署形态），fetch 用相对路径请求，浏览器自动带上 origin
+    let url = (base || '') + path;
     const qs = typeof opts.query === 'string'
       ? opts.query.replace(/^\?/, '')
       : Object.keys(opts.query || {})
@@ -219,7 +228,6 @@
   async function register(token, recovery) {
     const e1 = checkToken(token); if (e1) throw new Error(e1);
     const e2 = checkRecovery(recovery); if (e2) throw new Error(e2);
-    if (!getServer()) throw new Error('请先填写服务器地址');
     state.status = 'busy';
     try {
       const r = await req('/v1/auth/register', {
@@ -244,7 +252,6 @@
   // 解锁 = 已有令牌登录
   async function unlock(token) {
     const e1 = checkToken(token); if (e1) throw new Error(e1);
-    if (!getServer()) throw new Error('请先填写服务器地址');
     state.status = 'busy';
     try {
       const r = await req('/v1/auth/unlock', {
@@ -268,7 +275,6 @@
   // 找回：令牌前 6 位 + 恢复口令 → 换发新令牌。明文架构下云端数据立刻可用。
   async function recover(prefix, recovery) {
     const e2 = checkRecovery(recovery); if (e2) throw new Error(e2);
-    if (!getServer()) throw new Error('请先填写服务器地址');
     state.status = 'busy';
     try {
       const r = await req('/v1/auth/recover', {
@@ -452,24 +458,28 @@
   // 节流同步：5 分钟内不重复全量同步；本机有改动时冷却缩到 30 秒
   const THROTTLE = 5 * 60 * 1000;
   async function maybeSync() {
-    if (!isReady() || !getServer()) return null;
+    if (!isReady()) return null;
     if (global.navigator && navigator.onLine === false) return null;
     const cool = dirtySince() ? 30 * 1000 : THROTTLE;
     if (state.lastSyncAt && Date.now() - state.lastSyncAt < cool) return null;
     return syncAll().catch(() => null);
   }
 
-  function isReady() { return !!(state.access && state.server); }
+  // isReady 只认「已登录」，不再要求地址非空：同源部署下地址默认就是当前站点
+  function isReady() { return !!(state.access && state.refresh); }
   function isLoggedIn() { return !!state.refresh; }
+  // 三态收敛为两态：noconfig 已不可能出现（地址永远有默认值），保留该返回值
+  // 只为不破坏既有调用方的分支判断
   function status() {
-    if (!state.server) return 'noconfig';
     if (!state.refresh) return 'idle';
     return 'ready';
   }
 
-  // 启动：恢复会话。返回 noconfig | idle | ready
+  // 启动：恢复会话。返回 idle | ready
   async function init() {
-    setServer(getServer() || '');
+    // 关键顺序：先把 state.server 置成「用户填的地址 或 同源默认」，再尝试恢复会话。
+    // 若顺序反了（先 loadSession），loadSession 里的 refresh() 会用到旧 server 或空 server。
+    setServer(getServer());
     state.deviceName = deviceName();
     if (!isLoggedIn()) return status();
     await loadSession();

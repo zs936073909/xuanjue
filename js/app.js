@@ -4793,8 +4793,10 @@
   // ---------- 云同步（纯令牌模型）----------
   // 只显示状态与开关，不缓存令牌：令牌同时是客户端的派密口令，
   // 落地到 DOM/storage 都会把账号控制权交出去，故一律由用户手输。
+  // noconfig 已随 cloud.js 的「同源默认地址」消失：地址永远有值，未登录就是唯一初始态。
+  // 保留 key 只是为了让历史渲染分支不炸，正常不会命中。
   const CLOUD_STATES={
-    noconfig:{ico:'☁',t:'云同步未开启',d:'填入服务器地址后可开启云端备份'},
+    noconfig:{ico:'☁',t:'云同步未开启',d:'网络异常时无法连接云端，请检查网络后重试'},
     idle:{ico:'☁',t:'未登录',d:'用同步令牌登录，或用恢复口令找回账号'},
     ready:{ico:'✓',t:'云同步已就绪',d:'数据明文备份到你的服务器，管理员可查看'}
   };
@@ -4811,6 +4813,14 @@
     const C=window.Cloud;
     if(!C)return 'noconfig';
     try{return C.status();}catch(e){return 'noconfig';}
+  }
+  // 展示用的服务地址：空串（同源）时显示当前站点 origin，避免界面上出现"没地址"的错觉
+  function cloudServerLabel(){
+    const C=window.Cloud;
+    let v='';
+    try{v=C?C.getServer():'';}catch(e){}
+    if(v)return v;
+    try{return location.origin||'(当前站点)';}catch(e){return '(当前站点)';}
   }
   // ---------- 玄顾问能力状态卡（云端 AI / 自带 Key / 本地演示 / 规则兜底） ----------
   // 一张卡讲清「现在这条 AI 链路走哪、还能问几次」。四态按优先级取最高可用者：
@@ -4875,6 +4885,7 @@
       h+=`<button class="btn-link-row" id="btnCloudServer"><span class="gp-ico">⌂</span>设置服务器地址<span class="btn-x-chev">›</span></button>`;
       h+=`<div class="gp-row disabled pad"><div class="gp-main"><div class="gp-d">不收邮箱手机号。数据明文备份到你的服务器，站点管理员可查看内容。</div></div></div>`;
     }else if(st==='idle'){
+      h+=`<div class="gp-row"><span class="gp-ico">⌂</span><div class="gp-main"><div class="gp-t">服务地址</div><div class="gp-d mono">${esc(cloudServerLabel())}</div></div><span class="gp-val">已自动连接</span></div>`;
       h+=`<button class="btn-link-row" id="btnCloudReg"><span class="gp-ico">✦</span>创建同步令牌（免费）<span class="btn-x-chev">›</span></button>`;
       h+=`<button class="btn-link-row" id="btnCloudUnlock"><span class="gp-ico">⌾</span>使用已有令牌登录<span class="btn-x-chev">›</span></button>`;
       h+=`<button class="btn-link-row" id="btnCloudRecover"><span class="gp-ico">↺</span>令牌丢失，用恢复口令找回<span class="btn-x-chev">›</span></button>`;
@@ -4908,21 +4919,19 @@
     if(!cloudGuard())return;
     const cur=Cloud.getServer()||'';
     modal('服务器地址',
-      `<p class="guide-key-lead">云同步需要一个你信任的服务端。地址只存在本机，<b>不会</b>随数据上传。</p>
-       <div class="field"><label>服务器地址</label><input type="text" id="cloudSrvUrl" value="${escAttr(cur)}" placeholder="https://your-server.example.com"></div>
-       <div class="gp-d" style="line-height:1.7">可填自建后端或自托管实例。玄决官方不提供默认地址，也不设中转服务器；未填地址时云同步整体关闭，仅本机可用。</div>`,
+      `<p class="guide-key-lead">云同步默认连接<b>当前站点</b>，通常无需修改。只有当你使用自建后端时，才需要在这里填写它的地址。地址只存在本机，<b>不会</b>随数据上传。</p>
+       <div class="field"><label>服务器地址</label><input type="text" id="cloudSrvUrl" value="${escAttr(cur)}" placeholder="留空 = 使用当前站点"></div>
+       <div class="gp-d" style="line-height:1.7">留空表示使用当前站点地址（<span class="mono">${esc(cloudServerLabel())}</span>）。填入其他地址需以 <code>https://</code> 开头且不带结尾斜杠。数据明文备份到该服务器，其管理员可查看内容。</div>`,
       m=>{
         const v=$('#cloudSrvUrl').value.trim();
         try{
           Cloud.setServer(v);
-          if(v)cloudThen(()=>Cloud.init(),'服务器地址已保存');
-          else{closeModal();renderTab();}
+          cloudThen(()=>Cloud.init(),'服务器地址已保存');
         }catch(e){toast(e.message||'地址无效','err');}
       },true,'保存');
   }
   function openCloudRegister(){
     if(!cloudGuard())return;
-    if(!Cloud.getServer()){openCloudServer();return;}
     const token=Cloud.genToken(),recovery=Cloud.genRecovery();
     modal('创建同步令牌',
       `<p class="guide-key-lead">无需邮箱手机号，<b>完全免费</b>。令牌就是你的账号口令，服务端只存它的哈希，拿不到明文。</p>
@@ -4945,7 +4954,6 @@
   }
   function openCloudUnlock(){
     if(!cloudGuard())return;
-    if(!Cloud.getServer()){openCloudServer();return;}
     modal('令牌登录',
       `<p class="guide-key-lead">输入你保存的同步令牌即可登录。服务端只存令牌哈希，<b>不会</b>泄露令牌本身。</p>
        <div class="field"><label>同步令牌</label><input type="text" id="cloudToken" placeholder="16-64 位字母、数字或 . _ -" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
@@ -4955,7 +4963,6 @@
   }
   function openCloudRecover(){
     if(!cloudGuard())return;
-    if(!Cloud.getServer()){openCloudServer();return;}
     modal('找回账号',
       `<p class="guide-key-lead">用令牌前 6 位 + 恢复口令换发新令牌，云端数据随登录自动恢复。</p>
        <div class="field"><label>令牌前 6 位</label><input type="text" id="cloudPrefix" maxlength="6" placeholder="例如 xj7k2p" autocomplete="off" autocapitalize="off" spellcheck="false"></div>

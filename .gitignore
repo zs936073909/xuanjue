@@ -19,6 +19,9 @@ android/*.jks
 release/
 assets/
 
+# 本地联调用：server/www 是指向 ../www 的符号链接，不入库（Render 上由 build 命令生成实体目录）
+server/www
+
 # 浏览器自动化工具的 Chromium 用户配置/缓存（含 Cache_Data / BrowserMetrics / Code Cache，
 # 还可能含登录 cookie）—— 绝不入库，既是垃圾又会泄露登录态
 tools/xhs_auto/.profile/
