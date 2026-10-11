@@ -79,49 +79,45 @@ export async function build() {
   app.get('/icon.svg', async (req, reply) => reply.type('image/svg+xml').send(favicon));
 
   // ============================================================
-  // 玄决 App 完整版托管（/app 路径前缀）
+  // 玄决 App 托管（/app 路径前缀）
   //
-  // 为什么必须托管：此前根路径只挂品牌落地页，用户打开服务地址只能"看"不能"用" ——
-  // 排盘界面（index.html + css/js/data 共 15MB）从来没上线过。www/ 是 build.mjs 的
-  // 正式产物（含 manifest.json 与 service-worker.js，Capacitor Android 也用同一份），
-  // 是最该上线的那一份，这里按 www/ 原样发送。
+  // 2026-10 起 /app 指向 webapp/ —— 桌面网页端全新重写版（三区布局：左导航 /
+  // 中阅读台 / 右盘面抽屉，复用同一套排盘引擎）。
+  // www/ 不再对外托管：它是 build.mjs 的 Capacitor Android 打包源，专留给 APK 端，
+  // 两边互不干扰。仅当 webapp/ 缺失（旧部署漏发）时，兜底回 www/，避免白屏 404。
   //
   // 为什么用 /app 而不是把 / 直接换成 App：
   //   1. 落地页承担"这是什么 + 后台入口 + 服务状态探测"，换成 App 就全丢了；
   //   2. /admin 与 / 的文案、路由约定已经上线跑通，不破坏既有地址；
   //   3. 日后要换门面或做 SEO 落地页，App 侧无感。
-  // 两者是互补关系：落地页回答"这是什么、怎么进"，/app 回答"现在就排一盘"。
   //
   // 为什么仍然不用 @fastify/static：只为托管一个静态目录引入整个静态插件
-  // 会让依赖树多一层、也要重新 npm install；这里只发 5 类 MIME 的只读文件，
+  // 会让依赖树多一层、也要重新 npm install；这里只发几类 MIME 的只读文件，
   // 用 readFileSync + send 与 /admin、落地页完全同模式，零新增依赖、行为可预测。
   // ============================================================
-  // www/ 缺失不能拖垮整个服务：Render 上若漏配 build 命令，账号/同步/AI 路由必须仍然可用。
-  // 因此这里容错取 null，路由侧发现 null 就给 App 专属 404，而不是启动即崩。
-  // 这也让 server 自己的集成测试不必先跑前端构建。
-  //
-  // 为什么按两个候选顺序找（2026-10 部署踩坑，别删）：
-  //   1) ./www —— server/www。本地开发时它是指向 ../www 的符号链接，realpathSync 会解析到仓库根；
-  //   2) 仓库根 www/ —— 生产（Render）上的真实位置。render.yaml 不设 rootDir 时服务根即仓库根，
-  //      而 server/www 这个符号链接不入库（.gitignore），所以 Render 上只存在这一份。
-  //   只写 1) 会在生产上取不到（符号链接没跟过来），只写 2) 会让本地开发必须真的复制一份。
-  //   两个都试、取第一个存在的，本地与云端同代码同行为。
-  const WWW_CANDIDATES = [
-    new URL('./www', import.meta.url),           // 本地：符号链接（解析后即仓库根 www/）
-    new URL('../www', import.meta.url)           // 生产：仓库根实体目录（随 Git 入库）
+  // 静态目录缺失不能拖垮整个服务：Render 上若漏配 build，账号/同步/AI 路由仍须可用。
+  // 候选顺序（2026-10 重构，别删）：
+  //   1) ../webapp —— 仓库根实体目录（本地与生产同一位置，随 Git 入库），桌面网页端；
+  //   2) ./webapp —— 兼容 server/webapp 符号链接的本地开发方式；
+  //   3) ./www、../www —— APK 打包源，仅作旧部署兜底。
+  //   realpathSync 会解析符号链接；取第一个存在的。
+  const APP_DIR_CANDIDATES = [
+    new URL('../webapp', import.meta.url),
+    new URL('./webapp', import.meta.url),
+    new URL('./www', import.meta.url),
+    new URL('../www', import.meta.url)
   ];
-  let WWW_ROOT = null;
-  for (const cand of WWW_CANDIDATES) {
+  let WWW_ROOT = null; // 名称保留历史叫法，语义为"/app 静态根"
+  for (const cand of APP_DIR_CANDIDATES) {
     try {
-      // realpathSync 会解析符号链接，本地两条候选最终都指向同一实体目录，重复取无副作用
       WWW_ROOT = fs.realpathSync(cand);
       break;
     } catch (e) { /* 该候选不存在，试下一个 */ }
   }
   if (!WWW_ROOT) {
-    app.log.warn('未找到 www/ 目录（server/www 符号链接与仓库根 www/ 均不存在），/app 将返回 404（账号与 AI 路由不受影响）');
+    app.log.warn('未找到 webapp/ 与 www/ 目录，/app 将返回 404（账号与 AI 路由不受影响）');
   } else {
-    app.log.info({ www: path.relative(process.cwd(), WWW_ROOT) }, '/app 静态目录就绪');
+    app.log.info({ appDir: path.relative(process.cwd(), WWW_ROOT) }, '/app 静态目录就绪');
   }
   const APP_PREFIX = '/app';
 

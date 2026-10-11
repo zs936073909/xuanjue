@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#F0EEE6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#211F1C" media="(prefers-color-scheme: dark)">
+<meta name="description" content="玄决 · 个人时课决策台 —— 此刻起课，白话断事，盘面可考">
+<title>玄决 · 时课决策台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23C15F3C'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23FAF7F2' font-family='Songti SC,serif'%3E玄%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ============ 左：常驻导航 ============ -->
+  <aside class="rail" id="rail">
+    <div class="brand">
+      <span class="brand-mark">玄</span>
+      <span class="brand-name">玄决</span>
+      <button class="rail-collapse" id="railCollapse" title="收起侧栏" aria-label="收起侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9.5 5v14"/></svg>
+      </button>
+    </div>
+
+    <button class="new-btn" id="newAsk" title="新建问事 (⌘K)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      <span>新建问事</span>
+      <kbd>⌘K</kbd>
+    </button>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-route="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.5V19h11v-8.5"/></svg>
+        <span>时课</span>
+        <em class="nav-live" title="实时"></em>
+      </button>
+      <button class="nav-item" data-route="classics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H12v15.5H6.5A1.5 1.5 0 0 0 5 21z"/><path d="M19 5.5A1.5 1.5 0 0 0 17.5 4H12v15.5h5.5A1.5 1.5 0 0 1 19 21z"/></svg>
+        <span>典籍</span>
+      </button>
+      <button class="nav-item" data-route="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.7 1.6"/></svg>
+        <span>问事录</span>
+      </button>
+      <button class="nav-item" data-route="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.7"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18"/></svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    <div class="rail-recent">
+      <div class="rail-label">最近问事</div>
+      <div class="recent-list" id="recentList"></div>
+    </div>
+
+    <div class="rail-foot">
+      <button class="theme-btn" id="themeBtn">
+        <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.3M12 18.9v2.3M2.8 12h2.3M18.9 12h2.3M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/></svg>
+        <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 14.6A8 8 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6z"/></svg>
+        <span id="themeLabel">深色模式</span>
+      </button>
+      <p class="rail-note">排盘与数据均在本机完成</p>
+    </div>
+  </aside>
+
+  <!-- ============ 中：阅读台 ============ -->
+  <main class="stage">
+    <header class="topbar">
+      <button class="rail-open" id="railOpen" aria-label="展开侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="crumb" id="crumb">时课</div>
+      <div class="clock"><span class="clock-dot"></span><span id="clock">--:--</span></div>
+    </header>
+
+    <div class="reading" id="view"><!-- 视图渲染处 --></div>
+  </main>
+
+  <!-- ============ 右：盘面抽屉（按需滑入） ============ -->
+  <aside class="board" id="board" aria-hidden="true">
+    <div class="board-inner" id="boardInner"></div>
+  </aside>
+
+</div>
+
+<div class="modal-root" id="modalRoot"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- 核心引擎：与 APK 端同源同算，纯计算不碰 DOM。大库（六爻/奇门/塔罗/紫微）按需懒加载 -->
+<script src="js/engines/lunar.js"></script>
+<script src="js/engines/huangli.js"></script>
+<script src="js/engines/daliuren.js"></script>
+<script src="js/engines/shushu.js"></script>
+<script src="js/engines/classics.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
