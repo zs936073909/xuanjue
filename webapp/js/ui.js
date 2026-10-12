@@ -173,17 +173,8 @@ function dlBoard(comp) {
   const tjJi = DaLiuRen.TJ_JI;
   let h = boardHead('大六壬盘面');
 
-  // 天地盘
-  h += '<div class="b-sec"><h4>天地盘 · 月将加时</h4><div class="tp-grid">';
-  for (let i = 0; i < 12; i++) {
-    const tian = ke.tianPan[i];
-    const kong = ke.kongWang.includes(i);
-    h += '<div class="tp-cell' + (kong ? ' kong' : '') + '">' +
-      '<div class="tian">' + ZHI[tian] + '</div>' +
-      '<div class="tj">' + esc(ke.tjByShen[tian]) + '</div>' +
-      '<div class="di">' + ZHI[i] + '宫</div></div>';
-  }
-  h += '</div></div>';
+  // 天地盘（旋转式盘）
+  h += '<div class="b-sec"><h4>天地盘 · 月将加时</h4>' + shipanHTML(ke) + '</div>';
 
   // 四课（一→四）
   const lnames = ['日干', '干阴', '日支', '支阴'];
@@ -250,6 +241,7 @@ function genericBoard(name, comp) {
   if (!r || r.error) { h += '<p class="b-note">' + esc((r && r.error) || '该法门排盘库未就绪') + '</p>'; openBoard(h); return; }
 
   if (name === '梅花易数') {
+    h += '<div class="b-sec">' + meihuaHTML(r) + '</div>';
     h += '<div class="b-sec"><dl class="kv">' +
       kvRow('本卦', r.guaName) + kvRow('上卦', r.up.n + '（' + r.up.attr + '·' + r.up.wx + '）') +
       kvRow('下卦', r.dn.n + '（' + r.dn.attr + '·' + r.dn.wx + '）') +
@@ -325,7 +317,9 @@ function readingBlock(name, comp) {
       '<div class="signal"><span class="sig-k">' + (i === sigs.length - 1 && p.env && s === p.env ? '处境' : '观察') + '</span><span>' + esc(s) + '</span></div>'
     ).join('') + '</div>';
   }
-  // 法门专属实景盘面（真牌 / 铜钱）
+  // 法门专属实景盘面（式盘 / 三卦 / 真牌 / 铜钱）
+  if (name === '大六壬' && comp.ke) h += '<div class="read-shipan">' + shipanHTML(comp.ke) + '</div>';
+  if (name === '梅花易数' && comp.result && comp.result.up) h += meihuaHTML(comp.result);
   if (name === '塔罗' && comp.result && Array.isArray(comp.result.cards)) h += tarotSpreadHTML(comp.result.cards);
   if (name === '六爻' && comp.result && Array.isArray(comp.result.yaos)) h += coinTossHTML(comp.result);
   h += '<div class="read-actions"><button class="btn primary" data-board="' + esc(name) + '">' +
@@ -386,6 +380,158 @@ function coinTossHTML(r) {
   h += '</div><div class="ct-foot"><span>三字老阴 · 两字一背少阳 · 一字两背少阴 · 三背老阳</span>' +
     '<span>' + esc(r.benGua) + ' → ' + esc(r.bianGua) + '</span></div></div>';
   return h;
+}
+
+/* ---------------- 品牌徽标：天圆地方式盘印 ---------------- */
+function brandMark() {
+  let ticks = '';
+  for (let b = 0; b < 12; b++) {
+    const a = (b - 6) * Math.PI / 6;
+    const card = b === 0 || b === 3 || b === 6 || b === 9;
+    const r1 = card ? 15.6 : 17.2, r2 = 19.6;
+    ticks += '<line' + (card ? ' class="bm-card"' : '') +
+      ' x1="' + (24 + r1 * Math.sin(a)).toFixed(2) + '" y1="' + (24 - r1 * Math.cos(a)).toFixed(2) +
+      '" x2="' + (24 + r2 * Math.sin(a)).toFixed(2) + '" y2="' + (24 - r2 * Math.cos(a)).toFixed(2) + '"/>';
+  }
+  return '<svg class="bm" viewBox="0 0 48 48" fill="none" aria-hidden="true">' +
+    '<circle class="bm-ring" cx="24" cy="24" r="20.4"/>' + ticks +
+    '<rect class="bm-dia" x="13.4" y="13.4" width="21.2" height="21.2" rx="2.6" transform="rotate(45 24 24)"/>' +
+    '<circle class="bm-dot" cx="24" cy="24" r="2.1"/></svg>';
+}
+
+/* ---------------- 大六壬 · 天地式盘 ---------------- */
+function shipanHTML(ke) {
+  const C = 180;
+  const Z = Lunar.ZHI;
+  const off = ((ke.offset % 12) + 12) % 12;
+  const rot = ((12 - off) % 12) * 30;
+  const kong = ke.kongWang || [];
+  const xy = (b, r) => {
+    const a = (b - 6) * Math.PI / 6;
+    return [(C + r * Math.sin(a)).toFixed(1), (C - r * Math.cos(a)).toFixed(1)];
+  };
+  // 外盘：地盘十二支（固定）
+  let earth = '';
+  for (let b = 0; b < 12; b++) {
+    const [x, y] = xy(b, 153);
+    earth += '<text class="sp-e' + (b % 3 === 0 ? ' card' : '') + (kong.includes(b) ? ' kong' : '') +
+      '" x="' + x + '" y="' + y + '">' + Z[b] + '</text>';
+  }
+  // 内盘：天盘十二支 + 天将（整体旋转移加正时）
+  let tian = '';
+  for (let b = 0; b < 12; b++) {
+    const [x1, y1] = xy(b, 123);
+    const [x2, y2] = xy(b, 103);
+    tian += '<text class="sp-t" x="' + x1 + '" y="' + y1 + '">' + Z[b] + '</text>' +
+      '<text class="sp-j" x="' + x2 + '" y="' + y2 + '">' + esc(ke.tjByShen[b] || '') + '</text>';
+  }
+  // 扇区
+  const wedge = (p, rIn, rOut, half, cls) => {
+    const a0 = (p - 6) * Math.PI / 6 - half * Math.PI / 180;
+    const a1 = (p - 6) * Math.PI / 6 + half * Math.PI / 180;
+    const pnt = (a, r) => [(C + r * Math.sin(a)).toFixed(1), (C - r * Math.cos(a)).toFixed(1)];
+    const [x0, y0] = pnt(a0, rOut), [x1, y1] = pnt(a1, rOut);
+    const [x2, y2] = pnt(a1, rIn), [x3, y3] = pnt(a0, rIn);
+    return '<path class="' + cls + '" d="M' + x0 + ' ' + y0 + ' A' + rOut + ' ' + rOut + ' 0 0 1 ' + x1 + ' ' + y1 +
+      ' L' + x2 + ' ' + y2 + ' A' + rIn + ' ' + rIn + ' 0 0 0 ' + x3 + ' ' + y3 + ' Z"/>';
+  };
+  // 标记汇聚到宫位（贵人/初/中/末可能同宫）
+  const palaceOf = b => (b - off + 12) % 12;
+  const marks = new Map();
+  const addMark = (p, ch, cls, wedgeCls) => {
+    if (!marks.has(p)) marks.set(p, { chips: [], wedge: null });
+    const m = marks.get(p);
+    m.chips.push({ ch, cls });
+    if (!m.wedge) m.wedge = wedgeCls;
+  };
+  addMark(ke.guiRen.idx, ke.guiRen.label === '昼贵' ? '贵昼' : '贵夜', 'chip-gui', 'sp-w-gui');
+  const sc = ke.sanChuan;
+  addMark(palaceOf(sc.chu.idx), '初', 'chip-chu', 'sp-w-chu');
+  addMark(palaceOf(sc.zhong.idx), '中', 'chip-zhong', 'sp-w-zhong');
+  addMark(palaceOf(sc.mo.idx), '末', 'chip-mo', 'sp-w-mo');
+  let wedges = '', chips = '';
+  marks.forEach((m, p) => {
+    if (m.wedge) wedges += wedge(p, 88, 139, 13.5, 'sp-w ' + m.wedge);
+    const [x, y] = xy(p, 68);
+    const clsRank = { 'chip-gui': 0, 'chip-chu': 1, 'chip-zhong': 2, 'chip-mo': 3 };
+    m.chips.sort((a, b) => clsRank[a.cls] - clsRank[b.cls]);
+    const ch = m.chips.map(c => c.ch).join('');
+    const main = m.chips[0].cls;
+    chips += '<g class="sp-chip ' + main + (ch.length > 1 ? ' two' : '') + '"><circle cx="' + x + '" cy="' + y + '" r="' +
+      (ch.length > 1 ? 13 : 11) + '"/><text x="' + x + '" y="' + y + '">' + esc(ch) + '</text></g>';
+  });
+  // 四课上神：盘缘小点
+  let lessonDots = '';
+  ke.lessons.forEach((l, i) => {
+    const [x, y] = xy(palaceOf(l.up), 89);
+    lessonDots += '<circle class="sp-ldot" cx="' + x + '" cy="' + y + '" r="2.4"><title>' +
+      ['日干课', '干阴课', '日支课', '支阴课'][i] + ' 上神' + Z[l.up] + ' ' + esc(l.upTJ || '') + '</title></circle>';
+  });
+  const zhanShi = (ke.yueJiang.idx - off + 12) % 12;
+
+  return '<div class="shipan-wrap">' +
+    '<svg class="shipan" viewBox="0 0 360 360" role="img" aria-label="大六壬天地盘">' +
+    // 天盘旋转层的扇区/标记保持静止坐标（旋转后神归其宫）
+    '<circle class="sp-r" cx="180" cy="180" r="170"/><circle class="sp-r soft" cx="180" cy="180" r="140"/>' +
+    wedges +
+    '<g class="tp-rot" style="--rot:' + rot + 'deg">' + tian + '</g>' +
+    earth +
+    '<circle class="sp-r soft" cx="180" cy="180" r="86"/>' +
+    lessonDots + chips +
+    // 中枢
+    '<circle class="sp-hub" cx="180" cy="180" r="82"/>' +
+    '<text class="sp-cap" x="180" y="160">月将加时</text>' +
+    '<text class="sp-main" x="180" y="186"><tspan class="clay">' + esc(ke.yueJiang.zhi) + '将</tspan>' +
+    '<tspan class="sp-plus"> 加 </tspan><tspan>' + Z[zhanShi] + '时</tspan></text>' +
+    '<text class="sp-sub" x="180" y="206">' + esc(ke.guiRen.label) + ' · ' + (ke.isFuYin ? '伏吟' : ke.isFanYin ? '返吟' : '移宫') + '</text>' +
+    '</svg>' +
+    '<div class="sp-legend"><span><i class="lg gui"></i>贵人临宫</span><span><i class="lg chu"></i>初传</span>' +
+    '<span><i class="lg zhong"></i>中传</span><span><i class="lg mo"></i>末传</span><span class="lk">虚位为旬空</span></div></div>';
+}
+
+/* ---------------- 梅花易数 · 三卦联动 ---------------- */
+const MH_BITS = [[1, 1, 1], [1, 1, 0], [1, 0, 1], [1, 0, 0], [0, 1, 1], [0, 1, 0], [0, 0, 1], [0, 0, 0]];
+const MH_TRI = ['乾', '兑', '离', '震', '巽', '坎', '艮', '坤'];
+function hexStackHTML(bits, moveLine, changeLine) {
+  let h = '<div class="hx-stack">';
+  for (let i = 5; i >= 0; i--) {
+    const move = moveLine === i + 1, changed = changeLine === i + 1;
+    h += '<div class="hx-line ' + (bits[i] ? 'yang' : 'yin') + (move ? ' move' : '') + (changed ? ' changed' : '') +
+      '" style="--i:' + (5 - i) + '"><i></i>' +
+      (move ? '<b class="hx-mk">动</b>' : '') + (changed ? '<b class="hx-mk ch">变</b>' : '') + '</div>';
+  }
+  return h + '</div>';
+}
+function triChipHTML(t, role) {
+  return '<div class="mh-tri"><span class="mh-sym wx-' + esc(t.wx) + '">' + esc(t.sym) + '</span>' +
+    '<span class="tn">' + esc(t.attr) + esc(t.n) + '</span>' +
+    (role ? '<span class="mh-role ' + (role === '体' ? 'ti' : role === '用' ? 'yong' : 'bian') + '">' + esc(role) + '</span>' : '') + '</div>';
+}
+function hexCardHTML(title, tag, cls, up, dn, bits, moveLine, changeLine, roles) {
+  return '<div class="mh-gua ' + cls + '">' +
+    '<div class="mh-gname">' + esc(title) + '<span>' + esc(tag) + '</span></div>' +
+    hexStackHTML(bits, moveLine, changeLine) +
+    '<div class="mh-tris">' + triChipHTML(up, roles ? roles.up : '') + triChipHTML(dn, roles ? roles.dn : '') + '</div></div>';
+}
+function meihuaHTML(r) {
+  const uI = MH_TRI.indexOf(r.up.n), dI = MH_TRI.indexOf(r.dn.n);
+  const huUI = MH_TRI.indexOf(r.huGua.up.n), huDI = MH_TRI.indexOf(r.huGua.dn.n);
+  const ben = MH_BITS[dI].concat(MH_BITS[uI]);
+  const hu = MH_BITS[huDI].concat(MH_BITS[huUI]);
+  const bian = MH_BITS[dI].concat(MH_BITS[uI]);
+  bian[r.dongLine - 1] = bian[r.dongLine - 1] ? 0 : 1;
+  const dongInUp = r.dongLine > 3;
+  const roles = dongInUp ? { up: '用', dn: '体' } : { up: '体', dn: '用' };
+  return '<div class="mh-wrap"><div class="mh-flow">' +
+    hexCardHTML(r.guaName, '本卦 · 当下', 'ben', r.up, r.dn, ben, r.dongLine, 0, roles) +
+    '<div class="mh-arrow"><span class="ar"></span><span class="ar-t">互 · 过程</span></div>' +
+    hexCardHTML(r.huGua.name, '互卦 · 中段', 'hu', r.huGua.up, r.huGua.dn, hu, 0, 0, null) +
+    '<div class="mh-arrow"><span class="ar"></span><span class="ar-t">变 · 结果</span></div>' +
+    hexCardHTML(r.bianGua.name, '变卦 · 终局', 'bian', r.bianGua.up, r.bianGua.dn, bian, 0, r.dongLine,
+      dongInUp ? { up: '变用', dn: '体' } : { up: '体', dn: '变用' }) +
+    '</div>' +
+    '<div class="mh-rel ' + (r.relGood ? 'good' : (r.rel.indexOf('克体') >= 0 ? 'bad' : 'warn')) + '"><span class="mr-k">体用</span><b>' + esc(r.rel) + '</b>' +
+    '<span class="mr-d">体 ' + esc(r.tiGua.n) + '（' + esc(r.tiGua.wx) + '）主自身 · 用 ' + esc(r.yongGua.n) + '（' + esc(r.yongGua.wx) + '）主所问</span></div></div>';
 }
 
 /* ---------------- 视图：时课首页 ---------------- */
@@ -947,7 +1093,7 @@ function ziweiHTML(comp) {
     (R.decadal.stars && R.decadal.stars.length ? ' · ' + esc(R.decadal.stars.join('、')) : '') +
     (R.yearly ? '　流年 ' + esc(R.yearly.yearlyGanZhi) + ' 走' + esc(R.yearly.palaceName) : '') + '</p>';
   h += '<div class="zw-grid">' + cells +
-    '<div class="zw-center"><div class="zc-xuan">玄</div>' +
+    '<div class="zw-center"><div class="zc-seal">' + brandMark() + '</div>' +
     '<div class="zc-ju">' + esc(a.fiveElementsClass || '') + '</div>' +
     '<div class="zc-zhu">命主 ' + esc(a.soul || '—') + ' · 身主 ' + esc(a.body || '—') + '</div>' +
     (si4 ? '<div class="zc-zhu" style="line-height:1.7">禄<span class="mut-禄">' + esc(si4.化禄) + '</span> · 权<span class="mut-权">' + esc(si4.化权) + '</span> · 科<span class="mut-科">' + esc(si4.化科) + '</span> · 忌<span class="mut-忌">' + esc(si4.化忌) + '</span></div>' : '') +
@@ -1456,6 +1602,7 @@ $('#railOpen').onclick = () => {
 window.addEventListener('hashchange', route);
 
 /* ---------------- 启动 ---------------- */
+$('#brandMark').innerHTML = brandMark();
 applyTheme();
 if (settings.railHidden) app.classList.add('rail-hidden');
 renderRecent();

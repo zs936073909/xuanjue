@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#211F1C" media="(prefers-color-scheme: dark)">
 <meta name="description" content="玄决 · 个人时课决策台 —— 此刻起课，白话断事，盘面可考">
 <title>玄决 · 时课决策台</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23C15F3C'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23FAF7F2' font-family='Songti SC,serif'%3E玄%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7.5' fill='%23C15F3C'/%3E%3Cg fill='none' stroke='%23FBF6F0'%3E%3Ccircle cx='16' cy='16' r='13.6' stroke-width='1.8'/%3E%3Cg stroke-width='1.15'%3E%3Cline x1='16' y1='26.4' x2='16' y2='29.1'/%3E%3Cline x1='21.75' y1='6.04' x2='22.55' y2='4.66'/%3E%3Cline x1='25.96' y1='10.25' x2='27.34' y2='9.45'/%3E%3Cline x1='26.4' y1='16' x2='29.1' y2='16'/%3E%3Cline x1='25.96' y1='21.75' x2='27.34' y2='22.55'/%3E%3Cline x1='21.75' y1='25.96' x2='22.55' y2='27.34'/%3E%3Cline x1='16' y1='26.1' x2='16' y2='29.1'/%3E%3Cline x1='10.25' y1='25.96' x2='9.45' y2='27.34'/%3E%3Cline x1='6.04' y1='21.75' x2='4.66' y2='22.55'/%3E%3Cline x1='5.6' y1='16' x2='2.9' y2='16'/%3E%3Cline x1='6.04' y1='10.25' x2='4.66' y2='9.45'/%3E%3Cline x1='10.25' y1='6.04' x2='9.45' y2='4.66'/%3E%3C/g%3E%3Cg stroke-width='1.9'%3E%3Cline x1='16' y1='5.6' x2='16' y2='2.9'/%3E%3Cline x1='26.4' y1='16' x2='29.1' y2='16'/%3E%3Cline x1='16' y1='26.4' x2='16' y2='29.1'/%3E%3Cline x1='5.6' y1='16' x2='2.9' y2='16'/%3E%3C/g%3E%3Crect x='9.1' y='9.1' width='13.8' height='13.8' rx='1.6' transform='rotate(45 16 16)' stroke-width='1.7'/%3E%3C/g%3E%3Ccircle cx='16' cy='16' r='1.5' fill='%23FBF6F0'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -17,7 +17,7 @@
   <!-- ============ 左：常驻导航 ============ -->
   <aside class="rail" id="rail">
     <div class="brand">
-      <span class="brand-mark">玄</span>
+      <span class="brand-mark" id="brandMark"></span>
       <span class="brand-name">玄决</span>
       <button class="rail-collapse" id="railCollapse" title="收起侧栏" aria-label="收起侧栏">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9.5 5v14"/></svg>
