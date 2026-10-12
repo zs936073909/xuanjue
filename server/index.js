@@ -65,31 +65,31 @@ export async function build() {
   app.get('/admin', serveAdmin);
   app.get('/admin/', serveAdmin);
 
-  // 服务入口落地页：对外门面（品牌 + 后台入口 + 实时状态 + 接入说明）。
+  // 服务门面落地页（品牌介绍 + 后台入口 + 实时状态 + 接入说明）。
+  // 2026-10 起根路径 / 已让给桌面网页端（打开主域名即进 App），门面页移到 /portal：
+  //   - 用户访问主域名直接落地产品，不再多一次点击；
+  //   - 门面页不删除，后台入口与服务状态探测仍有固定地址。
   // 为什么和 /admin 一样用 readFileSync + send 而不是 @fastify/static：
-  // 这里只需要托管两个静态文件（落地页 + 图标），为一个图标引入整个静态插件
-  // 会让依赖树多一层、也要重新 npm install；内联 send 与现有模式一致、零新增依赖。
+  // 这里只需要托管一个 HTML 文件，为它引入整个静态插件会让依赖树多一层、
+  // 也要重新 npm install；内联 send 与现有模式一致、零新增依赖。
   const landingHtml = fs.readFileSync(new URL('./public/index.html', import.meta.url), 'utf8');
   const serveLanding = async (req, reply) => reply.type('text/html; charset=utf-8').send(landingHtml);
-  app.get('/', serveLanding);
-  app.get('/index.html', serveLanding);
+  app.get('/portal', serveLanding);
+  app.get('/portal/', serveLanding);
   // 图标单独一路：SVG 走 text 类型，否则浏览器按 HTML 解析会显示成空白页
   const favicon = fs.readFileSync(new URL('./public/icon.svg', import.meta.url));
   app.get('/favicon.ico', async (req, reply) => reply.type('image/svg+xml').send(favicon));
   app.get('/icon.svg', async (req, reply) => reply.type('image/svg+xml').send(favicon));
 
   // ============================================================
-  // 玄决 App 托管（/app 路径前缀）
+  // 玄决桌面网页端托管（根路径 / 与 /app 前缀，同一份 webapp/ 目录）
   //
-  // 2026-10 起 /app 指向 webapp/ —— 桌面网页端全新重写版（三区布局：左导航 /
-  // 中阅读台 / 右盘面抽屉，复用同一套排盘引擎）。
+  // 2026-10 起主域名根路径 / 直接就是桌面网页端（三区布局：左导航 /
+  // 中阅读台 / 右盘面抽屉，复用同一套排盘引擎）——用户打开主域名即进产品。
+  // /app 前缀保留：历史链接、书签、落地页旧按钮继续可用，两处指向同一份文件。
+  // 服务门面落地页移至 /portal；/admin 不受影响。
   // www/ 不再对外托管：它是 build.mjs 的 Capacitor Android 打包源，专留给 APK 端，
   // 两边互不干扰。仅当 webapp/ 缺失（旧部署漏发）时，兜底回 www/，避免白屏 404。
-  //
-  // 为什么用 /app 而不是把 / 直接换成 App：
-  //   1. 落地页承担"这是什么 + 后台入口 + 服务状态探测"，换成 App 就全丢了；
-  //   2. /admin 与 / 的文案、路由约定已经上线跑通，不破坏既有地址；
-  //   3. 日后要换门面或做 SEO 落地页，App 侧无感。
   //
   // 为什么仍然不用 @fastify/static：只为托管一个静态目录引入整个静态插件
   // 会让依赖树多一层、也要重新 npm install；这里只发几类 MIME 的只读文件，
@@ -222,6 +222,26 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
   // 不单独注册的话根路径会掉到 404。
   app.get(APP_PREFIX + '/*', async (req, reply) => {
     const abs = resolveAppPath(req.url.slice(APP_PREFIX.length));
+    if (!abs) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+    const ok = await sendAppFile(abs, reply);
+    if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+  });
+
+  // ============================================================
+  // 根路径托管：/ 与 /* 直接发 webapp/（同一份文件、同一套 MIME/穿越防护）。
+  //
+  // webapp 内全部是相对引用（css/app.css、js/…、data/…），文档基准为 /
+  // 时这些相对路径天然落在根前缀，无需重写任何前端代码；API 则走绝对 /v1/*。
+  //
+  // 优先级安全性：Fastify(find-my-way) 中静态/参数段永远优先于根通配，
+  //   /health、/admin、/portal、/favicon.ico、/icon.svg 以及 /v1/*、/app/*
+  //   都不会被这个通配吞掉；通配只接住没有更具体路由的根级路径。
+  // 和 /app/* 一样，根通配不匹配空段，所以 / 与 /index.html 要显式注册。
+  // ============================================================
+  app.get('/', serveAppIndex);
+  app.get('/index.html', serveAppIndex);
+  app.get('/*', async (req, reply) => {
+    const abs = resolveAppPath(req.url);
     if (!abs) return reply.code(404).type('text/html; charset=utf-8').send(app404);
     const ok = await sendAppFile(abs, reply);
     if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
