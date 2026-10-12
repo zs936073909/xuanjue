@@ -1650,8 +1650,100 @@ $('#railOpen').onclick = () => {
 };
 window.addEventListener('hashchange', route);
 
+/* ---------------- 玄学背景交互：磁针追鼠标 / 铜钱 3D 倾摆可拨 / 景深视差 ---------------- */
+function ambientFX() {
+  const fine = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const compass = $('#ambCompass');
+  if (!compass) return;
+
+  // 天池磁针：朱砂/素白双色，独立于慢转刻盘，实时指向光标
+  const needle = document.createElement('div');
+  needle.className = 'amb-needle';
+  needle.innerHTML = '<svg viewBox="0 0 240 240" aria-hidden="true">' +
+    '<line x1="120" y1="44" x2="120" y2="196" stroke-width="1.4" stroke="currentColor" stroke-dasharray="132 8 108" stroke-linecap="round" opacity=".55"/>' +
+    '<path d="M120 40 L114.6 120 L120 132 L125.4 120 Z" fill="currentColor" opacity=".65"/>' +
+    '<circle cx="120" cy="120" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".7"/>' +
+    '<circle cx="120" cy="120" r="1.6" fill="currentColor" opacity=".7"/></svg>';
+  compass.appendChild(needle);
+
+  const coins = [...document.querySelectorAll('.amb-coin')];
+  const yaos = [...document.querySelectorAll('.amb-yao')];
+  coins.forEach(c => { c.style.pointerEvents = 'auto'; c.style.cursor = 'pointer'; });
+
+  if (!fine || reduced) return; // 无精鼠标或减弱动效：只保留磁针位与慢转，不做视差
+
+  // 视差景深系数（位移 px / 倾摆 deg），物件越"远"动得越少
+  const DEPTH = [
+    { el: compass, dx: 16, dy: 12, tx: 0, ty: 0 },
+    { el: coins[0], dx: -20, dy: -13, tx: 9, ty: 13 },
+    { el: coins[1], dx: -13, dy: -9, tx: 7, ty: 10 },
+    { el: coins[2], dx: -17, dy: -11, tx: 8, ty: 12 },
+    { el: yaos[0], dx: -24, dy: -16, tx: 0, ty: 0 },
+    { el: yaos[1], dx: -21, dy: -14, tx: 0, ty: 0 }
+  ].filter(d => d.el);
+
+  let tx = 0, ty = 0, cx = 0, cy = 0, ang = 0, angT = 0;
+  let raf = 0, lastMove = 0, running = false;
+
+  function frame() {
+    cx += (tx - cx) * .1; cy += (ty - cy) * .1;
+    // 磁针走最短弧（跨 ±180° 边界不绕远）
+    let da = angT - ang;
+    while (da > 180) da -= 360;
+    while (da < -180) da += 360;
+    ang += da * .12;
+    for (const d of DEPTH) {
+      d.el.style.setProperty('--dx', (cx * d.dx).toFixed(2) + 'px');
+      d.el.style.setProperty('--dy', (cy * d.dy).toFixed(2) + 'px');
+      if (d.tx) d.el.style.setProperty('--tx', (cy * d.tx).toFixed(2) + 'deg');
+      if (d.ty) d.el.style.setProperty('--ty', (cx * d.ty).toFixed(2) + 'deg');
+    }
+    compass.style.setProperty('--nrot', ang.toFixed(2) + 'deg');
+    const idle = Date.now() - lastMove > 2400;
+    let rest = angT - ang;
+    while (rest > 180) rest -= 360;
+    while (rest < -180) rest += 360;
+    if (idle && Math.abs(cx) < .002 && Math.abs(cy) < .002 && Math.abs(rest) < .4) {
+      raf = 0; running = false; return;
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  function wake() { if (!running) { running = true; raf = requestAnimationFrame(frame); } }
+
+  window.addEventListener('pointermove', (e) => {
+    tx = e.clientX / window.innerWidth * 2 - 1;
+    ty = e.clientY / window.innerHeight * 2 - 1;
+    const r = compass.getBoundingClientRect();
+    angT = Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI + 90;
+    lastMove = Date.now();
+    wake();
+  }, { passive: true });
+
+  // 静止后目标全部回正（视差、倾摆、磁针归北）
+  setInterval(() => {
+    if (Date.now() - lastMove > 2400) { tx = 0; ty = 0; angT = 0; }
+  }, 600);
+
+  // 拨铜钱：翻钱一周 + 轻落
+  coins.forEach(c => {
+    c.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      const inner = c.querySelector('.amb-float');
+      if (!inner) return;
+      inner.classList.remove('coin-flip');
+      void inner.offsetWidth;
+      inner.classList.add('coin-flip');
+      setTimeout(() => inner.classList.remove('coin-flip'), 900);
+    });
+  });
+}
+
 /* ---------------- 启动 ---------------- */
 $('#brandMark').innerHTML = brandMark();
+// 开屏一次性入场编排（减弱动效时不加 boot，元素直接全显）
+const motionOK = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+if (motionOK) document.documentElement.classList.add('boot');
 // 玄学背景：罗盘内加旋转层；铜钱加漂浮层、卦爻加淡入层（静态透明度/角度在外层，规避 keyframes 变量兼容）
 const ambCompass = $('#ambCompass');
 if (ambCompass) {
@@ -1668,7 +1760,12 @@ if (ambCompass) {
     svg.parentNode.insertBefore(w, svg);
     w.appendChild(svg);
   });
+  // 暖光晕移到 body：fixed 全屏铺底，让侧栏/抽屉的毛玻璃能磨到它
+  const aurora = document.querySelector('.amb-aurora');
+  if (aurora) document.body.appendChild(aurora);
+  ambientFX();
 }
+if (motionOK) setTimeout(() => document.documentElement.classList.remove('boot'), 1500);
 applyTheme();
 if (settings.railHidden) app.classList.add('rail-hidden');
 renderRecent();

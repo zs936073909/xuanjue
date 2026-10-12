@@ -28,6 +28,14 @@
   --gold:#A9813B;
   --sh-1:0 1px 2px rgba(60,54,38,.05),0 2px 10px rgba(60,54,38,.05);
   --sh-2:0 4px 14px rgba(60,54,38,.08),0 18px 44px rgba(60,54,38,.10);
+  /* 暖玻璃令牌：145° 暖白渐变 + 迎光发丝边 + 外描陶土灰 */
+  --glass-1:rgba(255,255,254,.64);
+  --glass-2:rgba(249,247,240,.40);
+  --glass-edge:rgba(255,255,255,.72);
+  --glass-line:rgba(124,108,82,.15);
+  --glass-blur:blur(20px) saturate(1.12);
+  --glass-sh:0 2px 10px rgba(60,54,38,.06),0 18px 44px rgba(60,54,38,.09),inset 0 1px 0 var(--glass-edge);
+  --stage-veil:linear-gradient(180deg,rgba(250,249,244,.70),rgba(241,239,232,.56));
   --serif:"Songti SC","Noto Serif SC","Source Han Serif SC","STSong","SimSun",Georgia,serif;
   --sans:"PingFang SC","Hiragino Sans GB","Inter","Noto Sans SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --ease:cubic-bezier(.22,1,.32,1);
@@ -58,6 +66,14 @@
   --gold:#CBA75E;
   --sh-1:0 1px 2px rgba(0,0,0,.25);
   --sh-2:0 4px 14px rgba(0,0,0,.30),0 18px 44px rgba(0,0,0,.34);
+  /* 暗色暖玻璃：褐黑半透 + 素白发丝边 */
+  --glass-1:rgba(46,42,36,.58);
+  --glass-2:rgba(29,27,23,.54);
+  --glass-edge:rgba(245,244,238,.09);
+  --glass-line:rgba(0,0,0,.5);
+  --glass-blur:blur(20px) saturate(1.1);
+  --glass-sh:0 2px 10px rgba(0,0,0,.30),0 18px 44px rgba(0,0,0,.34),inset 0 1px 0 var(--glass-edge);
+  --stage-veil:linear-gradient(180deg,rgba(38,35,31,.66),rgba(32,30,27,.52));
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
@@ -88,7 +104,10 @@ input,textarea,select{font-family:inherit;color:inherit}
 .rail{
   width:var(--rail-w);flex-shrink:0;height:100vh;
   display:flex;flex-direction:column;
-  background:var(--rail);border-right:1px solid var(--line);
+  background:linear-gradient(145deg,var(--glass-1),var(--glass-2));
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  border-right:1px solid var(--glass-line);
+  box-shadow:inset -1px 0 0 var(--glass-edge),6px 0 24px -18px rgba(60,54,38,.18);
   padding:20px 14px 14px;
   transition:margin-left .35s var(--ease);
 }
@@ -156,12 +175,12 @@ input,textarea,select{font-family:inherit;color:inherit}
 .app.rail-hidden .rail-open{display:grid;place-items:center}
 
 /* ---------- 中：阅读台 ---------- */
-.stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper-2);position:relative}
+.stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--stage-veil);position:relative}
 .topbar{
   height:56px;flex-shrink:0;display:flex;align-items:center;gap:10px;
-  padding:0 34px;border-bottom:1px solid var(--line);
-  background:color-mix(in srgb,var(--paper-2) 85%,transparent);
-  backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);
+  padding:0 34px;border-bottom:1px solid var(--glass-line);
+  background:linear-gradient(180deg,var(--glass-1),transparent);
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
   position:relative;z-index:5;
 }
 .crumb{font-family:var(--serif);font-size:16px;font-weight:600;letter-spacing:.03em}
@@ -176,10 +195,15 @@ input,textarea,select{font-family:inherit;color:inherit}
 /* ---------- 右：盘面抽屉 ---------- */
 .board{
   width:0;flex-shrink:0;height:100vh;overflow:hidden;
-  background:var(--paper);border-left:0 solid var(--line);
+  background:transparent;border-left:0 solid var(--glass-line);
   transition:width .38s var(--ease),border-color .2s;
 }
-.app.board-open .board{width:var(--board-w);border-left-width:1px}
+.app.board-open .board{
+  width:var(--board-w);border-left-width:1px;
+  background:linear-gradient(145deg,var(--glass-1),var(--glass-2));
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:inset 1px 0 0 var(--glass-edge),-6px 0 24px -18px rgba(60,54,38,.18);
+}
 .board-inner{width:var(--board-w);height:100vh;overflow-y:auto;padding:24px 26px 60px}
 
 /* ================= 时课首页 ================= */
@@ -1085,4 +1109,138 @@ body::before{
   .mh-gua{max-width:200px}
   .mh-arrow{width:100%;flex-direction:row;order:5}
   .mh-arrow .ar{flex:1}
+}
+
+/* ============================================================
+   玄玻璃层 · 暖纸毛玻璃 / 交互玄学物件 / 开屏编排
+   ============================================================ */
+.app{position:relative;z-index:1}
+:root{
+  --glass-in:rgba(255,255,255,.5);
+  --input-glass:rgba(255,255,255,.58);
+  --control-glass-1:rgba(255,255,255,.52);
+  --control-glass-2:rgba(255,255,255,.30);
+}
+[data-theme="dark"]{
+  --glass-in:rgba(255,255,255,.045);
+  --input-glass:rgba(255,255,255,.055);
+  --control-glass-1:rgba(255,255,255,.07);
+  --control-glass-2:rgba(255,255,255,.028);
+}
+
+/* ---------- 悬浮主面板：问事盒 / 命盘面板 / 三卦 / 模态 ---------- */
+.ask-box,.m-panel,.ming-chat,.mh-wrap,.modal{
+  background:linear-gradient(145deg,var(--glass-1),var(--glass-2));
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  border-color:var(--glass-line);
+  box-shadow:var(--glass-sh);
+}
+.ask-box:focus-within{border-color:var(--clay-line)}
+.mh-gua,.tp-cell,.lesson,.chuan,.taro-card,.yao,.tf-row{
+  background:var(--glass-in);
+}
+.modal{backdrop-filter:blur(24px) saturate(1.1);-webkit-backdrop-filter:blur(24px) saturate(1.1)}
+
+/* ---------- 玻璃控件：胶囊 / 芯片 / 幽灵按钮 / 输入 ---------- */
+.m-cap,.btn.ghost{
+  background:linear-gradient(145deg,var(--control-glass-1),var(--control-glass-2));
+  -webkit-backdrop-filter:blur(10px) saturate(1.1);backdrop-filter:blur(10px) saturate(1.1);
+  border-color:var(--glass-line);
+  box-shadow:inset 0 1px 0 var(--glass-edge);
+}
+.chip,.yj-tag,.b-tag,.p-tag,.m-tag{
+  background:var(--control-glass-2);
+  border-color:var(--glass-line);
+}
+.search-box input,.m-field input[type=datetime-local],.m-field input[type=text],.m-field input[type=search],
+.set-row select,.modal textarea,.modal input[type=text],.modal input[type=datetime-local],.modal select,
+.chat-input textarea{
+  background:var(--input-glass);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+}
+.seg{background:var(--control-glass-2);border-color:var(--glass-line)}
+.seg button.on{background:var(--glass-in);box-shadow:inset 0 1px 0 var(--glass-edge),var(--sh-1)}
+
+/* ============================================================
+   交互背景：暖光晕（fixed 透出玻璃）/ 纸纱光帘 / 磁针 / 可拨铜钱
+   ============================================================ */
+.amb-aurora{position:fixed;inset:-8%;z-index:0;pointer-events:none;overflow:hidden}
+.amb-aurora i{position:absolute;border-radius:50%;filter:blur(72px);will-change:transform}
+.au-a{width:46vw;height:46vw;left:-8%;top:-14%;
+  background:radial-gradient(circle,rgba(190,94,59,.10),rgba(190,94,59,0) 66%);
+  animation:auDrift 32s ease-in-out infinite alternate}
+.au-b{width:42vw;height:42vw;right:-10%;top:6%;
+  background:radial-gradient(circle,rgba(169,129,59,.085),rgba(169,129,59,0) 66%);
+  animation:auDrift 39s ease-in-out infinite alternate-reverse}
+.au-c{width:40vw;height:40vw;left:32%;bottom:-18%;
+  background:radial-gradient(circle,rgba(63,134,99,.065),rgba(63,134,99,0) 66%);
+  animation:auDrift 46s ease-in-out infinite alternate}
+@keyframes auDrift{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(4vw,-3vh,0) scale(1.13)}}
+[data-theme="dark"] .au-a{background:radial-gradient(circle,rgba(222,129,94,.13),rgba(222,129,94,0) 66%)}
+[data-theme="dark"] .au-b{background:radial-gradient(circle,rgba(203,167,94,.11),rgba(203,167,94,0) 66%)}
+[data-theme="dark"] .au-c{background:radial-gradient(circle,rgba(98,171,131,.09),rgba(98,171,131,0) 66%)}
+
+/* 纸纱光帘：中央保阅读对比，两侧透物件 */
+.amb-veil{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent 0%,
+    color-mix(in srgb,var(--paper-2) 50%) 14%,color-mix(in srgb,var(--paper-2) 76%) 50%,
+    color-mix(in srgb,var(--paper-2) 50%) 86%,transparent 100%)}
+
+/* 景深视差变量驱动（外层只放位移/倾摆，慢转/浮摆仍在内层） */
+#ambient{perspective:1200px}
+.amb{--dx:0px;--dy:0px;--tx:0deg;--ty:0deg}
+.amb-compass{transform:translate3d(var(--dx),var(--dy),0);transform-origin:80% 74%;will-change:transform}
+.amb-coin{transform-style:preserve-3d;pointer-events:auto;
+  transform:translate3d(var(--dx),var(--dy),0) rotate(var(--rot,0deg)) rotateX(var(--tx)) rotateY(var(--ty));
+  transition:opacity .3s}
+.amb-coin.c1{transform:translate3d(var(--dx),var(--dy),0) rotate(var(--rot,-14deg)) rotateX(var(--tx)) rotateY(var(--ty))}
+.amb-coin.c2{transform:translate3d(var(--dx),var(--dy),0) rotate(var(--rot,10deg)) rotateX(var(--tx)) rotateY(var(--ty))}
+.amb-coin.c3{transform:translate3d(var(--dx),var(--dy),0) rotate(var(--rot,24deg)) rotateX(var(--tx)) rotateY(var(--ty))}
+.amb-yao{transform:translate3d(var(--dx),var(--dy),0) rotate(var(--yr,90deg))}
+.amb-yao.y1{--yr:90deg}
+.amb-yao.y2{--yr:-90deg}
+
+/* 天池磁针：独立一层，跟光标 */
+.amb-needle{position:absolute;inset:0;pointer-events:none;color:var(--clay)}
+.amb-needle svg{width:100%;height:100%;transform:rotate(var(--nrot,0deg));
+  transform-origin:50% 50%;will-change:transform}
+
+/* 拨铜钱：内层翻钱一周半 + 轻落 */
+.amb-float.coin-flip{animation:coinFlip .85s var(--ease)}
+@keyframes coinFlip{
+  0%{transform:translateY(0) rotateY(0)}
+  30%{transform:translateY(-15px) rotateY(260deg)}
+  62%{transform:translateY(2px) rotateY(560deg)}
+  100%{transform:translateY(0) rotateY(720deg)}
+}
+
+/* ============================================================
+   开屏一次性编排（boot 类 1.5s 后摘除；reduced-motion 时不启用）
+   ============================================================ */
+html.boot .brand,html.boot .new-btn,html.boot .nav-item,html.boot .rail-foot,
+html.boot .topbar,html.boot .amb-compass,html.boot .amb-coin,html.boot .amb-yao,
+html.boot .amb-aurora,html.boot .amb-veil{opacity:0}
+@keyframes bootIn{from{opacity:0;transform:translateY(11px)}to{opacity:1;transform:none}}
+@keyframes bootBrand{from{opacity:0;transform:translateY(7px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes bootCompass{from{opacity:0;transform:translateY(14px) scale(.968)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+/* 光晕/铜钱/卦爻：boot 摘除时用 transition 错峰淡入（规避 keyframes 变量兼容） */
+.amb-coin,.amb-yao,.amb-aurora,.amb-veil{transition:opacity .85s var(--ease)}
+.amb-coin.c1{transition-delay:.30s}.amb-coin.c2{transition-delay:.42s}.amb-coin.c3{transition-delay:.54s}
+.amb-yao.y1{transition-delay:.70s}.amb-yao.y2{transition-delay:.82s}
+.amb-aurora{transition-delay:.2s}.amb-veil{transition-delay:.1s}
+html.boot .brand{animation:bootBrand .58s cubic-bezier(.16,1,.3,1) .06s both}
+html.boot .new-btn{animation:bootIn .52s cubic-bezier(.16,1,.3,1) .12s both}
+html.boot .nav-item{animation:bootIn .48s cubic-bezier(.16,1,.3,1) both}
+html.boot .nav-item:nth-child(1){animation-delay:.13s}
+html.boot .nav-item:nth-child(2){animation-delay:.175s}
+html.boot .nav-item:nth-child(3){animation-delay:.22s}
+html.boot .nav-item:nth-child(4){animation-delay:.265s}
+html.boot .nav-item:nth-child(5){animation-delay:.31s}
+html.boot .nav-item:nth-child(n+6){animation-delay:.35s}
+html.boot .rail-foot{animation:bootIn .5s cubic-bezier(.16,1,.3,1) .26s both}
+html.boot .topbar{animation:bootIn .5s cubic-bezier(.16,1,.3,1) .1s both}
+html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04s both}
+
+@media(max-width:1023px){
+  .amb-aurora{display:none}
 }

@@ -82,44 +82,59 @@ export async function build() {
   app.get('/icon.svg', async (req, reply) => reply.type('image/svg+xml').send(favicon));
 
   // ============================================================
-  // 玄决桌面网页端托管（根路径 / 与 /app 前缀，同一份 webapp/ 目录）
+  // 玄决网页端双端托管：同一个域名，按 UA 自动分发
   //
-  // 2026-10 起主域名根路径 / 直接就是桌面网页端（三区布局：左导航 /
-  // 中阅读台 / 右盘面抽屉，复用同一套排盘引擎）——用户打开主域名即进产品。
-  // /app 前缀保留：历史链接、书签、落地页旧按钮继续可用，两处指向同一份文件。
-  // 服务门面落地页移至 /portal；/admin 不受影响。
-  // www/ 不再对外托管：它是 build.mjs 的 Capacitor Android 打包源，专留给 APK 端，
-  // 两边互不干扰。仅当 webapp/ 缺失（旧部署漏发）时，兜底回 www/，避免白屏 404。
+  // 2026-10 起主域名 / 是双端入口：
+  //   - 桌面 UA（Mac/Windows/Linux 桌面浏览器、iPad 大屏等）→ webapp/
+  //     三区布局（左导航 / 中阅读台 / 右盘面抽屉）的玻璃质感桌面版；
+  //   - 手机 UA（Android/iPhone/Windows Phone 等）→ www/
+  //     即 APK 同源那套 PWA（Capacitor 打包源，线上直接可用）。
+  // 两端资源全部相对引用、API 都走绝对 /v1/*，同域托管无需改一行前端代码。
+  // /app 前缀固定指向桌面版（历史链接、书签、落地页旧按钮继续可用）；
+  // 服务门面落地页在 /portal；/admin 不受影响。
   //
-  // 为什么仍然不用 @fastify/static：只为托管一个静态目录引入整个静态插件
+  // 为什么仍然不用 @fastify/static：只为托管静态目录引入整个静态插件
   // 会让依赖树多一层、也要重新 npm install；这里只发几类 MIME 的只读文件，
   // 用 readFileSync + send 与 /admin、落地页完全同模式，零新增依赖、行为可预测。
   // ============================================================
   // 静态目录缺失不能拖垮整个服务：Render 上若漏配 build，账号/同步/AI 路由仍须可用。
-  // 候选顺序（2026-10 重构，别删）：
-  //   1) ../webapp —— 仓库根实体目录（本地与生产同一位置，随 Git 入库），桌面网页端；
-  //   2) ./webapp —— 兼容 server/webapp 符号链接的本地开发方式；
-  //   3) ./www、../www —— APK 打包源，仅作旧部署兜底。
-  //   realpathSync 会解析符号链接；取第一个存在的。
-  const APP_DIR_CANDIDATES = [
+  // realpathSync 会解析符号链接；每个端取自己候选列表里第一个存在的。
+  function pickFirstDir(candidates) {
+    for (const cand of candidates) {
+      try { return fs.realpathSync(cand); } catch (e) { /* 试下一个 */ }
+    }
+    return null;
+  }
+  // 桌面根：webapp 优先；极端情况下旧部署漏发 webapp 才兜底 www，避免白屏 404。
+  const DESKTOP_ROOT = pickFirstDir([
     new URL('../webapp', import.meta.url),
     new URL('./webapp', import.meta.url),
-    new URL('./www', import.meta.url),
-    new URL('../www', import.meta.url)
-  ];
-  let WWW_ROOT = null; // 名称保留历史叫法，语义为"/app 静态根"
-  for (const cand of APP_DIR_CANDIDATES) {
-    try {
-      WWW_ROOT = fs.realpathSync(cand);
-      break;
-    } catch (e) { /* 该候选不存在，试下一个 */ }
-  }
-  if (!WWW_ROOT) {
-    app.log.warn('未找到 webapp/ 与 www/ 目录，/app 将返回 404（账号与 AI 路由不受影响）');
+    new URL('../www', import.meta.url),
+    new URL('./www', import.meta.url)
+  ]);
+  // 手机根：就是 APK 同源的 www/。
+  const MOBILE_ROOT = pickFirstDir([
+    new URL('../www', import.meta.url),
+    new URL('./www', import.meta.url)
+  ]);
+  if (!DESKTOP_ROOT && !MOBILE_ROOT) {
+    app.log.warn('未找到 webapp/ 与 www/ 目录，网页端入口将返回 404（账号与 AI 路由不受影响）');
   } else {
-    app.log.info({ appDir: path.relative(process.cwd(), WWW_ROOT) }, '/app 静态目录就绪');
+    app.log.info({
+      desktop: DESKTOP_ROOT ? path.relative(process.cwd(), DESKTOP_ROOT) : null,
+      mobile: MOBILE_ROOT ? path.relative(process.cwd(), MOBILE_ROOT) : null
+    }, '网页端静态目录就绪（桌面/手机双端）');
   }
+  // 名称保留历史叫法：WWW_ROOT = /app 固定指向的桌面根
+  const WWW_ROOT = DESKTOP_ROOT;
   const APP_PREFIX = '/app';
+
+  /** 手机 UA 识别：命中移动端操作系统/浏览器即为手机版；iPad 桌面 UA 归桌面大屏。 */
+  const MOBILE_UA = /android|iphone|ipod|windows phone|blackberry|opera mini|mobile/i;
+  function rootForUA(req) {
+    if (MOBILE_UA.test(req.headers['user-agent'] || '')) return MOBILE_ROOT || DESKTOP_ROOT;
+    return DESKTOP_ROOT || MOBILE_ROOT;
+  }
 
   // 后缀 → Content-Type。为什么列白名单而不是用 mime 包：
   // www/ 里只有这几类文件，白名单既免依赖又能对未知后缀直接 404，不泄漏目录内容。
@@ -153,18 +168,18 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
 <p>这里没有对应内容。<br>可能链接已失效，或资源尚未随本次部署发布。</p>
 <a href="${APP_PREFIX}">回到玄决 App</a></div></body></html>`;
 
-  /** 把 URL 路径解析成 www/ 内的绝对路径；越界或后缀不在白名单一律返回 null（由调用方 404）。 */
-  function resolveAppPath(urlPath) {
-    if (!WWW_ROOT) return null;
+  /** 把 URL 路径解析成指定静态根内的绝对路径；越界或后缀不在白名单一律返回 null（由调用方 404）。 */
+  function resolveAppPath(root, urlPath) {
+    if (!root) return null;
     let rel = decodeURIComponent(String(urlPath || ''));
     const qi = rel.indexOf('?');
     if (qi >= 0) rel = rel.slice(0, qi);
     // 归一化必须做在解码之后：%2e%2e%2f 解码出来就是 ../，先归一化会被绕过
     rel = rel.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/+/, '');
     const parts = rel.split('/').filter((s) => s !== '' && s !== '.' && s !== '..');
-    const abs = path.join(WWW_ROOT, parts.join('/'));
-    // 双保险：即使上面漏了，拼接结果仍须以 WWW_ROOT 为界
-    if (abs !== WWW_ROOT && !abs.startsWith(WWW_ROOT + path.sep)) return null;
+    const abs = path.join(root, parts.join('/'));
+    // 双保险：即使上面漏了，拼接结果仍须以该静态根为界
+    if (abs !== root && !abs.startsWith(root + path.sep)) return null;
     const ext = path.extname(abs).toLowerCase();
     if (!Object.prototype.hasOwnProperty.call(APP_MIME, ext)) return null;
     return abs;
@@ -211,37 +226,40 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
     return reply.redirect(APP_PREFIX + '/', 301);
   });
 
-  /** /app/ 发 index.html（SPA 入口，壳内路由自己走）。 */
-  const serveAppIndex = async (req, reply) => {
-    const ok = await sendAppFile(WWW_ROOT ? path.join(WWW_ROOT, 'index.html') : null, reply);
+  /** 发某个静态根的 index.html（SPA 入口，壳内路由自己走）。 */
+  const serveRootIndex = (root) => async (req, reply) => {
+    const ok = await sendAppFile(root ? path.join(root, 'index.html') : null, reply);
     if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
   };
-  app.get(APP_PREFIX + '/', serveAppIndex);
+  app.get(APP_PREFIX + '/', serveRootIndex(WWW_ROOT));
 
   // /app/* 具体文件。为什么 /app 与 /app/ 要单独接住：Fastify 的 /app/* 不匹配空段，
   // 不单独注册的话根路径会掉到 404。
   app.get(APP_PREFIX + '/*', async (req, reply) => {
-    const abs = resolveAppPath(req.url.slice(APP_PREFIX.length));
+    const abs = resolveAppPath(WWW_ROOT, req.url.slice(APP_PREFIX.length));
     if (!abs) return reply.code(404).type('text/html; charset=utf-8').send(app404);
     const ok = await sendAppFile(abs, reply);
     if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
   });
 
   // ============================================================
-  // 根路径托管：/ 与 /* 直接发 webapp/（同一份文件、同一套 MIME/穿越防护）。
+  // 根路径双端入口：/ 与 /* 按 UA 分发桌面 webapp/ 或手机 www/。
   //
-  // webapp 内全部是相对引用（css/app.css、js/…、data/…），文档基准为 /
-  // 时这些相对路径天然落在根前缀，无需重写任何前端代码；API 则走绝对 /v1/*。
+  // 两端资源全部是相对引用（桌面 css/app.css、手机 css/style.css 等），
+  // 同一 UA 的后续资源请求会再次落到同一个静态根，天然对得上；
+  // API 则走绝对 /v1/*，两端共用。不提供 ?force 之类的查询参数切换：
+  // 参数只在首个 HTML 请求上、后续资源请求不带它，反而会把 CSS/JS 路由到错端。
   //
   // 优先级安全性：Fastify(find-my-way) 中静态/参数段永远优先于根通配，
   //   /health、/admin、/portal、/favicon.ico、/icon.svg 以及 /v1/*、/app/*
   //   都不会被这个通配吞掉；通配只接住没有更具体路由的根级路径。
   // 和 /app/* 一样，根通配不匹配空段，所以 / 与 /index.html 要显式注册。
   // ============================================================
-  app.get('/', serveAppIndex);
-  app.get('/index.html', serveAppIndex);
+  app.get('/', (req, reply) => serveRootIndex(rootForUA(req))(req, reply));
+  app.get('/index.html', (req, reply) => serveRootIndex(rootForUA(req))(req, reply));
   app.get('/*', async (req, reply) => {
-    const abs = resolveAppPath(req.url);
+    const root = rootForUA(req);
+    const abs = resolveAppPath(root, req.url);
     if (!abs) return reply.code(404).type('text/html; charset=utf-8').send(app404);
     const ok = await sendAppFile(abs, reply);
     if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
