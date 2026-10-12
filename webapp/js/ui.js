@@ -399,6 +399,48 @@ function brandMark() {
     '<circle class="bm-dot" cx="24" cy="24" r="2.1"/></svg>';
 }
 
+/* ---------------- 玄学物件背景 · 罗盘（线描，纯 SVG） ---------------- */
+function ambientCompassHTML() {
+  const C = 120;
+  const xy = (r, deg) => {
+    const a = deg * Math.PI / 180;
+    return [(C + r * Math.sin(a)).toFixed(1), (C - r * Math.cos(a)).toFixed(1)];
+  };
+  // 二十四山刻度（每 15°），八干四维四正位（每 45°）加长并着陶土
+  let ticks = '';
+  for (let i = 0; i < 24; i++) {
+    const deg = i * 15, card = i % 3 === 0;
+    const [ox, oy] = xy(107, deg), [ix, iy] = xy(card ? 91 : 98, deg);
+    ticks += '<line class="' + (card ? 'cp-accent' : '') + '" x1="' + ix + '" y1="' + iy +
+      '" x2="' + ox + '" y2="' + oy + '"/>';
+  }
+  // 八卦方位小点
+  let dots = '';
+  for (let i = 0; i < 8; i++) {
+    const [x, y] = xy(77, i * 45);
+    dots += '<circle class="cp-dot" cx="' + x + '" cy="' + y + '" r="1.9"/>';
+  }
+  // 四正十字（天池外 → 内盘）
+  let cross = '';
+  for (let i = 0; i < 4; i++) {
+    const deg = i * 90;
+    const [x1, y1] = xy(51, deg), [x2, y2] = xy(68, deg);
+    cross += '<line class="cp-accent" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
+  }
+  return '<svg viewBox="0 0 240 240" fill="none" stroke="currentColor" aria-hidden="true">' +
+    '<g class="cp-lines">' +
+    '<circle cx="120" cy="120" r="116" stroke-width="2.2"/><circle cx="120" cy="120" r="107" stroke-width="1"/>' +
+    ticks +
+    '<circle cx="120" cy="120" r="85" stroke-width="1"/><circle cx="120" cy="120" r="69" stroke-width="1"/>' +
+    dots + cross +
+    '<circle cx="120" cy="120" r="50" stroke-width="1.8"/>' +
+    '<g class="cp-tai">' +
+    '<circle cx="120" cy="120" r="46" stroke-width="1.6"/>' +
+    '<path d="M120 74 A23 23 0 0 1 120 120 A23 23 0 0 0 120 166" stroke-width="1.5"/>' +
+    '<circle cx="120" cy="97" r="4.6"/><circle cx="120" cy="143" r="4.6"/>' +
+    '</g></g></svg>';
+}
+
 /* ---------------- 大六壬 · 天地式盘 ---------------- */
 function shipanHTML(ke) {
   const C = 180;
@@ -502,8 +544,15 @@ function hexStackHTML(bits, moveLine, changeLine) {
   }
   return h + '</div>';
 }
+function triSymHTML(t) {
+  // 微型三爻（自上而下），纯 CSS 绘制，避免八卦 Unicode 在缺字体环境出豆腐块
+  const bits = MH_BITS[MH_TRI.indexOf(t.n)] || [1, 1, 1];
+  let bars = '';
+  for (let k = 2; k >= 0; k--) bars += '<i class="' + (bits[k] ? 'y' : 'n') + '"></i>';
+  return '<span class="mh-sym wx-' + esc(t.wx) + '">' + bars + '</span>';
+}
 function triChipHTML(t, role) {
-  return '<div class="mh-tri"><span class="mh-sym wx-' + esc(t.wx) + '">' + esc(t.sym) + '</span>' +
+  return '<div class="mh-tri">' + triSymHTML(t) +
     '<span class="tn">' + esc(t.attr) + esc(t.n) + '</span>' +
     (role ? '<span class="mh-role ' + (role === '体' ? 'ti' : role === '用' ? 'yong' : 'bian') + '">' + esc(role) + '</span>' : '') + '</div>';
 }
@@ -1603,6 +1652,23 @@ window.addEventListener('hashchange', route);
 
 /* ---------------- 启动 ---------------- */
 $('#brandMark').innerHTML = brandMark();
+// 玄学背景：罗盘内加旋转层；铜钱加漂浮层、卦爻加淡入层（静态透明度/角度在外层，规避 keyframes 变量兼容）
+const ambCompass = $('#ambCompass');
+if (ambCompass) {
+  ambCompass.innerHTML = '<div class="amb-spin">' + ambientCompassHTML() + '</div>';
+  document.querySelectorAll('.amb-coin > svg').forEach(svg => {
+    const w = document.createElement('div');
+    w.className = 'amb-float';
+    svg.parentNode.insertBefore(w, svg);
+    w.appendChild(svg);
+  });
+  document.querySelectorAll('.amb-yao > svg').forEach(svg => {
+    const w = document.createElement('div');
+    w.className = 'amb-fade';
+    svg.parentNode.insertBefore(w, svg);
+    w.appendChild(svg);
+  });
+}
 applyTheme();
 if (settings.railHidden) app.classList.add('rail-hidden');
 renderRecent();

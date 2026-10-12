@@ -168,7 +168,7 @@ input,textarea,select{font-family:inherit;color:inherit}
 .clock{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
 .clock-dot{width:6px;height:6px;border-radius:50%;background:var(--jade);box-shadow:0 0 0 3px var(--jade-soft)}
 
-.reading{flex:1;overflow-y:auto;scroll-behavior:smooth}
+.reading{flex:1;overflow-y:auto;scroll-behavior:smooth;position:relative;z-index:1}
 .reading-inner{width:100%;max-width:720px;margin:0 auto;padding:44px 40px 120px}
 .reading-inner>*{animation:rise .45s var(--ease) both}
 @keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
@@ -895,6 +895,59 @@ body::before{
   .wx-fill{transition:none}
 }
 
+/* ============ 玄学物件背景层 · 罗盘/铜钱/卦爻 ============ */
+#ambient{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.amb{position:absolute;margin:0;opacity:var(--o,.4)}
+.amb svg{width:100%;height:100%;display:block}
+@keyframes ambFade{from{opacity:0}to{opacity:1}}
+@keyframes ambSpin{to{transform:rotate(360deg)}}
+@keyframes ambFloat{0%{transform:translateY(0)}100%{transform:translateY(-9px)}}
+.amb-spin,.amb-float,.amb-fade{width:100%;height:100%}
+.amb-spin{animation:ambFade 1.8s var(--ease) .15s both,ambSpin 240s linear 2s infinite}
+.amb-float{animation:ambFade 1.4s var(--ease) both,ambFloat 13s ease-in-out 1.6s infinite alternate}
+.amb-fade{animation:ambFade 1.6s var(--ease) .8s both}
+
+/* 大罗盘：右下半隐，极慢自转 */
+.amb-compass{
+  --o:.5;right:-175px;bottom:-195px;width:560px;height:560px;
+  color:var(--ink-3);
+}
+.amb-compass .cp-lines{stroke-width:1.2;stroke-opacity:.16}
+.amb-compass .cp-accent{stroke:var(--clay);stroke-opacity:.2}
+.amb-compass .cp-dot{fill:var(--clay);stroke:none;fill-opacity:.28}
+.amb-compass .cp-tai{stroke-opacity:.26}
+[data-theme="dark"] .amb-compass{--o:.4}
+[data-theme="dark"] .amb-compass .cp-lines{stroke-opacity:.22}
+[data-theme="dark"] .amb-compass .cp-accent{stroke-opacity:.26}
+
+/* 铜钱：陶土线描，错落留白区，极轻浮摆（角度静态、浮动在内层） */
+.amb-coin{color:var(--clay)}
+.amb-coin.c1{--o:.42;left:1.2%;top:15%;width:118px;height:118px;transform:rotate(-14deg)}
+.amb-coin.c2{--o:.32;right:4.5%;top:11%;width:74px;height:74px;transform:rotate(10deg)}
+.amb-coin.c2 .amb-float{animation-duration:1.4s,16s;animation-delay:.5s,.5s}
+.amb-coin.c3{--o:.3;left:4.5%;bottom:9%;width:86px;height:86px;transform:rotate(24deg)}
+.amb-coin.c3 .amb-float{animation-duration:1.4s,18s;animation-delay:.7s,.7s}
+[data-theme="dark"] .amb-coin.c1{--o:.3}
+[data-theme="dark"] .amb-coin.c2{--o:.24}
+[data-theme="dark"] .amb-coin.c3{--o:.22}
+
+/* 卦爻：墨色淡影 */
+.amb-yao{color:var(--ink-2);--o:.13}
+.amb-yao.y1{right:7.5%;top:35%;width:32px;height:42px;transform:rotate(90deg)}
+.amb-yao.y2{left:7%;top:56%;width:28px;height:37px;--o:.1;transform:rotate(-90deg)}
+[data-theme="dark"] .amb-yao.y1{--o:.16}
+[data-theme="dark"] .amb-yao.y2{--o:.12}
+
+@media(max-width:1280px){
+  .amb-compass{width:440px;height:440px;right:-150px;bottom:-165px}
+  .amb-yao{display:none}
+  .amb-coin.c1{width:92px;height:92px;left:-.8%}
+  .amb-coin.c2{display:none}
+}
+@media(max-width:1023px){
+  #ambient{display:none}
+}
+
 /* ============ 品牌徽标 · 天圆地方式盘印 ============ */
 .brand-mark{padding:0;overflow:hidden}
 .brand-mark .bm{width:100%;height:100%;display:block;transition:transform .8s var(--ease)}
@@ -1000,7 +1053,9 @@ body::before{
 .mh-tris{display:flex;flex-direction:column;gap:4px;width:100%}
 .mh-tri{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-2);
   background:var(--card-2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;white-space:nowrap}
-.mh-sym{font-size:14px;line-height:1}
+.mh-sym{width:14px;flex-shrink:0;display:flex;flex-direction:column;gap:2.5px;padding:1px 0}
+.mh-sym i{display:block;height:2px;border-radius:1px;background:currentColor}
+.mh-sym i.n{background:linear-gradient(90deg,currentColor 0 40%,transparent 40% 60%,currentColor 60% 100%)}
 .mh-tri .tn{flex:1;overflow:hidden;text-overflow:ellipsis}
 .mh-role{font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;border:1px solid transparent;flex-shrink:0}
 .mh-role.ti{background:var(--jade-soft);color:var(--jade);border-color:color-mix(in srgb,var(--jade) 32%,transparent)}
