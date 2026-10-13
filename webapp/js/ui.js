@@ -630,6 +630,9 @@ function renderHome() {
   });
   h += '</div></div>';
 
+  // 实时决策顾问（同一时刻的课，问多少轮都不重新起盘）
+  h += rtChatHTML();
+
   // 问事输入（唯一的创建入口）
   h += '<div class="ask-box" id="askBox">' +
     '<textarea id="askInput" rows="1" placeholder="想问什么？一句话说清处境，比如：这个 offer 要不要接…"></textarea>' +
@@ -643,6 +646,7 @@ function renderHome() {
   h += '</div>';
   view.innerHTML = h;
   bindHome();
+  bindRtChat();
   if (window.Fx) Fx.enhance(view);
 }
 function gzSpan(g) { return '<span style="font-family:var(--serif);letter-spacing:.06em">' + esc(g) + '</span>'; }
@@ -1359,7 +1363,7 @@ async function askCloud() {
     const history = getChat().slice(-20).map(m => ({ role: m.role, content: m.content }));
     const j = await Cloud.req('/v1/ai/chat', {
       method: 'POST',
-      body: { messages: [{ role: 'system', content: buildMingSystem() }].concat(history), temperature: .7, max_tokens: 900 }
+      body: { messages: [{ role: 'system', content: buildMingSystem() }].concat(history), scene: 'lifetime' }
     });
     content = (j && j.content || '').trim();
     if (!content) content = '云端这次没有给出有效回复，请换个问法再试一次。';
@@ -1405,6 +1409,190 @@ function credentialModal(s, justRegistered) {
     if (navigator.clipboard) navigator.clipboard.writeText(v).then(() => toast('已复制'));
     else { $('#cpVal', m.root).select(); document.execCommand('copy'); toast('已复制'); }
   };
+}
+
+/* ---------- 实时决策顾问（此刻时课问对） ---------- */
+// 与命盘问对共用 Cloud 令牌与 .chat-* 玻璃样式，但走独立的会话线程与 system 提示：
+// 命盘问对谈「一辈子」，这里只谈「此刻这一课」，跨时辰即换盘，历史不混用。
+const K_RT_CHAT = 'xj_web_rt_chat';
+const RT_SUGGESTS = ['现在该不该推进这件事？', '两个选择哪个更合适？', '接下来要注意什么风险？', '该等还是该动手？', '观察哪些信号再决定？'];
+let rtBusy = false;
+function rtChatHTML() {
+  return '<div class="ming-chat rt-chat">' +
+    '<div class="chat-h"><div class="ch-ico">时</div><div><div class="ch-t">实时决策顾问</div>' +
+    '<div class="ch-d">此刻时课 · ' + esc(fmtMD(getRt().date)) + ' 起</div></div>' +
+    '<button class="chat-status" id="rtChatStatus" title="云令牌"><span class="cd"></span><span id="rtStatusTxt">待连接</span></button></div>' +
+    '<div class="chat-msgs" id="rtMsgs"></div>' +
+    '<div class="chat-suggest" id="rtSuggest">' +
+    RT_SUGGESTS.map(q => '<button class="chip" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('') +
+    '</div>' +
+    '<div class="chat-input"><textarea id="rtInput" rows="1" placeholder="就此刻这一课问点什么… Enter 发送"></textarea>' +
+    '<button class="chat-send" id="rtSend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>' +
+    '<div class="chat-foot">AI 内容由云端模型生成，卦象为短期参考（数日至数周），不构成医疗、法律、投资建议</div>' +
+    '</div>';
+}
+function getRtChat() { return LS.get(K_RT_CHAT, []); }
+function saveRtChat(a) { LS.set(K_RT_CHAT, a.slice(-40)); }
+function paintRtChat(withWelcome) {
+  const box = $('#rtMsgs');
+  if (!box) return;
+  const msgs = getRtChat();
+  if (!msgs.length && withWelcome) {
+    const r = getRt();
+    const p = r.dl.plain;
+    let hi = '这一课已起好。我是你的「实时决策顾问」，重点回答"现在该不该做""选哪个""何时做""有什么风险"。\n\n';
+    hi += '此刻倾向：**' + esc(p.tendency) + '** —— ' + esc(p.state);
+    if (p.risks && p.risks.length) hi += '\n\n需留意：' + p.risks.slice(0, 2).map(x => esc(x)).join('；');
+    hi += '\n\n直接输入你的事，或点下面的问题；同一时辰内可以一直追问，卦不会重起。';
+    box.innerHTML = '<div class="msg ai">' + md2html(hi) + '</div>';
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+  box.innerHTML = msgs.map(m =>
+    m.role === 'user' ? '<div class="msg user">' + esc(m.content) + '</div>' :
+      '<div class="msg ai">' + md2html(m.content) + '</div>').join('');
+  box.scrollTop = box.scrollHeight;
+}
+function setRtStatus(online, text) {
+  const st = $('#rtChatStatus'); if (!st) return;
+  st.classList.toggle('online', !!online);
+  const t = $('#rtStatusTxt'); if (t && text) t.textContent = text;
+}
+function bindRtChat() {
+  paintRtChat(true);
+  const cl = Cloud.all();
+  setRtStatus(!!(cl && cl.access), cl && cl.access ? '已连接' : '待连接');
+  const input = $('#rtInput');
+  if (!input) return;
+  const send = $('#rtSend');
+  const doSend = () => {
+    const text = input.value.trim();
+    if (!text || rtBusy) { if (!text) input.focus(); return; }
+    input.value = ''; input.style.height = 'auto';
+    const msgs = getRtChat();
+    msgs.push({ role: 'user', content: text });
+    saveRtChat(msgs);
+    paintRtChat(false);
+    askRtCloud(text);
+  };
+  send.onclick = doSend;
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+  });
+  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 96) + 'px'; });
+  $$('#rtSuggest .chip').forEach(c => c.onclick = () => {
+    if (rtBusy) return;
+    input.value = c.dataset.q; doSend();
+  });
+  $('#rtChatStatus').onclick = () => {
+    const s = Cloud.all();
+    if (!s) { toast('完成第一次问答后自动开通云令牌'); return; }
+    credentialModal(s);
+  };
+}
+
+// 实时课上下文：与 APK 端 buildUserPrompt 同源口径（四课/三传/天将/神煞/格局/类神），
+// 另附此刻时课的节气、值神、冲煞、宜忌，供模型判断"此时此地"的宜忌。
+function buildRtSystem() {
+  const L = [
+    '你是用户的「实时决策顾问」。基于下方此刻起的大六壬课式与即时宜忌，通过多轮对话帮用户做短期决策。',
+    '要求：',
+    '1. 重点回答"现在该不该做""选哪个""何时做""有什么风险"，白话、具体、可执行；',
+    '2. 卦象为短期参考（数日至数周），不断长期命运，不做绝对化断言；',
+    '3. 每次回答给出可观察的现实信号，便于用户事后复盘校准；',
+    '4. 涉及健康仅作文化参考，必要时提示就医；禁止法事、符咒、消灾等说法；',
+    '5. 回答控制在 350 字内，可用小标题或分点，关键处可用 **加粗**。'
+  ].join('\n');
+  const r = getRt();
+  const ke = r.dl.ke;
+  const p = r.dl.plain;
+  const ZHI = Lunar.ZHI;
+  let ctx = '\n\n# 起课时间\n';
+  ctx += '公历：' + fmtDT(r.date) + '；农历：' + (r.lunar ? r.lunar.monthStr + r.lunar.dayStr : '—') + '\n';
+  ctx += '四柱：' + r.bz.year.gz + '年 ' + r.bz.month.gz + '月 ' + r.bz.day.gz + '日 ' + r.bz.hour.gz + '时\n';
+  ctx += '节气：' + (r.jq.cur ? r.jq.cur.name : '—') + ' → ' + (r.jq.next ? r.jq.next.name : '—') +
+    '；值神：' + r.zs.n + (r.zs.g ? '（吉）' : '（凶）') + '；冲煞：' + r.cs.chong + ' · ' + r.cs.sha + '\n';
+  ctx += '黄历宜：' + r.hl.yi.slice(0, 5).join('、') + '；忌：' + r.hl.ji.slice(0, 5).join('、') + '\n';
+
+  ctx += '\n# 大六壬盘面\n';
+  ctx += '月将：' + ke.yueJiang.zhi + '（' + ke.yueJiang.wx + '）　占时：' + ke.zhanShi.zhi + '（' + r.dl.sc.name + '）\n';
+  ctx += '昼夜：' + ke.guiRen.label + '　贵人：' + ke.guiRen.zhi + '（乘 ' + ke.guiRen.chengShen + '）\n';
+  ctx += '空亡：' + ZHI[ke.kongWang[0]] + ZHI[ke.kongWang[1]] + '　课体：' +
+    (ke.isFuYin ? '伏吟' : ke.isFanYin ? '返吟' : '移宫') + '　发用：' + esc(ke.sanChuan.method) + '\n';
+  ctx += '格局：' + (ke.geju || []).join('、') + '\n';
+  ctx += '四课：\n';
+  ke.lessons.forEach((l, i) => {
+    ctx += '  第' + ['一', '二', '三', '四'][i] + '课：上 ' + ZHI[l.up] + '（' + esc(l.upTJ) + '）　下 ' + esc(l.downLabel) + '\n';
+  });
+  const sc = ke.sanChuan;
+  ctx += '三传：初 ' + sc.chu.zhi + '（' + sc.chu.tj + '，' + sc.chu.wx + '）→ 中 ' + sc.zhong.zhi +
+    '（' + sc.zhong.tj + '，' + sc.zhong.wx + '）→ 末 ' + sc.mo.zhi + '（' + sc.mo.tj + '，' + sc.mo.wx + '）\n';
+  ctx += '类神：' + esc(ke.leishenName) + '（乘 ' + (ke.leishenShen !== null ? ZHI[ke.leishenShen] : '—') +
+    (ke.leishenShen !== null && ke.kongWang.includes(ke.leishenShen) ? '，落空亡' : '') + '）\n';
+  const SS_LABELS = { yima: '驿马', taohua: '桃花', huagai: '华盖', taiSui: '太岁', yueJian: '月建' };
+  const ss = [];
+  if (ke.shenSha && typeof ke.shenSha === 'object') {
+    Object.keys(SS_LABELS).forEach(k => { if (ke.shenSha[k] && ke.shenSha[k] !== '—') ss.push(SS_LABELS[k] + ' ' + ke.shenSha[k]); });
+  }
+  if (ss.length) ctx += '神煞：' + ss.join('　') + '\n';
+
+  ctx += '\n# 规则化断语摘要（供参考，需复核）\n';
+  ctx += '倾向：' + p.tendency + '\n';
+  ctx += '状态：' + p.state + '\n';
+  if (p.opps && p.opps.length) ctx += '机会：' + p.opps.join('；') + '\n';
+  if (p.risks && p.risks.length) ctx += '风险：' + p.risks.join('；') + '\n';
+  ctx += '环境/对方：' + p.env + '\n';
+  ctx += '宜：' + (p.doAct || []).slice(0, 4).join('；') + '\n';
+  ctx += '忌：' + (p.dontAct || []).slice(0, 4).join('；') + '\n';
+  if (p.signals && p.signals.length) ctx += '观察信号：' + p.signals.slice(0, 4).join('；') + '\n';
+  return L + ctx;
+}
+
+async function askRtCloud() {
+  rtBusy = true;
+  const send = $('#rtSend'); if (send) send.disabled = true;
+  const box = $('#rtMsgs');
+  const ty = document.createElement('div');
+  ty.className = 'msg ai';
+  ty.innerHTML = '<span class="chat-typing"><i></i><i></i><i></i></span>';
+  box.appendChild(ty); box.scrollTop = box.scrollHeight;
+
+  let content = '';
+  try {
+    const ensured = await Cloud.ensure();
+    if (ensured.registered) credentialModal(ensured.s, true);
+    setRtStatus(true, '已连接');
+    const history = getRtChat().slice(-20).map(m => ({ role: m.role, content: m.content }));
+    // scene 交给服务端按场景补默认档位/采样参数（见 server/lib/scene.js）
+    const j = await Cloud.req('/v1/ai/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'system', content: buildRtSystem() }].concat(history), scene: 'realtime' }
+    });
+    content = (j && j.content || '').trim();
+    if (!content) content = '云端这次没有给出有效回复，请换个问法再试一次。';
+  } catch (e) {
+    content = '⚠ ' + (e.message || '云端连接失败，请稍后重试。') + '\n\n这一课的盘面已在本机排好；网络恢复后可以继续追问。';
+  }
+
+  ty.innerHTML = '<span class="caret"></span>';
+  const caret = ty.querySelector('.caret');
+  let shown = 0;
+  const step = () => {
+    if (!document.body.contains(ty)) { rtBusy = false; if (send) send.disabled = false; return; }
+    shown = Math.min(content.length, shown + 3);
+    caret.innerHTML = md2html(content.slice(0, shown));
+    box.scrollTop = box.scrollHeight;
+    if (shown < content.length) { setTimeout(step, 12); return; }
+    ty.innerHTML = md2html(content);
+    const msgs = getRtChat();
+    if (msgs.length && msgs[msgs.length - 1].role === 'user') {
+      msgs.push({ role: 'assistant', content });
+      saveRtChat(msgs);
+    }
+    rtBusy = false; if (send) send.disabled = false;
+    box.scrollTop = box.scrollHeight;
+  };
+  setTimeout(step, 60);
 }
 
 /* ---------------- 视图：典籍 ---------------- */

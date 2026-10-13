@@ -905,6 +905,10 @@ body::before{
 .chat-send svg{width:17px;height:17px}
 .chat-foot{padding:8px 16px 12px;font-size:10.5px;color:var(--ink-3);line-height:1.5;text-align:center;background:var(--paper-2)}
 
+/* 时课首页的实时顾问：阅读流内嵌，不占满视高 */
+.rt-chat{position:static;height:auto;max-height:560px;margin-bottom:22px}
+.rt-chat .chat-msgs{min-height:180px;max-height:340px}
+
 @media(max-width:1180px){
   .ming-grid{grid-template-columns:minmax(0,1fr) 340px}
 }

@@ -276,3 +276,81 @@ test('难度档位校验：非法 difficulty 被拒', async () => {
   assert.equal(r.status, 400);
   assert.equal(r.body.error, 'difficulty_invalid');
 });
+
+// ---------- 场景契约 ----------
+// 前置的熔断/全挂测试已把两厂 Key 打到 suspect（池子空 → 409 ai_not_configured），
+// 这里先复位，让场景测试自包含：只验「scene → 档位/留痕」这一件事，不依赖前序副作用。
+async function resetKeys() {
+  await pool.query(`update ai_keys set status='active', fails=0`);
+}
+
+test('场景契约：realtime 缺省档位为 mid，并把 scene 写进路由留痕', async () => {
+  await resetKeys();
+  await withMock({ 'mock-a.test': { content: 'rt-answer' } }, async () => {
+    // 不给 difficulty：让场景默认档位生效（realtime → mid）
+    const r = await api('/v1/ai/chat', {
+      method: 'POST',
+      token: USER_TOKEN,
+      body: { messages: [{ role: 'user', content: '现在适合签约吗' }], scene: 'realtime' }
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.scene, 'realtime');
+    assert.equal(r.body.tier, 'mid', 'realtime 场景缺省档位应为 mid');
+    assert.equal(r.body.model, 'a-mid', 'mid 档应命中甲厂 a-mid');
+  });
+  // logRouting 是 fire-and-forget（留痕失败不该拖垮用户响应），
+  // 所以不能靠「order by id desc」赌竞态：轮询等它落库，查到为止。
+  let log = null;
+  for (let i = 0; i < 40 && !log; i++) {
+    const r = await pool.query(
+      `select tier, scene from ai_routing_log where scene='realtime' order by id desc limit 1`
+    );
+    if (r.rowCount) log = r.rows[0];
+    else await new Promise(res => setTimeout(res, 25));
+  }
+  assert.ok(log, 'scene 必须落库，后台才能按场景统计');
+  assert.equal(log.scene, 'realtime');
+  assert.equal(log.tier, 'mid');
+});
+
+test('场景契约：客户端显式 difficulty 优先于场景默认', async () => {
+  await resetKeys();
+  await withMock({ 'mock-a.test': {} }, async () => {
+    const r = await api('/v1/ai/chat', {
+      method: 'POST',
+      token: USER_TOKEN,
+      body: {
+        messages: [{ role: 'user', content: '帮我全面详批这个命盘' }],
+        scene: 'realtime',
+        difficulty: 'hard'
+      }
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.tier, 'hard', '客户端最清楚难易，hint 必须赢过场景默认');
+    assert.equal(r.body.model, 'a-big');
+  });
+});
+
+test('场景契约：非法 scene 被拒（拼错字母要报错，不能静默按通用处理）', async () => {
+  const r = await api('/v1/ai/chat', {
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { messages: [{ role: 'user', content: '你好' }], scene: 'realtim' }
+  });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'scene_invalid');
+});
+
+test('场景契约：不传 scene 的老客户端行为不变（启发式照旧）', async () => {
+  await resetKeys();
+  await withMock({ 'mock-a.test': {} }, async () => {
+    const r = await api('/v1/ai/chat', {
+      method: 'POST',
+      token: USER_TOKEN,
+      body: { messages: [{ role: 'user', content: '明天适合搬家吗？' }] }
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.scene, null, '老客户端 scene 回 null');
+    assert.equal(r.body.tier, 'easy', '短问句仍按启发式判 easy');
+  });
+});

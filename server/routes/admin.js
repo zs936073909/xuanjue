@@ -155,6 +155,17 @@ export async function registerAdmin(app) {
         count(*) filter (where ts > now() - interval '1 day')::int as last_24h,
         count(*) filter (where ts > now() - interval '1 day' and status='ok')::int as ok_24h
       from ai_routing_log`);
+    // 场景分布：近 24h 各栏目的调用量与失败量。
+    // 「实时卜筮一直失败、典籍问答从没失败」这种结论，只有按场景拆开才看得出来。
+    const scenes = await q(`
+      select
+        coalesce(scene, 'unknown') as scene,
+        count(*)::int as calls,
+        count(*) filter (where status='ok')::int as ok
+      from ai_routing_log
+      where ts > now() - interval '1 day'
+      group by scene
+      order by calls desc`);
     const pool = await q(`
       select
         (select count(*) from ai_providers where enabled)::int as providers,
@@ -164,6 +175,7 @@ export async function registerAdmin(app) {
     return reply.send({
       users: users.rows[0],
       ai_calls: calls.rows[0],
+      ai_scenes: scenes.rows,
       pool: pool.rows[0]
     });
   });
@@ -484,7 +496,7 @@ export async function registerAdmin(app) {
   app.get('/ai/routing-log', { preHandler: requireAdmin }, async (req, reply) => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
     const r = await q(
-      `select l.id, l.tier, l.provider_slug, l.model, l.status, l.latency_ms,
+      `select l.id, l.tier, l.scene, l.provider_slug, l.model, l.status, l.latency_ms,
               l.chars_in, l.chars_out, l.ts, k.label as key_label
        from ai_routing_log l left join ai_keys k on k.id=l.key_id
        order by l.id desc limit $1`,
@@ -521,6 +533,7 @@ export async function registerAdmin(app) {
           await logRouting({
             userId: null,
             tier,
+            scene: 'admin_test',
             providerSlug: c.providerSlug,
             model: c.model,
             keyId: c.keyId,
@@ -536,6 +549,7 @@ export async function registerAdmin(app) {
         await logRouting({
           userId: null,
           tier,
+          scene: 'admin_test',
           providerSlug: c.providerSlug,
           model: c.model,
           keyId: c.keyId,
@@ -555,6 +569,7 @@ export async function registerAdmin(app) {
         await logRouting({
           userId: null,
           tier,
+          scene: 'admin_test',
           providerSlug: c.providerSlug,
           model: c.model,
           keyId: c.keyId,

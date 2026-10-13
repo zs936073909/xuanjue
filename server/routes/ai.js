@@ -38,8 +38,10 @@ import {
   assertMessages,
   assertTemperature,
   assertMaxTokens,
-  assertTier
+  assertTier,
+  assertScene
 } from '../lib/validate.js';
+import { sceneTier, sceneSampling } from '../lib/scene.js';
 
 const env = getEnv();
 // 站长内置 Key：env 直配、只活在进程内存，配了它就是「用户端零配置」的那条路
@@ -153,9 +155,21 @@ export async function registerAI(app) {
 
   app.post('/chat', async (req, reply) => {
     const messages = assertMessages(req.body?.messages);
-    const temperature = assertTemperature(req.body?.temperature);
-    const maxTokens = assertMaxTokens(req.body?.max_tokens);
-    const hint = assertTier(req.body?.difficulty);
+    // 场景：客户端知道自己在哪个栏目（实时卜筮 / 命盘问对 / 典籍问答…）。
+    // 不传 scene 的老客户端走通用路径，行为与从前完全一致。
+    const sceneName = assertScene(req.body?.scene);
+    // 采样参数：客户端显式值优先，缺省时按场景补（各场景默认值见 lib/scene.js）
+    const sampling = sceneSampling(
+      sceneName,
+      req.body?.temperature === undefined || req.body?.temperature === null || req.body?.temperature === ''
+        ? null : assertTemperature(req.body.temperature),
+      req.body?.max_tokens === undefined || req.body?.max_tokens === null || req.body?.max_tokens === ''
+        ? null : assertMaxTokens(req.body.max_tokens)
+    );
+    const temperature = sampling.temperature;
+    const maxTokens = sampling.maxTokens;
+    // 难度：客户端 hint > 场景默认 > 文本启发式
+    const hint = assertTier(req.body?.difficulty) || sceneTier(sceneName);
     const tier = estimateTier(messages, hint);
 
     // 限额：按用户覆盖优先（管理员在后台单独调过的人），否则全局默认
@@ -225,6 +239,7 @@ export async function registerAI(app) {
         await logRouting({
           userId: req.userId,
           tier,
+          scene: sceneName,
           providerSlug: cred.providerSlug,
           model: cred.model,
           keyId: cred.keyId,
@@ -244,6 +259,7 @@ export async function registerAI(app) {
         await logRouting({
           userId: req.userId,
           tier,
+          scene: sceneName,
           providerSlug: cred.providerSlug,
           model: cred.model,
           keyId: cred.keyId,
@@ -280,6 +296,7 @@ export async function registerAI(app) {
       await logRouting({
         userId: req.userId,
         tier,
+        scene: sceneName,
         providerSlug: cred.providerSlug,
         model: cred.model,
         keyId: cred.keyId,
@@ -295,6 +312,7 @@ export async function registerAI(app) {
         remaining: Math.max(0, limits.daily - used),
         source: cred.source,
         tier,
+        scene: sceneName,
         model: cred.model,
         provider: cred.providerSlug || null
       });

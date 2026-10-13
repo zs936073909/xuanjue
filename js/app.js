@@ -778,6 +778,23 @@
     h+=`<div class="section-note mt8">同一时刻，各法门独立起盘，可横向对比其倾向与建议。点击任意法门查看完整盘面。</div>`;
     h+=`</div>`;
 
+    // ===== 实时决策顾问（此刻时课问对）=====
+    // 入口卡：主按钮开默认议题对话，快捷 chip 直达六大预设议题
+    // 复用底部抽屉 renderAIChat，threadId 按「月+议题」生成（见 realtimeThreadId）
+    const rtTopics=AI.getRealtimeTopics();
+    const rtQuick=Object.keys(rtTopics).map(k=>({key:k,label:k}));
+    h+=`<div class="card rt-advisor">`;
+    h+=`<h3>实时决策顾问 <span class="h-sub">此刻时课问对</span><span class="rt-live">● 在线</span></h3>`;
+    h+=`<div class="ra-line">以「${p.tendency}」这一课为据，问现在该不该做、选哪个、何时做。</div>`;
+    h+=`<div class="ra-acts"><button class="btn primary block" id="btnRtAsk">问这一课 ›</button></div>`;
+    h+=`<div class="adv-quick">`;
+    rtQuick.forEach(t=>{
+      h+=`<button class="qchip" type="button" data-adv="${escAttr(t.key)}">${esc(t.label)}</button>`;
+    });
+    h+=`</div>`;
+    h+=`<div class="section-note">AI 内容由云端模型生成，卦象为短期参考（数日至数周），不构成医疗、法律、投资建议。</div>`;
+    h+=`</div>`;
+
     // ===== 流年飞星 =====
     const fxCenter=FX_STARS[fxMap(state.fxYear)['中']];
     h+=`<div class="card">`;
@@ -849,6 +866,10 @@
       const comp=computeDaliuren(new Date(),state.ask&&state.ask.bg.questionType||'其他');
       state.currentKe=comp;showDaliurenBoard(comp);
     };
+    // 实时决策顾问入口：主按钮开默认议题，chip 直达预设议题
+    const btnRtAsk=$('#btnRtAsk');
+    if(btnRtAsk)btnRtAsk.onclick=()=>openRealtimeAdvisor();
+    document.querySelectorAll('[data-adv]').forEach(e=>e.onclick=()=>openRealtimeAdvisor(e.dataset.adv));
     // 首页实时起课：点击法门查看完整盘面（复用首页同刻结果，保证对比一致）
     document.querySelectorAll('[data-rt]').forEach(e=>e.onclick=async()=>{
       const name=e.dataset.rt;
@@ -2577,7 +2598,7 @@
         {role:'system',content:AI.buildSystemPrompt(cfg)},
         {role:'user',content:userPrompt}
       ];
-      const opts={stream:cfg.aiStream!==false,signal:_aiAbort.signal};
+      const opts={stream:cfg.aiStream!==false,signal:_aiAbort.signal,scene:'classics'};
       if(opts.stream){
         let first=true,lastTime=0;
         opts.onDelta=(delta,full)=>{
@@ -2851,6 +2872,7 @@
       let first=true,lastTime=0;
       const reply=await AI.chat(threadId,pm.user,{
         stream:cfg.aiStream!==false,
+        scene:'daily',
         signal:_aiChatAbort.signal,
         onDelta:(delta,full)=>{
           if(first){body.innerHTML='';first=false;}
@@ -3020,6 +3042,7 @@
       let first=true,lastTime=0;
       replyText=await AI.chat(threadId,pm.user,{
         stream:cfg.aiStream!==false,
+        scene:'decision',
         signal:_aiChatAbort.signal,
         onDelta:(delta,full)=>{
           if(first){out.innerHTML='';first=false;}
@@ -3185,6 +3208,7 @@
         let first=true,lastTime=0;
         const reply=await AI.chat(threadId,txt,{
           stream:cfg.aiStream!==false,
+          scene:opts.advisorType||undefined,
           signal:_aiChatAbort.signal,
           onDelta:(delta,full)=>{
             if(first){aiBody.innerHTML='';first=false;}
@@ -5468,6 +5492,7 @@
     try{
       const reply=await AI.chat(threadId,user,{
         stream:cfg.aiStream!==false,
+        scene:'classics',
         retries:2,
         onDelta:(delta,full)=>{
           const m=state.classics.aiConv[idx];

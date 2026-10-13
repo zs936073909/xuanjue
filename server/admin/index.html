@@ -326,6 +326,14 @@
         <div class="stat"><div class="n" id="stKeys">–</div><div class="t">可用 Key / 异常</div></div>
       </div>
       <div class="panel">
+        <div class="panel-head"><h3>近 24 小时场景分布</h3><span class="hint">哪类提问在打、哪类在失败</span></div>
+        <table>
+          <thead><tr><th>场景</th><th class="num">调用</th><th class="num">成功</th><th class="num">失败</th></tr></thead>
+          <tbody id="sceneRows"></tbody>
+        </table>
+        <div class="empty hidden" id="sceneEmpty">近 24 小时没有调用。</div>
+      </div>
+      <div class="panel">
         <div class="panel-head"><h3>常用操作</h3></div>
         <div style="padding:14px 16px" class="btn-row">
           <button class="primary" id="quickNewUser">开一个测试账号</button>
@@ -461,7 +469,7 @@
       <div class="panel">
         <div class="panel-head"><h3>最近调用</h3><button id="logRefresh">刷新</button></div>
         <table>
-          <thead><tr><th>时间</th><th>难度</th><th>厂商</th><th>模型</th><th>状态</th><th>耗时</th><th>字符 in/out</th></tr></thead>
+          <thead><tr><th>时间</th><th>难度</th><th>场景</th><th>厂商</th><th>模型</th><th>状态</th><th>耗时</th><th>字符 in/out</th></tr></thead>
           <tbody id="logRows"></tbody>
         </table>
         <div class="empty hidden" id="logEmpty">还没有调用记录。</div>
@@ -634,6 +642,19 @@ $('#nav').addEventListener('click', (e) => {
 });
 
 // ---------- 总览 ----------
+// 场景中文名：与客户端 /v1/ai/chat 的 scene 字段一一对应（见服务端 lib/scene.js）
+const SCENE_LABELS = {
+  realtime: '实时卜筮',
+  lifetime: '命盘问对',
+  classics: '典籍问答',
+  daily: '今日宜忌',
+  decision: '决策对比',
+  admin_test: '后台试跑',
+  unknown: '未标注'
+};
+function sceneLabel(s) {
+  return SCENE_LABELS[s] || s || '未标注';
+}
 async function loadStats() {
   try {
     const s = await api('/v1/admin/stats');
@@ -641,6 +662,16 @@ async function loadStats() {
     $('#stActive').textContent = s.users.active_today;
     $('#stCalls').textContent = s.ai_calls.last_24h;
     $('#stKeys').textContent = s.pool.keys_active + ' / ' + s.pool.keys_suspect;
+    // 场景分布：哪类提问在打、哪类在失败，一眼看清（不点开路由日志）
+    const rows = s.ai_scenes || [];
+    $('#sceneRows').innerHTML = rows.length ? rows.map(r => `
+      <tr>
+        <td>${esc(sceneLabel(r.scene))}</td>
+        <td class="num">${r.calls}</td>
+        <td class="num">${r.ok}</td>
+        <td class="num">${r.calls - r.ok > 0 ? '<span class="tag bad">' + (r.calls - r.ok) + '</span>' : '0'}</td>
+      </tr>`).join('') : '<tr><td class="muted small" colspan="4">近 24 小时没有调用。</td></tr>';
+    $('#sceneEmpty').classList.toggle('hidden', rows.length > 0);
     $('#statsTime').textContent = '统计时间 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
   } catch (e) {
     toast('统计加载失败：' + e.message);
@@ -1132,6 +1163,7 @@ async function loadLog() {
       <tr>
         <td class="small muted">${fmtTime(l.ts)}</td>
         <td><span class="tag ${l.tier === 'hard' ? 'bad' : l.tier === 'easy' ? 'ok' : 'warn'}">${l.tier}</span></td>
+        <td>${esc(sceneLabel(l.scene))}</td>
         <td>${esc(l.provider_slug || '')}</td>
         <td class="mono small">${esc(l.model || '')}</td>
         <td>${l.status === 'ok' ? '<span class="tag ok">成功</span>' : `<span class="tag bad">${esc(l.status)}</span>`}</td>

@@ -198,17 +198,20 @@ export async function markKeyResult(keyId, ok) {
 // ---------- 路由留痕 ----------
 
 /**
- * 记录一次路由决策：只记元信息（难度/厂商/模型/状态/耗时/字数），
+ * 记录一次路由决策：只记元信息（难度/场景/厂商/模型/状态/耗时/字数），
  * 不记提问内容 —— 用户的私事不该因为运维留痕进日志表。
+ * scene 说明这次提问来自哪个栏目（实时卜筮/命盘问对/典籍问答…），
+ * 后台据此能看出「哪类提问在哪家模型上总失败」，比只看 tier 更可操作。
  */
 export async function logRouting(entry) {
   q(
     `insert into ai_routing_log
-       (user_id, tier, provider_slug, model, key_id, status, latency_ms, chars_in, chars_out)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       (user_id, tier, scene, provider_slug, model, key_id, status, latency_ms, chars_in, chars_out)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [
       entry.userId || null,
       entry.tier,
+      entry.scene || null,
       entry.providerSlug || null,
       entry.model || null,
       entry.keyId || null,

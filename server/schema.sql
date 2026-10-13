@@ -191,6 +191,7 @@ create table if not exists ai_routing_log (
   id           bigserial primary key,
   user_id      uuid references users(id) on delete cascade,
   tier         text not null,
+  scene        text,                        -- 场景：realtime | lifetime | classics | daily | decision | admin_test（老客户端为 null）
   provider_slug text,
   model        text,
   key_id       uuid references ai_keys(id) on delete set null,
@@ -200,5 +201,7 @@ create table if not exists ai_routing_log (
   chars_out    int,
   ts           timestamptz not null default now()
 );
+-- 迁移：2026-10 增加 scene 列（场景化路由留痕）。老库 upgrade 走这里，新库上面已建好。
+alter table ai_routing_log add column if not exists scene text;
 create index if not exists ai_routing_log_ts on ai_routing_log(ts desc);
 create index if not exists ai_routing_log_user on ai_routing_log(user_id, ts desc);

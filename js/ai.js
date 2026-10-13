@@ -478,7 +478,9 @@
 
   // 走云代理发一次对话。非流式返回，但会把完整文本按标点/字数合成为 onDelta 回调，
   // 使上层的打字机渲染可以无缝工作（服务端不开流式，长文一次返回即可）。
-  async function proxyChat(messages,opts,temperature,maxTokens){
+  // scene: 业务场景标识（realtime/lifetime/daily/decision/classics），
+  // 服务端据此选择模型档位与采样参数（见 server/lib/scene.js）；缺省时服务端按文本启发式推断。
+  async function proxyChat(messages,opts,temperature,maxTokens,scene){
     opts=opts||{};
     const C=global.Cloud;
     const cfg=Store.getSettings();
@@ -487,6 +489,7 @@
       temperature:temperature,
       max_tokens:maxTokens
     };
+    if(scene)body.scene=scene;
     // 超时上限 90s 对齐服务端出站超时；外部 signal 仍可随时中止
     const timeoutSec=Math.max(30,Math.min(90,Number(cfg.aiTimeout)||60));
     let timer=null;
@@ -642,7 +645,7 @@
     // 服务端负责限流、限次、Key 保管，失败时再由下方自带 Key 链路兜底。
     if(proxyUsable()){
       try{
-        return await proxyChat(messages,opts,cfg.aiTemperature,cfg.aiMaxTokens);
+        return await proxyChat(messages,opts,cfg.aiTemperature,cfg.aiMaxTokens,opts.scene);
       }catch(e){
         // 无任何本地配置时，代理的错误就是最终错误（回落只会给出更难懂的报错）
         if(!cfg.aiApiKey&&cfg.aiProvider!=='ollama'){
@@ -872,7 +875,7 @@
         const txt=await proxyChat([
           {role:'system',content:'你是测试机器人，只回复"OK"两个字。'},
           {role:'user',content:'ping'}
-        ],{stream:false},0.6,64);
+        ],{stream:false},0.6,64,'admin_test');
         const elapsed=Date.now()-t0;
         const q=proxyQuotaCached();
         const quotaTxt=(q&&q.remaining!==undefined&&q.remaining!==null)?('；今日剩余 '+q.remaining+' 次'):'';
@@ -1351,6 +1354,8 @@
       retries:opts.retries!==undefined?opts.retries:2
     };
     if(opts.signal)llmOpts.signal=opts.signal;
+    // scene 透传给云代理，服务端据此选择模型档位（见 server/lib/scene.js）
+    if(opts.scene)llmOpts.scene=opts.scene;
     if(llmOpts.stream&&typeof opts.onDelta==='function'){
       llmOpts.onDelta=opts.onDelta;
     }

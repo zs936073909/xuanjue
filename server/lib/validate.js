@@ -1,4 +1,5 @@
 // 输入校验：同步令牌 / 恢复口令 / kind 白名单 / 密文体量。纯手写，无额外依赖。
+import { SCENES } from './scene.js';
 
 /** 同步令牌：16–64 字符，允许字母数字与 - _  .（用户自选或生成的助记串） */
 const TOKEN_RE = /^[A-Za-z0-9._-]{16,64}$/;
@@ -252,6 +253,30 @@ export function assertMessages(v, field = 'messages') {
     out.push({ role, content });
   }
   return out;
+}
+
+/**
+ * 场景标识：realtime | lifetime | classics | daily | decision | admin_test。
+ * 允许缺省（老客户端不带 scene，行为与从前一致）。
+ * 为什么单独校验而不复用 assertTier：场景名是白名单枚举，写错必须 400 报出来，
+ * 否则客户端拼错一个字母，服务端会静默按通用对话处理，排查时毫无线索。
+ * 两道关：先查格式（防注入/超长），再查白名单（防拼错）——
+ * 只查格式不够，'realtim' 这种拼错能过正则，然后被当成无场景静默放行。
+ */
+export function assertScene(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v).trim().toLowerCase();
+  if (!s || s.length > 32 || !/^[a-z][a-z0-9_]*$/.test(s)) {
+    const e = new Error('scene_invalid');
+    e.statusCode = 400;
+    throw e;
+  }
+  if (!Object.prototype.hasOwnProperty.call(SCENES, s)) {
+    const e = new Error('scene_invalid');
+    e.statusCode = 400;
+    throw e;
+  }
+  return s;
 }
 
 /** 0..2 之间，缺省 0.6（与客户端 store 默认值一致） */
