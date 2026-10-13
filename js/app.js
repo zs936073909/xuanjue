@@ -4781,6 +4781,7 @@
     }else{
       h+=`<div class="gp-row disabled pad"><div class="gp-main"><div class="gp-d">${window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches?'已作为独立应用运行':'当前浏览器暂不支持安装，或已安装'}</div></div></div>`;
     }
+    h+=`<a class="btn-link-row" href="/game/" style="text-decoration:none"><span class="gp-ico">夜</span>夜盘 · 三传试炼<span class="btn-x-chev">›</span></a>`;
     h+=`<button class="btn-link-row" id="btnAbout"><span class="gp-ico">ℹ</span>关于与免责声明<span class="btn-x-chev">›</span></button>`;
     h+=`</div>`;
 

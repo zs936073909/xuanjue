@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F1E1D">
+<title>玄决 · 夜盘</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/game/style.css">
+</head>
+<body class="mode-title">
+<canvas id="view" tabindex="0"></canvas>
+<div id="vignette"></div>
+
+<div id="hud">
+  <div id="chart" class="panel"></div>
+  <div id="detail" class="panel"></div>
+  <div id="objective" class="panel"><strong>初传</strong><span></span></div>
+  <div id="status" class="panel">
+    <div class="hearts" id="hearts"></div>
+    <div id="score">应验 <b>0</b></div>
+    <div id="streak"></div>
+  </div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="banner" class="panel"></div>
+  <div id="prompt" class="panel"></div>
+  <div class="legend">金克木 · 木克土 · 土克水 · 水克火 · 火克金</div>
+  <div id="elements"></div>
+  <button class="mute" id="mute-hud" type="button">声开</button>
+</div>
+
+<div id="touch">
+  <div id="joy" aria-label="摇杆"><div id="knob"></div></div>
+  <button id="btn-ying" type="button">应</button>
+</div>
+
+<div id="title">
+  <div class="title-card">
+    <h1 class="mark">玄决</h1>
+    <p class="sub">夜盘 · 三传试炼</p>
+    <p class="pitch">把今夜的大六壬盘走成一座石坛。十二地支是十二宫，十二天将按真实起课落座。要解你所问，须按三传——初、中、末——走完三关。他们以五行来试，你用生克去应。</p>
+    <ul class="ideas">
+      <li>关卡不是随机的：用的就是玄决此刻的月将、贵人、三传。</li>
+      <li>吉将可以相生而过，凶将必须正克，空亡与天空会把应答落空。</li>
+      <li>类神、驿马、桃花、华盖都在盘上，去不去由你。走近宫门，能看见旺衰。</li>
+      <li>从容、寻常、急课三档。走完记在这台设备上，可复制课辞。</li>
+    </ul>
+    <div class="chips" id="chips"></div>
+    <div class="chips" id="diffs"></div>
+    <div class="hour-row">
+      <button type="button" id="hour-prev">上一时辰</button>
+      <div class="hour-label" id="hour-label">正在起课</div>
+      <button type="button" id="hour-next">下一时辰</button>
+    </div>
+    <div id="preview"></div>
+    <p class="records" id="records"></p>
+    <button class="primary" id="btn-start" type="button" style="margin-top:14px">起课入盘</button>
+    <button class="ghost block" id="btn-look" type="button" disabled>绕盘看看</button>
+    <div class="row-btns">
+      <button class="ghost" id="hour-now" type="button">回到此刻</button>
+      <button class="mute ghost" id="mute-title" type="button">声开</button>
+    </div>
+    <p class="controls-line desk-only">WASD 行走 · 1–5 五行 · 空格应门 · E 拜访 · 鼠标拖动环视</p>
+    <p class="controls-line touch-only">左侧摇杆行走 · 五色换气 · 右下角应门</p>
+    <details>
+      <summary>怎么走这一局</summary>
+      <p>走到发光的那一宫，按空格入传。天将会送来一支五行光。光靠近时，用克它的一行去应：水克火，火克金，金克木，木克土，土克水。站上对应的坛，或按 1–5。</p>
+      <p>吉将宫外没有煞。凶将宫外有红圈，久留会伤心神。类神是你所问之事，访到或破开会加应验。这是游戏，不是预测。</p>
+    </details>
+    <p class="fine">仅供文化体验与娱乐。术数在这里是关卡规则，不构成任何决策依据。<br><a class="back" href="/index.html">返回玄决决策台</a></p>
+  </div>
+</div>
+
+<div id="lookbar" class="hidden">
+  <button id="btn-look-back" type="button">返回起课</button>
+  <span>拖动环视 · 这是此刻的盘</span>
+</div>
+
+<div id="skip-wrap" class="hidden">
+  <button id="skip" type="button">跳过入场</button>
+</div>
+
+<div id="tutorial" class="hidden">
+  <div class="modal">
+    <h3>入盘</h3>
+    <p>你是今夜的问卜人，气从日干来。盘心是安全的，发光的柱是下一传。</p>
+    <p>入关之后，看清来袭的颜色，换上克它的一行，等光近了再应。按早了没关系，按错了会反噬。</p>
+    <p>吉将亦可相生而过。空亡的宫，正克有时会落空，再应一次。</p>
+    <button class="primary" id="btn-tutorial" type="button">我知道了</button>
+  </div>
+</div>
+
+<div id="pause" class="hidden">
+  <div class="modal">
+    <h3>暂停</h3>
+    <p>盘还在。心神和应验都留着。</p>
+    <button class="primary" id="btn-resume" type="button">继续</button>
+    <div class="row-btns">
+      <button class="ghost" id="btn-abort" type="button">放弃此课</button>
+    </div>
+  </div>
+</div>
+
+<div id="result" class="hidden">
+  <div class="result-card">
+    <p class="grade" id="grade">课成<small>这一局的走法</small></p>
+    <p id="grade-line"></p>
+    <p id="grade-score"></p>
+    <h2>传统课体 · 文化参照</h2>
+    <div id="tradition"></div>
+    <p class="fine">夜盘是游戏。盘面来自真实起课，读法沿用玄决的白话规则，只供玩味，不是对你人生的预测。</p>
+    <button class="primary" id="btn-retry" type="button" style="margin-top:12px">再走此课</button>
+    <div class="row-btns">
+      <button class="ghost" id="btn-copy" type="button">复制课辞</button>
+      <button class="ghost" id="btn-nexthour" type="button">下一时辰</button>
+      <button class="ghost" id="btn-title" type="button">回标题</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading"><i></i>正在铺盘</div>
+
+<script src="/js/lunar.js"></script>
+<script src="/js/daliuren.js"></script>
+<script type="module" src="/game/js/main.js"></script>
+</body>
+</html>
