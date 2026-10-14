@@ -52,6 +52,13 @@
   // 首帧渲染后空闲预载全部库（不阻塞首屏；测试环境跳过）
   function preloadIdle(){
     if(global.navigator&&/jsdom/i.test(global.navigator.userAgent))return;
+    // 省流模式或 2G/慢 2G 网络不预载：四个库合计约 2.8MB，弱网/计费流量下白送这些字节不划算。
+    // 用户真点开对应术数时，ensure() 仍会即时加载，功能不受影响。
+    const conn=global.navigator&&(global.navigator.connection||global.navigator.mozConnection||global.navigator.webkitConnection);
+    if(conn){
+      if(conn.saveData)return;
+      if(/(^|-)(2g|slow-2g)$/i.test(String(conn.effectiveType||'')))return;
+    }
     const keys=Object.keys(MAP);
     const kick=function(){keys.forEach(load);};
     if(typeof global.requestIdleCallback==='function')global.requestIdleCallback(kick,{timeout:4000});

@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="玄决 · 大六壬个人时课决策台：此刻起课、白话断事、盘面可考，支持八字、六爻、梅花、奇门、塔罗与紫微多术数参考。">
 <meta name="theme-color" content="#1F1E1D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,15 +38,15 @@
   </div>
 
   <!-- 主界面 -->
-  <div id="main" class="hidden">
+  <main id="main" class="hidden">
     <div id="page-container"></div>
-    <nav class="tabbar">
-      <div class="tab" data-tab="home"><div class="tab-ico">⌂</div><div class="tab-txt">首页</div></div>
-      <div class="tab" data-tab="ask"><div class="tab-ico">问</div><div class="tab-txt">问事</div></div>
-      <div class="tab" data-tab="classics"><div class="tab-ico">书</div><div class="tab-txt">典籍</div></div>
-      <div class="tab" data-tab="me"><div class="tab-ico">◐</div><div class="tab-txt">我的</div></div>
+    <nav class="tabbar" aria-label="主导航">
+      <div class="tab" data-tab="home" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">⌂</div><div class="tab-txt">首页</div></div>
+      <div class="tab" data-tab="ask" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">问</div><div class="tab-txt">问事</div></div>
+      <div class="tab" data-tab="classics" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">书</div><div class="tab-txt">典籍</div></div>
+      <div class="tab" data-tab="me" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">◐</div><div class="tab-txt">我的</div></div>
     </nav>
-  </div>
+  </main>
 </div>
 
 <div id="modal-root"></div>

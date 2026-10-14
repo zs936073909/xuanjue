@@ -85,6 +85,9 @@
     targetY = e.clientY;
     lastMove = Date.now();
     show();
+    // layer 不存在 = 门禁未通过（触屏 / reduced-motion，已 teardown）：
+    // 此时绝不能排帧，否则 frame() 会读到空 nodes 数组而抛错
+    if (!layer) return;
     if (!raf) raf = requestAnimationFrame(frame);
   }
 

@@ -129,6 +129,33 @@
   }
   function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!==undefined)e.innerHTML=html;return e;}
   function pad(n){return n<10?'0'+n:''+n;}
+  /* 数字滚动：把目标数字用 ease-out 曲线分段写入 el.textContent。
+     用于统计类大数字（F1 参考页的 count-up 手法）。
+     delay 毫秒后开始，duration 毫秒内完成；减弱动效偏好下直接落终值。
+     返回取消函数，便于页面重渲染时中止残留动画。 */
+  function countUp(el,target,opt){
+    if(!el)return function(){};
+    opt=opt||{};
+    const delay=opt.delay||0,duration=opt.duration||1200,fmt=opt.format||(v=>String(v));
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      el.textContent=fmt(target);return function(){};
+    }
+    let raf=null,to=null,cancelled=false;
+    const run=()=>{
+      if(cancelled)return;
+      const t0=performance.now();
+      const step=(t)=>{
+        if(cancelled)return;
+        const k=Math.min(1,(t-t0)/duration);
+        const e=1-Math.pow(1-k,3);
+        el.textContent=fmt(Math.round(target*e));
+        if(k<1)raf=requestAnimationFrame(step);
+      };
+      raf=requestAnimationFrame(step);
+    };
+    if(delay>0)to=setTimeout(run,delay);else run();
+    return function(){cancelled=true;if(raf)cancelAnimationFrame(raf);if(to)clearTimeout(to);};
+  }
   function fmtDateTime(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
   function fmtDate(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
   function fmtDateShort(d){return pad(d.getMonth()+1)+'-'+pad(d.getDate());}
@@ -704,7 +731,6 @@
     const comp=computeDaliuren(now,'其他');
     state.currentKe=comp;
     const p=comp.plain;
-    const tendCls=p.tendency==='宜主动'?'good':(p.tendency==='宜谨慎'?'warn':'calm');
     const cases=Store.listCases();
     const recent=cases.slice(0,3);
     const settings=Store.getSettings();
@@ -718,7 +744,7 @@
     h+=`<div class="phead ios-head"><div><div class="ptitle">玄<em>决</em></div><div class="psub">大六壬决策台</div></div><div class="ih-time"><div class="ih-date">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} · 周${weekCN}</div><div class="ih-clock" id="homeClock">${pad(now.getHours())}:${pad(now.getMinutes())}</div><div class="ih-note">时课 · 实时</div></div></div>`;
 
     // ===== 「此刻」黑金音板：干支/农历/时辰/节气/值神/宜忌 一体化 =====
-    h+=`<div class="now-card" id="nowCard">`;
+    h+=`<div class="now-card rv d1" id="nowCard">`;
     h+=`<div class="now-gz"><span class="stem">${bz.year.gz}</span>·<span class="stem">${bz.month.gz}</span>·<span class="stem">${bz.day.gz}</span><span class="stem">${bz.hour.gz}</span></div>`;
     h+=`<div class="now-grid">`;
     h+=`<div class="now-cell"><span class="k">农历</span><b>${lunarText}</b></div>`;
@@ -726,7 +752,7 @@
     h+=`<div class="now-cell"><span class="k">节气</span><b>${jq.cur?jq.cur.name:'—'}→${jq.next?jq.next.name:'—'}</b></div>`;
     h+=`<div class="now-cell"><span class="k">值神</span><b>${zs.n}${zs.g?'（吉）':'（凶）'}</b></div>`;
     h+=`</div>`;
-    h+=`<div class="now-yiji"><span class="yj-t yi">宜</span><div class="yj-tags">${hl.yi.slice(0,5).map(y=>`<span>${y}</span>`).join('')}</div><span class="yj-t ji">忌</span><div class="yj-tags">${hl.ji.slice(0,5).map(j=>`<span>${j}</span>`).join('')}</div></div>`;
+    h+=`<div class="now-yiji"><div class="yj-row"><span class="yj-t yi">宜</span><div class="yj-tags">${hl.yi.slice(0,5).map(y=>`<span>${y}</span>`).join('')}</div></div><div class="yj-row"><span class="yj-t ji">忌</span><div class="yj-tags">${hl.ji.slice(0,5).map(j=>`<span>${j}</span>`).join('')}</div></div></div>`;
     h+=`</div>`;
 
     // ===== 待复盘直达：到期未复盘的案例置顶，一键跳到复盘表单 =====
@@ -747,10 +773,11 @@
     }
 
     // ===== 此刻大六壬时课 =====
-    h+=`<div class="card now-ke">`;
-    h+=`<div class="nk-top"><span class="nk-tag">此刻大六壬</span><span class="tend-tag ${tendCls}">${p.tendency}</span></div>`;
+    h+=`<div class="card now-ke rv d3">`;
+    h+=`<div class="nk-top"><span class="nk-tag">此刻大六壬</span></div>`;
+    h+=`<div class="nk-tend">${p.tendency}</div>`;
     h+=`<div class="nk-line">${p.state}</div>`;
-    h+=`<div class="nk-acts"><span class="lab do">宜·${p.doAct.slice(0,2).join(' / ')}</span><span class="lab dont">忌·${p.dontAct.slice(0,2).join(' / ')}</span></div>`;
+    h+=`<div class="nk-acts"><div class="lab do"><span class="lk">宜</span><span class="lv">${p.doAct.slice(0,2).join(' / ')}</span></div><div class="lab dont"><span class="lk">忌</span><span class="lv">${p.dontAct.slice(0,2).join(' / ')}</span></div></div>`;
     h+=`<div class="shike-cmd nk-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面 ›</button></div>`;
     h+=`</div>`;
 
@@ -844,15 +871,22 @@
     return h;
   }
   function bindHome(){
-    // 首页实时时钟：每秒刷新大时间显示
+    // 首页实时时钟：首次入场从 00:00 滚动到当前时刻，之后每秒刷新
     const homeClock=$('#homeClock');
     if(homeClock){
+      const n0=new Date();
+      const targetMin=n0.getHours()*60+n0.getMinutes();
+      let clockCancel=countUp(homeClock,targetMin,{
+        duration:1100,delay:120,
+        format:v=>pad(Math.floor(v/60))+':'+pad(v%60)
+      });
       const tick=()=>{
-        const el=$('#homeClock');
-        if(el){const n=new Date();el.textContent=pad(n.getHours())+':'+pad(n.getMinutes());}
+        const el2=$('#homeClock');
+        if(el2){const n=new Date();el2.textContent=pad(n.getHours())+':'+pad(n.getMinutes());}
       };
-      tick();
       state.clockInterval=setInterval(tick,1000);
+      // 1.2s 后由 tick 接管；此时取消入场动画，避免与 tick 争抢同一节点
+      setTimeout(()=>{if(clockCancel)clockCancel();clockCancel=null;},1200);
     }
     // 九宫飞星：迷你盘 + 入口
     const fxMini=$('#fxMini');
@@ -1012,7 +1046,7 @@
     const isPlaceholder=a._placeholder;
     let steps='';
     if(!isPlaceholder && s!==5){
-      for(let i=1;i<=5;i++){const cls=i<s?'done':(i===s?'cur':'');steps+=`<div class="step-wrap ${i===s?'cur':''}"><div class="step-dot ${cls}">${i<s?'✓':i}</div><div class="stt">${['类型','背景','术数','信息','结果'][i-1]}</div></div>`;}
+      for(let i=1;i<=5;i++){const cls=i<s?'done':(i===s?'cur':'');const wrap=i===s?'cur':(i<s?'done':'');steps+=`<div class="step-wrap ${wrap}"><div class="step-dot ${cls}">${i<s?'✓':i}</div><div class="stt">${['类型','背景','术数','信息','结果'][i-1]}</div></div>`;}
     }
     let body='';
     if(s===1)body=askStep1(a);
@@ -1032,10 +1066,11 @@
       </div>`;
     }
     const pageCls='page-ask'+(s===5?' step5':'')+(isPlaceholder?' placeholder':'');
-    return `<div class="${pageCls}">${topbar}<div class="phead"><div class="ptitle">问事</div></div><div class="card"><div class="steps">${steps}</div>${body}</div></div>`;
+    const stepsCls=(!isPlaceholder && s!==5)?' steps s'+s:'steps';
+    return `<div class="${pageCls}">${topbar}<div class="phead"><div class="ptitle">问事</div></div><div class="card"><div class="${stepsCls}">${steps}</div>${body}</div></div>`;
   }
   function askStep1(a){
-    let h='<div class="field"><label>选择问题类型</label><div class="chips">';
+    let h='<div class="field"><label>选择问题类型</label><div class="chips tiles">';
     h+=TYPES.map(t=>`<span class="chip ${a.bg.questionType===t?'on':''}" data-type="${t}">${t}</span>`).join('');
     h+='</div></div>';
     if(a.bg.questionType){
@@ -1069,10 +1104,10 @@
     const rec=recShuFor(a.bg.questionType);
     const chip=s=>`<span class="chip ${a.shushu.includes(s)?'on':''}" data-shu="${s}">${s}${rec.includes(s)?'<i class="rec">荐</i>':''}</span>`;
     let h='';
-    h+=`<div class="step-section"><div class="step-section-title">实时起课 · 当下时课</div><div class="step-section-desc">基于当前时间起卦/起课，适合具体事项的短期决策</div><div class="chips">`;
+    h+=`<div class="step-section"><div class="step-section-title">实时起课 · 当下时课</div><div class="step-section-desc">基于当前时间起卦/起课，适合具体事项的短期决策</div><div class="chips tiles">`;
     h+=REALTIME_SHU.map(chip).join('');
     h+=`</div></div>`;
-    h+=`<div class="step-section"><div class="step-section-title">命理排盘 · 终身命理</div><div class="step-section-desc">基于出生日期排盘，适合分析个人长期运势与趋吉避凶</div><div class="chips">`;
+    h+=`<div class="step-section"><div class="step-section-title">命理排盘 · 终身命理</div><div class="step-section-desc">基于出生日期排盘，适合分析个人长期运势与趋吉避凶</div><div class="chips tiles">`;
     h+=BIRTH_SHU.map(chip).join('');
     h+=`</div></div>`;
     const isDl=a.shushu.includes('大六壬');
@@ -4731,8 +4766,8 @@
     // ---- 数据 ----
     h+=`<div class="gp-head">数据</div>`;
     h+=`<div class="gp-card">`;
-    h+=`<div class="gp-row" id="btnCaseList"><span class="gp-ico">◫</span><div class="gp-main"><div class="gp-t">案例库</div><div class="gp-d">全部起课记录与复盘</div></div><span class="gp-val">${caseCount} 条</span><span class="gp-chev">›</span></div>`;
-    h+=`<div class="gp-row" id="btnImportant"><span class="gp-ico">⌾</span><div class="gp-main"><div class="gp-t">重要日期</div><div class="gp-d">生日、约定、事务节点</div></div><span class="gp-val">${importantCount} 个</span><span class="gp-chev">›</span></div>`;
+    h+=`<div class="gp-row" id="btnCaseList"><span class="gp-ico">◫</span><div class="gp-main"><div class="gp-t">案例库</div><div class="gp-d">全部起课记录与复盘</div></div><span class="gp-val stat" id="statCases" data-count="${caseCount}"><span class="gp-num">${caseCount}</span><span class="gp-unit">条</span></span><span class="gp-chev">›</span></div>`;
+    h+=`<div class="gp-row" id="btnImportant"><span class="gp-ico">⌾</span><div class="gp-main"><div class="gp-t">重要日期</div><div class="gp-d">生日、约定、事务节点</div></div><span class="gp-val stat" id="statImportant" data-count="${importantCount}"><span class="gp-num">${importantCount}</span><span class="gp-unit">个</span></span><span class="gp-chev">›</span></div>`;
     h+=`</div>`;
 
     // ---- 术数偏好 ----
@@ -5274,6 +5309,13 @@
     if(btnCaseList)btnCaseList.onclick=()=>{state.subPage='case';renderTab();};
     const btnImportant=$('#btnImportant');
     if(btnImportant)btnImportant.onclick=()=>{state.subPage='important';renderTab();};
+    // 数据统计入场滚动：从 0 计到当前条数
+    ['#statCases','#statImportant'].forEach((sel,i)=>{
+      const box=$(sel);if(!box)return;
+      const num=box.querySelector('.gp-num');if(!num)return;
+      const target=parseInt(box.dataset.count||'0',10)||0;
+      countUp(num,target,{duration:900,delay:120+i*140});
+    });
     // AI 模型配置折叠行
     const btnAiConfig=$('#btnAiConfig');
     if(btnAiConfig)btnAiConfig.onclick=()=>{

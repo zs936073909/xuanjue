@@ -12,7 +12,7 @@
   --line2:rgba(245,244,238,.16);
   --ink:#F5F4EE;
   --ink2:#C2BFB8;
-  --muted:#8F8B81;
+  --muted:#9C978C;
   --accent:#D97757;
   --accent-2:#E8956F;
   --accent-3:#B25B38;
@@ -44,6 +44,20 @@
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
   --ease-out:cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out:cubic-bezier(0.4, 0, 0.2, 1);
+  /* 展示层字号阶梯 —— 「墨韵 · 一屏一主角」的字体尺度：
+     一屏只让一个主角用 display-1，其余信息退到 13–15px 的发丝行，
+     层级靠字号差与留白表达，不再靠每块都一样的卡片 */
+  --display-1:44px;   /* 倾向 / 结论 —— 首页此刻大六壬、结果页主张 */
+  --display-2:56px;   /* 时钟 —— 首页大字 */
+  --display-3:28px;   /* 干支 —— 此刻四柱 */
+  --display-4:34px;   /* 盘面主字 —— 三传/四课地支 */
+  --track-display:-0.03em;
+  --lead-display:0.95;
+  --hairline:1px solid var(--line);
+  /* 编排节奏：F1 参考页的 stagger 曲线（快起·长尾·无回弹）与时长 */
+  --stagger:cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-enter:.9s;
+  --dur-quick:.5s;
 }
 [data-theme="light"]{
   color-scheme:light;
@@ -55,14 +69,14 @@
   --line2:rgba(61,57,41,.18);
   --ink:#3D3929;
   --ink2:#6B6752;
-  --muted:#8A8578;
+  --muted:#6E695C;
   --accent:#B25B38;
   --accent-2:#A04E2E;
   --accent-3:#8F4628;
   --red:#C94F48;
   --green:#2E8B63;
   --warn:#B97F2C;
-  --blue:#6E7A8A;
+  --blue:#566273;
   --primary:#B25B38;
   --on-primary:#FFF6F1;
   --accent-soft:rgba(178,91,56,.10);
@@ -246,7 +260,115 @@ body::before{
   .tab.active::after{animation:none}
   .btn .ripple{display:none}
 }
-#page-container{padding:12px 12px 84px}
+/* 内容列左右留白抽成变量：全幅元素（.stage/.rail）用它做负边距出血，桌面壳层再覆写 */
+#page-container{--gutter:12px;padding:12px var(--gutter) 84px}
+
+/* ============================================================
+   「墨韵 · 一屏一主角」设计层
+   ------------------------------------------------------------
+   旧结构的病根：每个信息块都是同一张 .card（同宽、同圆角、同内距），
+   层级只靠 h3 + 一根 3px 竖条，正文 80% 挤在 10–14px，
+   于是整页「没有变化」。这里引入四件东西：
+   ① 全幅舞台 .stage —— 首页头部铺满内容列宽，用本地 hero 图 + 暖墨蒙纱，
+      底部接 .veil-bottom 渐变模糊，让大字像从景里浮出来；
+   ② 展示字 .display / .stat —— 44–56px、−0.03em 字距、0.95 行高，
+      .stat 用纵向渐变裁字（上实下虚），数字有「墨渐干」的收尾；
+   ③ 发丝行 .hair —— 标签 13px / 值 13.5px 一行一意，行间 1px 发丝线，
+      替代小卡片的更轻的信息单元；
+   ④ 横轨 .rail / 分段 .seg —— 横向 snap 滚动与分段控件，
+      把「并列选择」从网格改成轨道，节奏立刻不同。
+   全部走主题变量，浅深两套零硬编码色；动效全部挂 prefers-reduced-motion。
+   ============================================================ */
+
+/* ① 全幅舞台：铺满内容列宽（用负边距抵消容器留白），承载 hero 图与蒙纱 */
+.stage{
+  position:relative;overflow:hidden;
+  margin:0 calc(var(--gutter) * -1) 12px;
+  padding:20px var(--gutter) 18px;
+  background-image:linear-gradient(180deg,rgba(31,30,29,.62),rgba(31,30,29,.9)),url(../img/hero-seal.jpg);
+  background-size:cover;background-position:center 30%;
+  border-bottom:1px solid var(--glass-line);
+}
+[data-theme="light"] .stage{
+  background-image:linear-gradient(180deg,rgba(245,244,238,.5),rgba(245,244,238,.82)),url(../img/hero-seal.jpg);
+}
+/* 底部渐隐模糊：让 hero 与下方内容「咬合」，而不是被一条硬边切断 */
+.veil-bottom{
+  position:absolute;left:0;right:0;bottom:0;height:46%;pointer-events:none;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  -webkit-mask:linear-gradient(to bottom,transparent 0%,#000 50%);
+  mask:linear-gradient(to bottom,transparent 0%,#000 50%);
+}
+.stage > *{position:relative;z-index:1}
+
+/* ② 展示字：衬线 + 负字距 + 紧行高。主角只用一个，其余降级 */
+.display{
+  font-family:var(--serif);font-weight:600;color:var(--ink);
+  letter-spacing:var(--track-display);line-height:var(--lead-display);
+  font-size:var(--display-1);margin:0;
+}
+.display.acc{color:var(--accent)}
+.display .strong{font-weight:700}
+.display-sub{font-size:12px;color:var(--ink2);letter-spacing:2px;margin:0 0 8px;font-family:var(--serif)}
+/* 渐变裁字大数：上实、中虚、尾透，用于「统计型」数字 */
+.stat{
+  font-family:var(--serif);font-weight:600;
+  font-size:var(--display-1);line-height:.78;letter-spacing:var(--track-display);
+  background:linear-gradient(to bottom,var(--ink) 0%,var(--ink) 38%,color-mix(in srgb,var(--ink) 35%,transparent) 72%,transparent 96%);
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;-webkit-text-fill-color:transparent;
+  font-variant-numeric:tabular-nums;
+}
+/* 不支持 background-clip:text 时退回实色，绝不留空白字 */
+@supports not ((-webkit-background-clip:text) or (background-clip:text)){
+  .stat{background:none;color:var(--ink);-webkit-text-fill-color:currentColor}
+}
+
+/* ③ 发丝行：一行一意，1px 分隔，比小卡片更轻的信息单元 */
+.hair{display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:var(--hairline);font-size:13.5px;line-height:1.7}
+.hair:first-child{border-top:none}
+.hair .hk{flex:0 0 64px;color:var(--accent);font-family:var(--serif);font-size:13px;letter-spacing:1px}
+.hair .hv{flex:1;min-width:0;color:var(--ink)}
+.hair .hv.dim{color:var(--ink2)}
+/* 宜 / 忌：发丝行的语义色变体 */
+.hair.do .hk{color:var(--green)}
+.hair.dont .hk{color:var(--red)}
+
+/* ④ 横轨：横向 snap 滚动，子项等宽卡片（用于并列选择的六法门/类型） */
+.rail{
+  display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;
+  padding:2px var(--gutter) 6px;margin:0 calc(var(--gutter) * -1);
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.rail::-webkit-scrollbar{display:none}
+.rail > *{flex:0 0 132px;scroll-snap-align:start}
+
+/* 分段控件：结果页三态切换（专业 / 白话 / 摘要） */
+.seg{display:flex;gap:0;background:var(--glass-control);border:1px solid var(--glass-line);
+  -webkit-backdrop-filter:blur(10px) saturate(1.1);backdrop-filter:blur(10px) saturate(1.1);
+  border-radius:12px;padding:3px;margin-bottom:12px;box-shadow:inset 0 1px 0 var(--glass-edge)}
+.seg button{flex:1;padding:9px;border:none;background:transparent;color:var(--ink2);font-size:13px;border-radius:9px;cursor:pointer;transition:transform .12s var(--ease-out),background .15s var(--ease-out),color .15s var(--ease-out);font-family:var(--sans)}
+.seg button:active{transform:scale(.97)}
+.seg button.on{background:var(--primary);color:var(--on-primary);font-weight:700;box-shadow:var(--shad-low)}
+
+/* 入场节奏：d1–d8 为 100ms 步进的延迟档，配 .rv 系列关键帧做编排 */
+.d1{animation-delay:.1s}.d2{animation-delay:.2s}.d3{animation-delay:.3s}.d4{animation-delay:.4s}
+.d5{animation-delay:.5s}.d6{animation-delay:.6s}.d7{animation-delay:.7s}.d8{animation-delay:.8s}
+.rv,.rv-scale,.rv-display{animation-fill-mode:both}
+.rv{animation-name:revealUp;animation-duration:var(--dur-enter);animation-timing-function:var(--stagger)}
+.rv-scale{animation-name:revealScale;animation-duration:1s;animation-timing-function:var(--stagger)}
+.rv-display{animation-name:displayReveal;animation-duration:var(--dur-quick);animation-timing-function:var(--stagger)}
+@keyframes revealUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes revealScale{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+/* 大字专用：位移更小、加一层去模糊，避免大字「砸」进画面 */
+@keyframes displayReveal{from{opacity:0;transform:translateY(10px);filter:blur(6px)}to{opacity:1;transform:none;filter:blur(0)}}
+/* 发丝线从左向右生长：给「一行一意」一个进入的先后 */
+@keyframes hairlineGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.hair{transform-origin:left center}
+.hair.anim{animation:hairlineGrow var(--dur-quick) var(--stagger) both}
+
+/* 数字滚动：countUp 由 js 用 rAF 驱动，这里只定义兜底与降级 */
+.stat.counting{opacity:1}
 
 /* page header */
 .phead{display:flex;align-items:center;justify-content:space-between;padding:8px 2px 14px}
@@ -392,6 +514,22 @@ body::before{
 }
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
 .field textarea{min-height:80px;resize:vertical}
+/* 问事页表单：chip 从「药丸」改为 3 列等宽方砖，让选项本身成为一屏的主角，
+   标题输入升为 20px 衬线 + 下划线式，弱化边框、强调书写感 */
+.field .chips.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.field .chips.tiles .chip{
+  padding:14px 6px;border-radius:12px;text-align:center;font-size:13px;line-height:1.4;
+  min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+}
+.field .chips.tiles .chip .rec{margin-left:0;margin-top:2px}
+.field .chips.tiles .chip:active{transform:scale(.96)}
+.field .chips.tiles .chip.on{box-shadow:0 6px 18px -6px var(--accent-border),inset 0 1px 0 rgba(255,255,255,.18)}
+.field input#fTitle,.field input.title-input{
+  font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:var(--track-display);
+  background:transparent;border:none;border-bottom:1px solid var(--line2);border-radius:0;
+  padding:10px 2px;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none !important;
+}
+.field input#fTitle:focus,.field input.title-input:focus{border-bottom-color:var(--accent)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{padding:7px 13px;border:1px solid var(--glass-line);border-radius:999px;font-size:12px;background:var(--glass-control);-webkit-backdrop-filter:blur(10px) saturate(1.1);backdrop-filter:blur(10px) saturate(1.1);cursor:pointer;color:var(--ink2);box-shadow:inset 0 1px 0 var(--glass-edge);transition:transform .12s var(--ease-out),background .15s var(--ease-out),color .15s var(--ease-out),border-color .15s var(--ease-out)}
 .chip:active{transform:scale(.94)}
@@ -400,15 +538,21 @@ body::before{
 .chip.on .rec{background:rgba(34,26,8,.18);color:var(--on-primary);border-color:rgba(34,26,8,.35)}
 .switch{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
 
-/* step bar */
+/* step bar —— 从「5 个 30px 圆 + 横线」改为「圆点 + 完成度线」：
+   圆点收小到 8px，文字升到 11px 并随步骤加粗，进度线只铺到当前步，
+   视觉重量让给表单本身 */
 .steps{display:flex;justify-content:space-between;margin-bottom:18px;position:relative}
-.steps::before{content:"";position:absolute;top:14px;left:10%;right:10%;height:2px;background:var(--line);z-index:0}
-.step-dot{position:relative;z-index:1;width:30px;height:30px;border-radius:50%;background:var(--glass-control);border:2px solid var(--glass-line);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);transition:transform .15s var(--ease-out),background .15s var(--ease-out),border-color .15s var(--ease-out)}
-.step-dot.done{background:var(--primary);color:var(--on-primary);border-color:var(--accent-3);font-weight:700}
-.step-dot.cur{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
-.step-wrap{display:flex;flex-direction:column;align-items:center;gap:5px}
-.step-wrap .stt{font-size:10px;color:var(--muted);letter-spacing:.5px}
-.step-wrap.cur .stt{color:var(--accent);font-weight:600}
+.steps::before{content:"";position:absolute;top:4px;left:8%;right:8%;height:2px;background:var(--line);z-index:0}
+.steps::after{content:"";position:absolute;top:4px;left:8%;height:2px;background:var(--accent);z-index:0;
+  transition:width .35s var(--stagger);width:0}
+.steps.s2::after{width:21%}.steps.s3::after{width:42%}.steps.s4::after{width:63%}.steps.s5::after{width:84%}
+.step-dot{position:relative;z-index:1;width:10px;height:10px;border-radius:50%;background:var(--glass-control);border:2px solid var(--glass-line);display:flex;align-items:center;justify-content:center;font-size:0;color:transparent;overflow:hidden;transition:transform .15s var(--ease-out),background .15s var(--ease-out),border-color .15s var(--ease-out)}
+.step-dot.done{background:var(--primary);color:transparent;border-color:var(--accent-3)}
+.step-dot.cur{border-color:var(--accent);color:transparent;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.step-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+.step-wrap .stt{font-size:11px;color:var(--muted);letter-spacing:1px;transition:color .15s var(--ease-out)}
+.step-wrap.cur .stt{color:var(--accent);font-weight:700}
+.step-wrap.done .stt{color:var(--ink2)}
 
 /* board */
 .mode-toggle{display:flex;background:var(--glass-control);border:1px solid var(--glass-line);-webkit-backdrop-filter:blur(10px) saturate(1.1);backdrop-filter:blur(10px) saturate(1.1);border-radius:12px;padding:3px;margin-bottom:12px;box-shadow:inset 0 1px 0 var(--glass-edge)}
@@ -448,7 +592,7 @@ body::before{
 .plain-table{border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .plain-table .pt-row{display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.6}
 .plain-table .pt-row:last-child{border-bottom:none}
-.plain-table .pt-k{flex:0 0 72px;color:var(--accent);font-size:12px;padding-top:1px;letter-spacing:1px}
+.plain-table .pt-k{flex:0 0 64px;color:var(--accent);font-family:var(--serif);font-size:12.5px;padding-top:1px;letter-spacing:1px}
 .plain-table .pt-v{flex:1;color:var(--ink)}
 
 /* ai block */
@@ -1111,7 +1255,7 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .dl-lessons .dl-lesson .up-block,.dl-lessons .dl-lesson .down-block{
   display:flex;flex-direction:column;align-items:center;padding:4px 0;
 }
-.dl-lessons .dl-lesson .zhi{font-size:20px;font-family:var(--serif);font-weight:600;line-height:1}
+.dl-lessons .dl-lesson .zhi{font-size:26px;font-family:var(--serif);font-weight:600;line-height:1;letter-spacing:var(--track-display)}
 .dl-lessons .dl-lesson .tj{font-size:10px;color:var(--ink2);margin-top:2px}
 .dl-lessons .dl-lesson .sx{font-size:9px;color:var(--muted);margin-top:1px}
 .dl-lessons .dl-lesson .sep{color:var(--muted);font-size:14px;line-height:1}
@@ -1135,7 +1279,7 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 }
 .dl-sanchuan .sc-cell.first{border-color:var(--accent);box-shadow:0 0 0 2px rgba(217,119,87,.1)}
 .dl-sanchuan .sc-cell .sc-lbl{font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:2px}
-.dl-sanchuan .sc-cell .sc-zhi{font-size:22px;font-family:var(--serif);font-weight:600;line-height:1}
+.dl-sanchuan .sc-cell .sc-zhi{font-size:38px;font-family:var(--serif);font-weight:600;line-height:1;letter-spacing:var(--track-display)}
 .dl-sanchuan .sc-cell .sc-tj{font-size:11px;color:var(--ink);margin-top:3px}
 .dl-sanchuan .sc-cell .sc-meta{font-size:9px;color:var(--muted);margin-top:2px;line-height:1.4}
 .dl-sanchuan .sc-cell .sc-kong{
@@ -1168,7 +1312,7 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 }
 .dl-tp-round .tp-node:hover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(217,119,87,.18)}
 .dl-tp-round .tp-node.kw{background:rgba(245,158,11,.08);border-style:dashed;border-color:var(--warn)}
-.dl-tp-round .tp-node .tp-tian{font-size:14px;font-family:var(--serif);font-weight:600;line-height:1}
+.dl-tp-round .tp-node .tp-tian{font-size:16px;font-family:var(--serif);font-weight:600;line-height:1}
 .dl-tp-round .tp-node .tp-di{font-size:10px;color:var(--muted);margin-top:1px;font-family:var(--serif)}
 .dl-tp-round .tp-node .tp-tj{font-size:8px;color:var(--ink2);margin-top:1px;letter-spacing:.2px}
 .dl-tp-round .tp-node .tp-fw{font-size:7px;color:var(--muted);opacity:.6}
@@ -1765,6 +1909,11 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .gp-t{font-size:14px;color:var(--ink);font-weight:500;line-height:1.3}
 .gp-d{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
 .gp-val{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right;flex-shrink:0}
+/* 数据行的计数：从 12px 灰字升为展示字（衬线 + 渐变裁切），
+   让「我的」页的数据统计也有一屏一主角的份量 */
+.gp-val.stat{font-family:var(--serif);font-weight:600;font-size:26px;line-height:1;
+  letter-spacing:var(--track-display);display:flex;align-items:baseline;gap:3px}
+.gp-val.stat .gp-unit{font-family:var(--sans);font-size:11px;font-weight:400;letter-spacing:0;color:var(--muted);-webkit-text-fill-color:var(--muted)}
 .gp-val.gold{color:var(--accent)}
 .gp-chev{color:var(--muted);opacity:.55;font-size:14px;flex-shrink:0;margin-left:2px}
 /* 分组内嵌 select / switch 行（复用 .switch） */
@@ -1888,42 +2037,90 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .me-profile .mp-name{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:.5px}
 .me-profile .mp-meta{font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* 首页「此刻」卡：暖玻璃 + 陶土暖光 */
-.now-card{padding:18px 16px;position:relative;overflow:hidden;
-  background:linear-gradient(165deg,rgba(217,119,87,.16),rgba(217,119,87,.04) 42%,transparent 70%),var(--glass-blend);
-  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
-  border:1px solid var(--glass-line);border-radius:22px;margin-bottom:12px;box-shadow:var(--glass-sh)}
-.now-card::before{content:"";position:absolute;top:0;left:12%;right:12%;height:1px;background:linear-gradient(90deg,transparent,rgba(232,149,111,.55),transparent)}
-.now-gz{font-family:var(--serif);font-size:22px;letter-spacing:3px;color:var(--ink);font-weight:600;margin-bottom:10px}
-.now-gz .stem{color:var(--accent)}
-.now-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin:10px 0 12px}
-.now-cell{display:flex;align-items:baseline;justify-content:space-between;font-size:12.5px;color:var(--ink2)}
-.now-cell .k{color:var(--muted);font-size:11px;letter-spacing:1.5px;flex-shrink:0;margin-right:8px}
-.now-cell b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-.now-yiji{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)}
-.now-yiji .yj-t{font-size:11px;letter-spacing:2px;font-family:var(--serif)}
+/* 首页「此刻」：不再是一张与其它卡同质的小卡 —— 升为「舞台」
+   （全幅 hero 图 + 暖墨蒙纱 + 底部渐隐模糊 + 展示字），
+   干支提到 28px 展示字，农历/时辰/节气/值神退为发丝行 */
+.now-card{position:relative;overflow:hidden;
+  margin:0 calc(var(--gutter) * -1) 12px;
+  padding:18px var(--gutter) 16px;
+  background-image:linear-gradient(180deg,rgba(31,30,29,.58),rgba(31,30,29,.92)),url(../img/hero-seal.jpg);
+  background-size:cover;background-position:center 26%;
+  border-top:1px solid var(--glass-line);border-bottom:1px solid var(--glass-line);
+  box-shadow:var(--glass-sh)}
+[data-theme="light"] .now-card{
+  background-image:linear-gradient(180deg,rgba(245,244,238,.44),rgba(245,244,238,.86)),url(../img/hero-seal.jpg);
+}
+/* 底部渐隐模糊：干支/宜忌与下方内容之间不再是一条硬边 */
+.now-card::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:44%;pointer-events:none;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  -webkit-mask:linear-gradient(to bottom,transparent 0%,#000 50%);
+  mask:linear-gradient(to bottom,transparent 0%,#000 50%);
+}
+.now-card > *{position:relative;z-index:1}
+/* 干支四柱：主角级展示字，字距收紧、单字对齐成四列 */
+.now-gz{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:4px;
+  font-family:var(--serif);font-size:var(--display-3);letter-spacing:0;
+  color:var(--ink);font-weight:600;line-height:1.06;margin-bottom:14px;
+  text-align:center;
+}
+.now-gz .stem{color:var(--accent);display:block}
+.now-grid{display:flex;flex-direction:column;margin:2px 0 4px}
+.now-cell{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;color:var(--ink);line-height:1.6}
+.now-cell:first-child{border-top:none}
+.now-cell .k{color:var(--accent);font-family:var(--serif);font-size:12px;letter-spacing:1px;flex:0 0 48px}
+.now-cell b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;min-width:0}
+.now-yiji{display:flex;flex-direction:column;gap:0;padding-top:4px}
+.now-yiji .yj-row{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line)}
+.now-yiji .yj-row:first-child{border-top:none}
+.now-yiji .yj-t{font-size:12px;letter-spacing:2px;font-family:var(--serif);flex:0 0 48px}
 .now-yiji .yj-t.yi{color:var(--green)}
 .now-yiji .yj-t.ji{color:var(--red)}
-.now-yiji .yj-tags{display:flex;gap:4px;flex-wrap:wrap}
-.now-yiji .yj-tags span{font-size:10.5px;background:var(--glass-in);border:1px solid var(--glass-line);padding:2px 7px;border-radius:5px;color:var(--ink2)}
+.now-yiji .yj-tags{display:flex;gap:4px;flex-wrap:wrap;flex:1;min-width:0}
+.now-yiji .yj-tags span{font-size:11px;background:var(--glass-in);border:1px solid var(--glass-line);padding:2px 8px;border-radius:5px;color:var(--ink2)}
 
-/* 首页此刻时课 */
-.now-ke{display:flex;flex-direction:column;gap:10px}
-.now-ke .nk-top{display:flex;align-items:center;justify-content:space-between}
-.now-ke .nk-tag{font-size:11px;letter-spacing:2px;color:var(--muted);font-family:var(--serif)}
-.now-ke .nk-line{font-size:15px;color:var(--ink);line-height:1.7}
-.now-ke .nk-acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+/* 首页此刻时课 —— 本屏唯一主角：
+   倾向提到 44px 展示字（陶土色、负字距、紧行高），
+   状态/宜忌降为发丝行，按钮收到最底 */
+.now-ke{display:flex;flex-direction:column;gap:12px}
+.now-ke .nk-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.now-ke .nk-tag{font-size:12px;letter-spacing:3px;color:var(--accent);font-family:var(--serif)}
+/* 主角：倾向四字。过长时不折行、不挤压，用省略号收在框内 */
+.now-ke .nk-tend{
+  font-family:var(--serif);font-weight:600;color:var(--accent);
+  font-size:var(--display-1);line-height:var(--lead-display);letter-spacing:var(--track-display);
+  margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.now-ke .nk-line{font-size:14px;color:var(--ink2);line-height:1.75;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.now-ke .nk-acts{display:flex;flex-direction:column;gap:0}
+.now-ke .nk-acts .lab{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;line-height:1.7}
+.now-ke .nk-acts .lab:first-child{border-top:none}
+.now-ke .nk-acts .lab .lk{flex:0 0 48px;font-family:var(--serif);font-size:12px;letter-spacing:2px}
+.now-ke .nk-acts .lab.do .lk{color:var(--green)}
+.now-ke .nk-acts .lab.dont .lk{color:var(--red)}
+.now-ke .nk-acts .lab .lv{flex:1;min-width:0;color:var(--ink)}
 .now-ke .nk-cmd{margin-top:2px}
 
-/* 首页实时起课 · 同刻多法门对比 */
+/* 首页实时起课 · 同刻多法门对比：从 2 列网格改为横向 snap 轨道
+   —— 六个并列项不再挤成三行小方块，而是一条可横滑的「法门带」 */
 .rt-methods .rt-live{float:right;font-size:10px;color:var(--red);font-weight:600;letter-spacing:1px;animation:rtLivePulse 2s ease-in-out infinite}
 @keyframes rtLivePulse{0%,100%{opacity:1}50%{opacity:.35}}
-.rt-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.rt-item{display:flex;flex-direction:column;gap:6px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--glass-line);background:var(--glass-in);cursor:pointer;font-family:var(--sans);transition:transform .12s var(--ease-out),border-color .15s var(--ease-out)}
+.rt-grid{
+  display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;
+  padding:2px var(--gutter) 8px;margin:0 calc(var(--gutter) * -1);
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.rt-grid::-webkit-scrollbar{display:none}
+.rt-item{flex:0 0 132px;scroll-snap-align:start;
+  display:flex;flex-direction:column;gap:6px;text-align:left;padding:11px 12px;border-radius:12px;
+  border:1px solid var(--glass-line);background:var(--glass-in);cursor:pointer;font-family:var(--sans);
+  transition:transform .12s var(--ease-out),border-color .15s var(--ease-out)}
 .rt-item:active{transform:scale(.97);border-color:var(--accent)}
-.rt-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.rt-name{font-size:13.5px;font-weight:700;font-family:var(--serif)}
-.rt-line{font-size:11px;color:var(--ink2);line-height:1.55;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.rt-top{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.rt-name{font-size:15px;font-weight:700;font-family:var(--serif);letter-spacing:.5px}
+.rt-line{font-size:11.5px;color:var(--ink2);line-height:1.55;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
 /* 首页实时决策顾问入口卡（时课问对，复用 .adv-quick/.qchip） */
 .rt-advisor{background:linear-gradient(180deg,rgba(217,119,87,.07),var(--glass-blend) 55%)}
@@ -1943,9 +2140,9 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .fx-home .fx-info{flex:1}
 .fx-home .fx-info .fi-t{font-size:14px;color:var(--ink);font-weight:600;margin-bottom:4px}
 .fx-home .fx-info .fi-d{font-size:11.5px;color:var(--ink2);line-height:1.6;margin-bottom:8px}
-.fx-mini-grid{display:grid;grid-template-columns:repeat(3,26px);gap:3px}
-.fx-mini-cell{width:26px;height:26px;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--glass-line);background:var(--glass-in);font-size:8px;color:var(--muted);line-height:1}
-.fx-mini-cell .fxm-num{font-size:12px;font-weight:700;font-family:var(--serif)}
+.fx-mini-grid{display:grid;grid-template-columns:repeat(3,34px);gap:4px}
+.fx-mini-cell{width:34px;height:34px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--glass-line);background:var(--glass-in);font-size:9px;color:var(--muted);line-height:1}
+.fx-mini-cell .fxm-num{font-size:14px;font-weight:700;font-family:var(--serif)}
 .fx-mini-cell.fx-g{color:var(--green);border-color:rgba(46,189,133,.35)}
 .fx-mini-cell.fx-g .fxm-num{color:var(--green)}
 .fx-mini-cell.fx-b{color:var(--red);border-color:rgba(246,70,93,.35)}
@@ -2024,6 +2221,9 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .card,.stat-big-card,.stat-group{animation:none}
+  /* 展示层入场一律不播：只保证终态可见（fill-mode:both + 0 时长即终态） */
+  .rv,.rv-scale,.rv-display,.hair.anim{animation:none;opacity:1;transform:none;filter:none}
+  .veil-bottom{display:none}
   .toast.show{transform:translateX(-50%)}
   #pointer-fx{display:none}
 }
@@ -2121,7 +2321,10 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
   [data-theme="light"] .tab:hover{background:rgba(61,57,41,.06)}
 
   /* 主区左移让位侧导航；底部不必再给底栏留 84px */
-  #page-container{padding:28px 8px 64px}
+  #page-container{padding:28px 8px 64px;--gutter:8px}
+
+  /* 全幅舞台与横轨：桌面上仍铺满内容列宽，但不再溢出到侧栏 */
+  .stage,.rail{margin-left:0;margin-right:0}
 
   /* 卡片：桌面用 hover 抬升替代触屏的 :active 缩放 */
   #page-container .card{transition:transform .18s var(--ease-out),box-shadow .18s var(--ease-out),border-color .18s var(--ease-out)}

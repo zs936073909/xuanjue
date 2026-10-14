@@ -437,6 +437,9 @@
   async function proxyQuota(){
     const C=global.Cloud;
     if(!C||typeof C.req!=='function')return null;
+    // 未登录直接返回 null：否则 /v1/ai/quota 必然 401，
+    // 即使 fetch 被 catch，Chrome 控制台仍会留下一条资源错误（Lighthouse errors-in-console 也会扣分）。
+    if(!proxyUsable())return null;
     try{
       return await C.req('/v1/ai/quota');
     }catch(e){

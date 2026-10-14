@@ -117,13 +117,20 @@ export async function build() {
     new URL('../www', import.meta.url),
     new URL('./www', import.meta.url)
   ]);
+  // 夜盘·三传试炼：游戏是独立静态目录 game/，不参与 UA 双端分发。
+  // 缺目录时（旧部署漏发）仅游戏入口 404，不影响决策台两端与 API。
+  const GAME_ROOT = pickFirstDir([
+    new URL('../game', import.meta.url),
+    new URL('./game', import.meta.url)
+  ]);
   if (!DESKTOP_ROOT && !MOBILE_ROOT) {
     app.log.warn('未找到 webapp/ 与 www/ 目录，网页端入口将返回 404（账号与 AI 路由不受影响）');
   } else {
     app.log.info({
       desktop: DESKTOP_ROOT ? path.relative(process.cwd(), DESKTOP_ROOT) : null,
-      mobile: MOBILE_ROOT ? path.relative(process.cwd(), MOBILE_ROOT) : null
-    }, '网页端静态目录就绪（桌面/手机双端）');
+      mobile: MOBILE_ROOT ? path.relative(process.cwd(), MOBILE_ROOT) : null,
+      game: GAME_ROOT ? path.relative(process.cwd(), GAME_ROOT) : null
+    }, '网页端静态目录就绪（桌面/手机双端 + 夜盘游戏）');
   }
   // 名称保留历史叫法：WWW_ROOT = /app 固定指向的桌面根
   const WWW_ROOT = DESKTOP_ROOT;
@@ -200,11 +207,17 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
     if (!st || !st.isFile()) return false;
     const ext = path.extname(abs).toLowerCase();
     const body = await fs.promises.readFile(abs);
-    // 缓存策略分两档，为什么：
+    // 缓存策略分三档，为什么：
     //   index.html 是 SPA 入口且文件名不带内容指纹，必须 no-store ——
     //     否则发版后老用户仍持旧 index.html，引用的 js/css 名没变就会把旧版锁死；
+    //   service-worker.js 同样无指纹且浏览器默认会绕过缓存做更新检查，
+    //     但中间代理可能认 immutable，显式 no-cache 保证新 SW 能及时下发；
     //   其余（js/css/字体/图片）内容与文件名绑定，长缓存 + SW 预缓存才对得上。
-    const cache = ext === '.html' ? 'no-store' : 'public, max-age=86400, immutable';
+    const cache = ext === '.html'
+      ? 'no-store'
+      : path.basename(abs) === 'service-worker.js'
+        ? 'no-cache'
+        : 'public, max-age=86400, immutable';
     await reply
       .header('cache-control', cache)
       .header('x-content-type-options', 'nosniff')
@@ -241,6 +254,51 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
     const ok = await sendAppFile(abs, reply);
     if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
   });
+
+  // ============================================================
+  // /game —— 夜盘·三传试炼（Three.js 3D 游戏，独立目录 game/）
+  //
+  // 游戏页 game/index.html 里有几处站根绝对引用（开发时 devserver.py 以仓库根为根）：
+  //   /js/lunar.js、/js/daliuren.js、/img/hero-seal.jpg、/icon-192.png
+  // 桌面 UA 的静态根是 webapp/（引擎在 js/engines/ 下），这些路径会 404。
+  // 因此对这几条共享路径做「不区分 UA、一律取手机端根 www/」的显式路由：
+  // www/js/*.js 是同源 globals 构建产物，游戏依赖的 Lunar/DaLiuRen 全局一致。
+  // ============================================================
+  if (GAME_ROOT) {
+    const GAME_PREFIX = '/game';
+    app.get(GAME_PREFIX, async (req, reply) => reply.redirect(GAME_PREFIX + '/', 301));
+    app.get(GAME_PREFIX + '/', serveRootIndex(GAME_ROOT));
+    app.get(GAME_PREFIX + '/*', async (req, reply) => {
+      const abs = resolveAppPath(GAME_ROOT, req.url.slice(GAME_PREFIX.length));
+      if (!abs) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+      const ok = await sendAppFile(abs, reply);
+      if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+    });
+  }
+
+  // 站根绝对路径：不分 UA，一律从手机端根 www/ 取。两类请求走这份名单：
+  //  1) 游戏页 game/index.html 的开发期根绝对引用（/js/lunar.js、/js/daliuren.js、
+  //     /img/hero-seal.jpg、/icon-192.png）——桌面 UA 的静态根是 webapp/，直接解析会 404；
+  //  2) /service-worker.js —— 手机端页在根作用域「/」注册 SW，浏览器之后不论当前页是哪端，
+  //     都会按根绝对 URL 做 SW 更新检查；桌面 UA 走 webapp/ 会 404，控制台净增一条报错，
+  //     Lighthouse errors-in-console 也会被它打挂。桌面页自身不注册 SW，回手机端产物无副作用。
+  // 必须显式注册在根通配之前 —— find-my-way 静态路径本就优先于通配，
+  // 这里写清楚也让意图可查。缺手机端根时由 sendAppFile 统一回 404。
+  const SHARED_FROM_MOBILE = [
+    '/js/lunar.js',
+    '/js/daliuren.js',
+    '/img/hero-seal.jpg',
+    '/icon-192.png',
+    '/service-worker.js'
+  ];
+  for (const shared of SHARED_FROM_MOBILE) {
+    app.get(shared, async (req, reply) => {
+      if (!MOBILE_ROOT) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+      const abs = resolveAppPath(MOBILE_ROOT, shared);
+      const ok = await sendAppFile(abs, reply);
+      if (!ok) return reply.code(404).type('text/html; charset=utf-8').send(app404);
+    });
+  }
 
   // ============================================================
   // 根路径双端入口：/ 与 /* 按 UA 分发桌面 webapp/ 或手机 www/。

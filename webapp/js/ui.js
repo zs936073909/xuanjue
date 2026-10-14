@@ -1427,7 +1427,7 @@ function rtChatHTML() {
     RT_SUGGESTS.map(q => '<button class="chip" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('') +
     '</div>' +
     '<div class="chat-input"><textarea id="rtInput" rows="1" placeholder="就此刻这一课问点什么… Enter 发送"></textarea>' +
-    '<button class="chat-send" id="rtSend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>' +
+    '<button class="chat-send" id="rtSend" type="button" aria-label="发送提问" title="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>' +
     '<div class="chat-foot">AI 内容由云端模型生成，卦象为短期参考（数日至数周），不构成医疗、法律、投资建议</div>' +
     '</div>';
 }
