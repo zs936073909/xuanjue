@@ -136,7 +136,15 @@ body.mode-play.narrow #touch,body.mode-duel.narrow #touch{display:block}
 }
 #btn-ying.ready{box-shadow:0 0 0 6px rgba(217,119,87,.28),0 8px 24px rgba(178,91,56,.5)}
 body.narrow #minimap{display:none}
-body.narrow #chart{max-width:58vw}
+/* 窄屏（<860px，尤其 390 手机）：默认三面板（课盘/居中目标/心神）在同一行必然互相
+   遮挡。改为两行 —— 第一行课盘（左）+ 心神（右），第二行目标居中，
+   横幅与宫门说明相应再下移，避开第二行。 */
+body.narrow #chart{max-width:54vw;font-size:11px;line-height:1.45;padding:8px 10px}
+body.narrow #status{padding:8px 10px}
+body.narrow #objective{top:86px;min-width:0;padding:6px 12px}
+body.narrow #objective strong{font-size:16px}
+body.narrow #banner{top:136px}
+body.narrow #detail{top:140px;left:12px;max-width:62vw}
 body.narrow .legend{display:none}
 body.narrow #elements{bottom:148px}
 body.narrow #prompt{bottom:214px}
