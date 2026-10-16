@@ -41,18 +41,35 @@ function parseOne(spec) {
   const protocol = assertProtocol(m[1]);
   const apiKey = assertApiKey(m[2]);
   const target = m[3].trim();
-  const cut = target.indexOf('/model');
-  // 约定末尾必须是 /<模型名>（至少一段），中间部分才是 baseUrl
-  const lastSlash = target.lastIndexOf('/');
-  if (lastSlash <= 'https:/'.length || lastSlash === -1) {
-    throw new Error('AI_SITE_KEY 末尾需带模型名，如 @https://api.deepseek.com/v1/deepseek-chat');
+
+  // 拆 baseUrl 与 model：模型名可能带斜杠（魔搭 Qwen/Qwen3.5、deepseek-ai/DeepSeek-V4.1 等），
+  // 所以不能简单按「最后一个斜杠」切。约定 baseUrl 以版本段（/v1 /v4 …）结尾，
+  // 其后全部是模型名；无版本段时才退回「最后一个斜杠」的旧约定。
+  //   @https://api-inference.modelscope.cn/v1/Qwen/Qwen3.5-0.8B
+  //     → baseUrl=…/v1           model=Qwen/Qwen3.5-0.8B
+  //   @https://api.stepfun.com/v1/step-3.5-flash
+  //     → baseUrl=…/v1           model=step-3.5-flash
+  const verSplit = /^(.*?\/v\d+)(?:\/(.+))?$/i.exec(target);
+  let baseUrl;
+  let model;
+  if (verSplit && verSplit[2]) {
+    baseUrl = verSplit[1];
+    model = verSplit[2];
+  } else {
+    const lastSlash = target.lastIndexOf('/');
+    if (lastSlash <= 'https:/'.length || lastSlash === -1) {
+      throw new Error('AI_SITE_KEY 末尾需带模型名，如 @https://api.deepseek.com/v1/deepseek-chat');
+    }
+    baseUrl = target.slice(0, lastSlash);
+    model = target.slice(lastSlash + 1);
   }
-  const baseUrl = assertBaseUrl(target.slice(0, lastSlash));
-  const model = assertModel(target.slice(lastSlash + 1));
-  if (cut >= 0 && cut < lastSlash) {
-    throw new Error('AI_SITE_KEY 中不应出现多个 /model 段，请只保留末尾的模型名');
-  }
-  return { protocol, apiKey, baseUrl, model, spec: redactSpec(protocol, baseUrl, model) };
+  return {
+    protocol,
+    apiKey,
+    baseUrl: assertBaseUrl(baseUrl),
+    model: assertModel(model),
+    spec: redactSpec(protocol, baseUrl, model)
+  };
 }
 
 /** 用于日志/接口回显的安全形态：协议 + 地址 + 模型，绝不含 Key */

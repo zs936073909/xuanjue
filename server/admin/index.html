@@ -260,6 +260,9 @@
   #toast.show { opacity: .96; }
 
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 12px; }
+  .key-row { display: flex; gap: 8px; align-items: center; }
+  .key-row input { flex: 1; min-width: 0; }
+  .key-row button { flex: none; white-space: nowrap; }
   .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .toolbar input { width: min(280px, 100%); }
 
@@ -382,6 +385,12 @@
         <span class="hint">厂商 → 档位模型 → Key；提问按难度走 easy / mid / hard，故障自动换厂商换 Key</span>
       </div>
 
+      <!-- 上手引导：按当前池子状态给出「下一步做什么」，不必去猜流程 -->
+      <div class="panel" id="poolGuide" style="border-left:3px solid var(--vermilion)">
+        <div class="panel-head"><h3>接通 AI 的三步</h3></div>
+        <div style="padding:14px 16px"><ol id="poolGuideSteps" class="small" style="margin:0;padding-left:20px;line-height:2"></ol></div>
+      </div>
+
       <div class="panel">
         <div class="panel-head">
           <h3>推荐模板</h3>
@@ -391,7 +400,7 @@
           </div>
         </div>
         <div style="padding:14px 16px">
-          <p class="small muted" style="margin:0">魔搭社区 / 阶跃星辰 / 书生 —— 三家厂商的端点与三档模型（easy / mid / hard）都配好了，导入后<b>只需贴各家的 API Key</b>。已导入过的不会重复创建。</p>
+          <p class="small muted" style="margin:0">魔搭社区 / 阶跃星辰 / 书生 —— 导入后自动配好<b>厂商与端点</b>。然后只需两步：① 贴各家的 API Key；② 点「发现模型」从上游拉真实模型名、按 easy / mid / hard 挑三个。已导入过的不会重复创建。</p>
           <div id="presetList" class="hidden" style="margin-top:12px"></div>
         </div>
       </div>
@@ -427,7 +436,13 @@
         <div style="padding:14px 16px;border-top:1px solid var(--line)">
           <div class="form-grid">
             <div><label>厂商</label><select id="mProvider"></select></div>
-            <div><label>模型名</label><input id="mModel" placeholder="Qwen/Qwen3-30B-A3B"></div>
+            <div><label>模型名</label>
+              <div class="key-row">
+                <input id="mModel" list="mModelList" placeholder="点「发现模型」拉取真实列表">
+                <button class="ghost small" id="discoverModels" type="button">发现模型</button>
+              </div>
+              <datalist id="mModelList"></datalist>
+            </div>
             <div><label>档位</label>
               <select id="mTier"><option value="easy">easy 简单</option><option value="mid" selected>mid 常规</option><option value="hard">hard 详批</option></select>
             </div>
@@ -1025,8 +1040,29 @@ async function loadPool() {
     const opts = ps.providers.map(p => `<option value="${p.id}">${esc(p.name)}（${esc(p.slug)}）</option>`).join('');
     $('#mProvider').innerHTML = opts;
     $('#kProvider').innerHTML = opts;
+
+    renderPoolGuide(ps.providers, ms.models, ks.keys);
   } catch (e) {
     toast('模型池加载失败：' + e.message);
+  }
+}
+
+// 上手引导：按池子实际状态高亮「下一步」，把隐含流程显式化
+function renderPoolGuide(providers, models, keys) {
+  const hasProv = providers.length > 0;
+  const hasKey = keys.some(k => k.status === 'active');
+  const hasModel = models.some(m => m.enabled);
+  const step = (done, text) => (done ? '✅ ' : '⬜ ') + text;
+  $('#poolGuideSteps').innerHTML = [
+    `<li>${step(hasProv, '<b>建厂商</b> —— 点「一键导入模板」，或在下方填 Base URL 手动添加')}</li>`,
+    `<li>${step(hasKey, '<b>贴 API Key</b> —— 在下方「API Key」里填入并保存')}</li>`,
+    `<li>${step(hasModel, '<b>挑模型</b> —— 在「档位模型」里点「发现模型」，从真实列表挑 easy / mid / hard 各一个')}</li>`
+  ].join('');
+  const allDone = hasProv && hasKey && hasModel;
+  $('#poolGuide').style.borderLeftColor = allDone ? 'var(--pine)' : 'var(--vermilion)';
+  if (allDone) {
+    $('#poolGuideSteps').insertAdjacentHTML('beforeend',
+      '<li style="list-style:none;margin-left:-20px;margin-top:6px">🎉 全部就绪 —— 点右上「试跑一次」验证真实调用。</li>');
   }
 }
 
@@ -1046,7 +1082,9 @@ $('#viewPresets').addEventListener('click', async () => {
         <div style="font-weight:600">${esc(p.name)} <span class="mono small faint">${esc(p.slug)}</span></div>
         <div class="small mono faint" style="margin:2px 0 6px">${esc(p.base_url)}</div>
         <div class="small muted" style="margin-bottom:8px">${esc(p.note)}</div>
-        <div class="btn-row">${p.models.map(m => `<span class="tag ${m.tier === 'hard' ? 'bad' : m.tier === 'easy' ? 'ok' : 'warn'}">${m.tier} · ${esc(m.display_name || m.model)}</span>`).join('')}</div>
+        <div class="btn-row">${p.models && p.models.length
+          ? p.models.map(m => `<span class="tag ${m.tier === 'hard' ? 'bad' : m.tier === 'easy' ? 'ok' : 'warn'}">${m.tier} · ${esc(m.display_name || m.model)}</span>`).join('')
+          : '<span class="small faint">不预置模型名 —— 导入后贴 Key，再点「发现模型」从上游拉真实列表挑三档</span>'}</div>
       </div>`).join('');
     box.classList.remove('hidden');
   } catch (e) { toast('加载失败：' + e.message); }
@@ -1097,6 +1135,30 @@ $('#saveModel').addEventListener('click', async () => {
     toast('模型已保存');
     loadPool();
   } catch (e) { toast('保存失败：' + e.message); }
+});
+
+// 发现模型：从所选厂商的上游 GET /models 拉真实模型列表，填进下拉候选。
+// 为什么：模型名随平台换代（Qwen3.5→3.6→3.8…），手填必错、猜名必杜撰；
+// 让上游自己报清单，站长从里面挑，才是「虚拟模型」的根治。
+$('#discoverModels').addEventListener('click', async () => {
+  const providerId = $('#mProvider').value;
+  if (!providerId) { toast('请先创建并选择一个厂商（还需贴好 Key）'); return; }
+  const btn = $('#discoverModels');
+  btn.disabled = true; btn.textContent = '拉取中…';
+  try {
+    const r = await api('/v1/admin/ai/discover', { method: 'POST', body: { provider_id: providerId } });
+    $('#mModelList').innerHTML = (r.models || []).map(m => `<option value="${esc(m)}">`).join('');
+    if (!r.models || !r.models.length) {
+      toast('上游未返回模型列表' + (r.error ? '：' + r.error : ''));
+    } else {
+      toast(`已发现 ${r.count} 个模型，点模型名输入框即可挑选`);
+      $('#mModel').focus();
+    }
+  } catch (e) {
+    toast('发现失败：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '发现模型';
+  }
 });
 
 $('#saveKey').addEventListener('click', async () => {

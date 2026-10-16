@@ -411,23 +411,22 @@ test('AI 试跑：池子为空 409，配好后试跑成功并留路由日志', a
   assert.equal(log.body.log[0].status, 'ok');
 });
 
-test('AI 池导入预置模板：一次建好三家厂商与三档模型，且幂等', async () => {
+test('AI 池导入预置模板：只建端点骨架（不预置杜撰模型名），且幂等', async () => {
   await pool.query('truncate ai_providers, ai_models, ai_keys restart identity cascade');
 
   const first = await api('/v1/admin/ai/presets/import', { method: 'POST', token: ADMIN_TOKEN, body: {} });
   assert.equal(first.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.providers, 3, '预置三家厂商');
-  assert.ok(first.body.models >= 6, '每家至少两档模型');
+  // 设计要点：预设不带模型名 —— 真实模型名由「发现模型」从上游 /models 现拉，
+  // 早先猜的模型名全是无效/杜撰，导入即冗余，这次改掉。
+  assert.equal(first.body.models, 0, '预设不再预置模型名，避免杜撰模型');
 
   const list = await api('/v1/admin/ai/providers', { token: ADMIN_TOKEN });
   const slugs = list.body.providers.map(p => p.slug).sort();
   assert.deepEqual(slugs, ['internlm', 'modelscope', 'stepfun']);
-
-  // 每家都配齐 easy/mid/hard 覆盖（书生可缺 mid，由路由器兜底，但 hard/easy 必须有）
-  const models = await api('/v1/admin/ai/models', { token: ADMIN_TOKEN });
-  for (const slug of ['modelscope', 'stepfun', 'internlm']) {
-    const tiers = new Set(models.body.models.filter(m => m.provider_slug === slug).map(m => m.tier));
-    assert.ok(tiers.has('easy') && tiers.has('hard'), `${slug} 应有 easy 与 hard 档`);
+  for (const p of list.body.providers) {
+    assert.ok(/^https:\/\/.+/.test(p.base_url), `${p.slug} 应带有效端点`);
+    assert.equal(p.protocol, 'openai');
   }
 
   // 幂等：再导一次不重复建

@@ -34,24 +34,23 @@ import crypto from 'node:crypto';
 
 const TOKEN_RE = /^[A-Za-z0-9._-]{16,64}$/;
 
-// 推荐厂商模板：站长点一下就能把池子骨架搭好，之后只需贴 Key。
-// base_url 与模型名来自各开放平台公开文档（2026-10 核对）：
+// 推荐厂商模板：站长点一下就能把「厂商 + 端点」骨架搭好，之后只需贴 Key。
+//   base_url 与协议来自各开放平台公开文档（2026-10 核对）：
 //   魔搭免费推理 API 为 OpenAI 兼容协议，日 2000 次免费额度；
-//   阶跃星辰按量计费，step-3.5-flash 最便宜、step-5-preview 旗舰；
+//   阶跃星辰按量计费，flash 系便宜快、旗舰系答难题；
 //   书生（上海 AI 实验室）开放接口 OpenAI 兼容。
-// 模型名会随平台更新换代，导入后可在下方表格里随时改；档位缺失时路由器自动向相邻档位兜底。
+//
+// 为什么不预置模型名（重要）：模型名随平台频繁换代（路由日志里 Qwen3.5→3.6→3.8 一直在变），
+// 早先猜的名字全是无效/杜撰模型，导入后就是一堆「调不通的虚拟模型」——正是这次要清的冗余。
+// 故预设只给端点骨架；真实模型名由「发现模型」从上游 GET /models 现拉，站长从列表挑。
 const AI_PRESETS = [
   {
     slug: 'modelscope',
     name: '魔搭社区',
     protocol: 'openai',
     base_url: 'https://api-inference.modelscope.cn/v1',
-    note: '每天 2000 次免费额度；三档模型按难易分流',
-    models: [
-      { model: 'Qwen/Qwen3.5-0.8B', tier: 'easy', priority: 10, display_name: 'Qwen3.5-0.8B 轻量' },
-      { model: 'Qwen/Qwen3.6-35B-A3B', tier: 'mid', priority: 10, display_name: 'Qwen3.6-35B 均衡' },
-      { model: 'deepseek-ai/DeepSeek-V4.1-Flash', tier: 'hard', priority: 10, display_name: 'DeepSeek-V4.1 深度' }
-    ]
+    note: '每天 2000 次免费额度；贴 Key 后点「发现模型」按需挑三档',
+    models: []
   },
   {
     slug: 'stepfun',
@@ -59,11 +58,7 @@ const AI_PRESETS = [
     protocol: 'openai',
     base_url: 'https://api.stepfun.com/v1',
     note: '按量计费；flash 系便宜快，旗舰系答难题',
-    models: [
-      { model: 'step-3.5-flash', tier: 'easy', priority: 20, display_name: 'Step-3.5 Flash' },
-      { model: 'step-3.7-flash', tier: 'mid', priority: 20, display_name: 'Step-3.7 Flash' },
-      { model: 'step-5-preview', tier: 'hard', priority: 20, display_name: 'Step-5 Preview' }
-    ]
+    models: []
   },
   {
     slug: 'internlm',
@@ -71,10 +66,7 @@ const AI_PRESETS = [
     protocol: 'openai',
     base_url: 'https://chat.intern-ai.org.cn/api/v1',
     note: '上海 AI 实验室开放接口',
-    models: [
-      { model: 'internlm3-latest', tier: 'easy', priority: 30, display_name: '书生3 最新版' },
-      { model: 'intern-latest', tier: 'hard', priority: 30, display_name: '书生旗舰版' }
-    ]
+    models: []
   }
 ];
 
@@ -526,6 +518,7 @@ export async function registerAdmin(app) {
           model: c.model,
           key_hint: keyHint(c.apiKey),
           status: res.ok ? 'ok' : 'http_' + res.status,
+          error: res.error || undefined,
           latency_ms: Date.now() - started
         });
         if (res.ok && res.content) {
@@ -563,6 +556,7 @@ export async function registerAdmin(app) {
           model: c.model,
           key_hint: keyHint(c.apiKey),
           status: e.name === 'AbortError' ? 'timeout' : 'unreachable',
+          error: (e && e.message ? String(e.message).slice(0, 200) : '') || undefined,
           latency_ms: Date.now() - started
         });
         await markKeyResult(c.keyId, false);
@@ -579,7 +573,82 @@ export async function registerAdmin(app) {
         });
       }
     }
+    // 全部候选失败：逐条带上脱敏报错，让站长能直接看见「为什么挂」
     return reply.code(502).send({ ok: false, tried, error: 'all_candidates_failed' });
+  });
+
+  // 从上游发现真实模型列表（GET {base}/models，OpenAI 兼容）。
+  //
+  // 为什么要有它：模型名会随平台换代（路由日志里 Qwen3.5→3.6→3.8 一直在变），
+  // 「靠人记模型名再手填」必然填错 —— 这正是两个 API 调不通的根因之一。
+  // 第一性解法：让上游自己报它现在到底有哪些模型，站长从列表里挑，而不是猜。
+  // 传 provider_id 用库里已存的 Key；否则用请求体里的 base_url/api_key（不落库、仅本次发现）。
+  app.post('/ai/discover', { preHandler: requireAdmin }, async (req, reply) => {
+    let baseUrl = String(req.body?.base_url || '').trim().replace(/\/+$/, '');
+    let apiKey = String(req.body?.api_key || '').trim();
+    let protocol = req.body?.protocol === 'anthropic' ? 'anthropic' : 'openai';
+    let providerSlug = 'custom';
+
+    if (req.body?.provider_id) {
+      const pr = await q('select * from ai_providers where id=$1', [req.body.provider_id]);
+      if (!pr.rowCount) return reply.code(404).send({ error: 'provider_not_found' });
+      const p = pr.rows[0];
+      const kr = await q(
+        `select key_plain from ai_keys where provider_id=$1 and status='active' order by created_at limit 1`,
+        [p.id]
+      );
+      if (!kr.rowCount) return reply.code(409).send({ error: 'no_key', message: '该厂商还没贴 Key' });
+      baseUrl = String(p.base_url).replace(/\/+$/, '');
+      protocol = p.protocol;
+      providerSlug = p.slug;
+      apiKey = kr.rows[0].key_plain;
+    }
+
+    if (!baseUrl) return reply.code(400).send({ error: 'base_url_required' });
+    if (!apiKey) return reply.code(400).send({ error: 'api_key_required' });
+
+    // 只对 OpenAI 兼容协议有标准的 /models 清单；Anthropic 无此接口，回退给手填
+    if (protocol === 'anthropic') {
+      return reply.send({ ok: false, models: [], error: 'anthropic 无 /models 接口，请手动填写模型名' });
+    }
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15_000);
+    try {
+      const res = await fetch(baseUrl + '/models', {
+        headers: { authorization: 'Bearer ' + apiKey },
+        signal: ac.signal
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        return reply.code(502).send({
+          ok: false,
+          models: [],
+          error: redactUpstreamError(text, apiKey) || ('上游返回 ' + res.status)
+        });
+      }
+      let data;
+      try { data = JSON.parse(text); } catch {
+        return reply.code(502).send({ ok: false, models: [], error: '上游 /models 返回不是 JSON' });
+      }
+      const raw = Array.isArray(data.data) ? data.data : (Array.isArray(data.models) ? data.models : []);
+      const models = raw
+        .map(m => (typeof m === 'string' ? m : (m && (m.id || m.model || m.name)) || ''))
+        .map(s => String(s).trim())
+        .filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .sort();
+      await adminAudit(req.adminId, 'admin_ai_discover', req);
+      return reply.send({ ok: true, provider: providerSlug, count: models.length, models });
+    } catch (e) {
+      return reply.code(502).send({
+        ok: false,
+        models: [],
+        error: e.name === 'AbortError' ? '上游超时(15s)' : '网络不可达'
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   });
 }
 
@@ -623,15 +692,32 @@ async function callUpstream(cred, messages) {
   const timer = setTimeout(() => ac.abort(), 30_000);
   try {
     const res = await fetch(url, { method: 'POST', headers, body, signal: ac.signal });
-    if (!res.ok) return { ok: false, status: res.status, content: '' };
-    const data = await res.json();
+    const text = await res.text();
+    // 上游报错原文（如「Incorrect API key provided」）是排查唯一线索 ——
+    // 但必须先脱敏再回显：去掉任何疑似 Key 的长串，避免后台把 Key 明文回吐到浏览器。
+    const err = res.ok ? '' : redactUpstreamError(text, cred.apiKey);
+    if (!res.ok) return { ok: false, status: res.status, content: '', error: err };
+    let data;
+    try { data = JSON.parse(text); } catch { return { ok: false, status: 200, content: '', error: '上游返回不是 JSON' }; }
     const content = isAnthropic
       ? (data.content?.[0]?.text || '')
       : (data.choices?.[0]?.message?.content || '');
-    return { ok: true, status: 200, content };
+    return { ok: true, status: 200, content, error: '' };
+  } catch (e) {
+    return { ok: false, status: 0, content: '', error: e.name === 'AbortError' ? '上游超时(30s)' : '网络不可达' };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** 上游报错脱敏：抹掉 Key 原文与任何长 base64/UUID 串，只留人能看懂的原因 */
+function redactUpstreamError(text, apiKey) {
+  let s = String(text || '').slice(0, 300);
+  if (apiKey) s = s.split(apiKey).join('***');
+  return s
+    .replace(/[A-Za-z0-9_\-]{30,}/g, '***')
+    .replace(/sk-[A-Za-z0-9_\-]{4,}/g, 'sk-***')
+    .trim();
 }
 
 // 管理员审计：与用户审计同一张表，user_id 记「动作作用对象」，动作名带 admin_ 前缀可区分

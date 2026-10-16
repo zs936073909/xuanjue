@@ -136,9 +136,14 @@ body::before{
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
 /* splash — 品牌字标保留衬线，背景叠「朱砂印章·宣纸」hero 图（暗色蒙墨纱、亮色蒙奶纱，保证字面可读） */
+/* 为什么不再用 background-size:cover：
+   hero-seal 是 1920×950 的横版图，笔锋与朱印都在右侧 28% 处。原先 cover + `center`，
+   在窄手机的宽扁卡片上会把右缘「切」出一截游离的碎笔触（就是用户看到的"旧背景一直挂着"）。
+   现在 background-size:auto 100% —— 高度贴合卡片、宽度随之缩放，整幅书法完整入画，
+   水平定位偏右让印章与笔锋稳稳落在画面内，不再有切碎的边角。 */
 .splash{text-align:center;padding:48px 0 28px;position:relative;border-radius:20px;overflow:hidden;margin-bottom:14px;
-  background-image:linear-gradient(180deg,rgba(31,30,29,.62),rgba(31,30,29,.88)),url(../img/hero-seal.jpg);
-  background-size:cover;background-position:center 32%;
+  background-image:linear-gradient(180deg,rgba(31,30,29,.52),rgba(31,30,29,.82)),url(../img/hero-seal.jpg);
+  background-size:auto 100%,auto 100%;background-position:center,right 30% center;background-repeat:no-repeat;
   border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(232,149,111,.08),0 4px 24px rgba(0,0,0,.35);
 }
 [data-theme="light"] .splash{
@@ -286,7 +291,7 @@ body::before{
   margin:0 calc(var(--gutter) * -1) 12px;
   padding:20px var(--gutter) 18px;
   background-image:linear-gradient(180deg,rgba(31,30,29,.62),rgba(31,30,29,.9)),url(../img/hero-seal.jpg);
-  background-size:cover;background-position:center 30%;
+  background-size:auto 100%,auto 100%;background-position:center,right 32% center;background-repeat:no-repeat;
   border-bottom:1px solid var(--glass-line);
 }
 [data-theme="light"] .stage{
@@ -2043,12 +2048,12 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .now-card{position:relative;overflow:hidden;
   margin:0 calc(var(--gutter) * -1) 12px;
   padding:18px var(--gutter) 16px;
-  background-image:linear-gradient(180deg,rgba(31,30,29,.58),rgba(31,30,29,.92)),url(../img/hero-seal.jpg);
-  background-size:cover;background-position:center 26%;
+  background-image:linear-gradient(180deg,rgba(31,30,29,.66),rgba(31,30,29,.9)),url(../img/hero-seal.jpg);
+  background-size:auto 82%,auto 82%;background-position:center,right 8% center;background-repeat:no-repeat;
   border-top:1px solid var(--glass-line);border-bottom:1px solid var(--glass-line);
   box-shadow:var(--glass-sh)}
 [data-theme="light"] .now-card{
-  background-image:linear-gradient(180deg,rgba(245,244,238,.44),rgba(245,244,238,.86)),url(../img/hero-seal.jpg);
+  background-image:linear-gradient(180deg,rgba(245,244,238,.62),rgba(245,244,238,.84)),url(../img/hero-seal.jpg);
 }
 /* 底部渐隐模糊：干支/宜忌与下方内容之间不再是一条硬边 */
 .now-card::after{
