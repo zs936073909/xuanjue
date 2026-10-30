@@ -1043,6 +1043,9 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .hh-hero-r{flex:1;min-width:0}
 .hh-level{font-size:16px;color:var(--ink);font-family:var(--serif);font-weight:600;margin-bottom:5px}
 .hh-tip{font-size:12px;color:var(--ink2);line-height:1.6}
+.hh-conf{font-size:10.5px;color:var(--muted);margin-top:6px;letter-spacing:.3px}
+.hh-timing{font-size:12px;color:var(--ink2);line-height:1.7}
+.hh-timing-adv{font-size:12px;color:var(--ink);line-height:1.7;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line2)}
 .hh-dims{display:flex;flex-direction:column;gap:12px;margin-top:8px}
 .hh-dim-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
 .hh-dim-l{font-size:13px;color:var(--ink);font-weight:500}

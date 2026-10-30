@@ -4411,13 +4411,17 @@
   function renderHehunResult(hh){
     const r=hh.computed.analysis;
     let h=`<div class="phead"><div><div class="ptitle">合婚结果</div><div class="psub">起盘 ${esc(hh.computed.testTimeLabel)}</div></div><button class="btn ghost sm" id="backHehun">返回</button></div>`;
-    h+=`<div class="card hh-hero"><div class="hh-score"><b>${r.score}</b><span>/100</span></div><div class="hh-hero-r"><div class="hh-level">${esc(r.level)}</div><div class="hh-tip">${esc(r.levelTip)}</div></div></div>`;
-    h+=`<div class="card"><h3>六维评分</h3><div class="hh-dims">`;
+    const conf=r.confidence||{level:'—',score:0,note:''};
+    h+=`<div class="card hh-hero"><div class="hh-score"><b>${r.score}</b><span>/100</span></div><div class="hh-hero-r"><div class="hh-level">${esc(r.level)}</div><div class="hh-tip">${esc(r.levelTip)}</div><div class="hh-conf">数据置信度 ${esc(conf.level)} · ${conf.score}/100</div></div></div>`;
+    h+=`<div class="card"><h3>七维评分 <span class="h-sub">日主/五行/夫妻宫/年支/紫微/纳音/实时</span></h3><div class="hh-dims">`;
     r.dimensions.forEach(d=>{
       h+=`<div class="hh-dim"><div class="hh-dim-h"><span class="hh-dim-l">${esc(d.label)}<i>${d.weight}%</i></span><span class="hh-dim-v">${d.score}</span></div><div class="hh-bar"><i style="width:${d.score}%"></i></div><div class="hh-dim-d">${esc(d.detail)}</div></div>`;
     });
     h+=`</div></div>`;
     h+=`<div class="card"><h3>关系优势</h3><div class="hh-list">${(r.highlights.length?r.highlights:['暂无明显高分项，先看互动中的实际感受']).map(x=>`<div class="hh-li ok">${esc(x)}</div>`).join('')}</div><h3 class="mt12">需要留意</h3><div class="hh-list">${(r.risks.length?r.risks:['暂无明显低分项，别把顺境当成不用经营']).map(x=>`<div class="hh-li warn">${esc(x)}</div>`).join('')}</div></div>`;
+    if(r.timing){
+      h+=`<div class="card"><h3>当下时机 <span class="h-sub">实时盘 + 双方大运流年</span></h3><p class="hh-timing">${esc(r.timing.text)}</p><p class="hh-timing-adv">${esc(r.timing.advice)}</p></div>`;
+    }
     h+=`<div class="card"><h3>可执行建议</h3><div class="hh-advice">${r.advice.map(x=>`<div class="hh-ad"><span>›</span>${esc(x)}</div>`).join('')}</div></div>`;
     h+=`<div class="card"><h3>AI 合婚解读 <span class="h-sub">双方命盘 + 实时盘</span></h3><div id="hhAiBody" class="hh-ai-body">${hh.aiText?AI.renderMarkdown(hh.aiText):'<div class="ai-pending">正在生成…</div>'}</div><div class="hp-actions mt8"><button class="btn ghost" id="btnHehunRegen">重新生成</button><button class="btn ghost" id="btnHehunAsk">继续追问 ›</button></div><div class="section-note">AI 内容由模型生成，仅供文化参考；与规则评分冲突时，以现实沟通为准。</div></div>`;
     h+=`<div class="hp-actions"><button class="btn ghost block" id="btnHehunReset">重新填写双方信息</button></div>`;
@@ -4555,7 +4559,7 @@
         if(m==='塔罗')return {name:m,result:ShuShu.compute('塔罗',{date:testTime,spread:'relation',tarotReverse:Store.getSettings().tarotReverse||'随机正逆位'})};
         return {name:m,result:ShuShu.compute(m,{date:testTime,questionType:'感情关系'})};
       });
-      const analysis=HeHun.analyze({a:{bazi:aBazi,ziwei:aZiwei},b:{bazi:bBazi,ziwei:bZiwei},realtime:realtime,testTime:fmtLocalDT(testTime)});
+      const analysis=HeHun.analyze({a:{gender:hh.a.gender,bazi:aBazi,ziwei:aZiwei},b:{gender:hh.b.gender,bazi:bBazi,ziwei:bZiwei},realtime:realtime,testTime:fmtLocalDT(testTime)});
       hh.computed={aBazi,bBazi,aZiwei,bZiwei,realtime,analysis,testTimeLabel:fmtLocalDT(testTime)};
       hh.aiText='';hh.aiStatus='idle';
       renderTab();

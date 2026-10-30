@@ -1248,3 +1248,137 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
 @media(max-width:1023px){
   .amb-aurora{display:none}
 }
+
+/* ============================================================
+   合婚 · 双人命盘（表单 / 七维结果 / AI 解读）
+   ============================================================ */
+.reading-inner[data-view="hehun"]{max-width:980px}
+.hh-title{font-family:var(--serif);font-size:27px;font-weight:600;letter-spacing:.02em;margin:6px 0 6px}
+.hh-intro{font-size:13.5px;color:var(--ink-3);line-height:1.75;max-width:720px}
+.hh-head{display:flex;align-items:flex-start;gap:16px}
+.hh-head .btn{margin-left:auto;flex-shrink:0}
+
+/* 双人输入 */
+.hh-people{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-top:18px}
+.hh-people .m-panel{margin-bottom:16px}
+.hh-person>h3 .sub{font-size:11px;padding:1px 8px;border-radius:6px;background:var(--clay-soft);
+  color:var(--clay);letter-spacing:.06em}
+.hh-note{font-size:12px;color:var(--ink-3);line-height:1.7;margin:10px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+
+/* 提交区 */
+.hh-run{margin-top:16px}
+.hh-run .btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+.hh-run .btn svg{width:16px;height:16px;flex-shrink:0}
+.hh-run .btn:disabled{opacity:.6;cursor:default}
+.hh-spin{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;display:inline-block;animation:hhSpin .7s linear infinite;flex-shrink:0}
+@keyframes hhSpin{to{transform:rotate(360deg)}}
+
+/* 结果：总分 */
+.m-panel.hh-hero{display:flex;align-items:center;gap:26px;padding:24px 26px;
+  background:linear-gradient(135deg,var(--clay-soft),transparent 62%),var(--card);
+  border-color:var(--clay-line)}
+.hh-score{display:flex;align-items:baseline;gap:3px;flex-shrink:0;padding-right:26px;border-right:1px solid var(--line)}
+.hh-score b{font-family:var(--serif);font-size:52px;line-height:1;color:var(--clay);letter-spacing:-.02em}
+.hh-score span{font-size:13px;color:var(--ink-3)}
+.hh-hero-r{min-width:0}
+.hh-level{font-family:var(--serif);font-size:19px;font-weight:600;margin-bottom:5px}
+.hh-tip{font-size:13px;color:var(--ink-2);line-height:1.7}
+.hh-conf{font-size:11.5px;color:var(--ink-3);margin-top:9px;letter-spacing:.02em}
+
+/* 结果：七维 */
+.hh-dims{display:grid;gap:15px}
+.hh-dim{padding-bottom:13px;border-bottom:1px dashed var(--line)}
+.hh-dim:last-child{padding-bottom:0;border-bottom:none}
+.hh-dim-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.hh-dim-l{font-size:13.5px;font-weight:600;color:var(--ink)}
+.hh-dim-l i{font-style:normal;font-size:11px;font-weight:400;color:var(--ink-3);margin-left:8px}
+.hh-dim-v{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--clay);flex-shrink:0}
+.hh-bar{height:6px;border-radius:99px;background:var(--card-2);border:1px solid var(--line);
+  overflow:hidden;margin-top:8px}
+.hh-bar i{display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,var(--clay-l),var(--clay));
+  transition:width .9s var(--ease);width:0}
+.hh-dim-d{font-size:12px;color:var(--ink-3);line-height:1.7;margin-top:8px}
+
+/* 结果：优势 / 留意 */
+.hh-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.hh-list{display:grid;gap:9px}
+.hh-li{font-size:12.5px;line-height:1.7;padding:9px 12px;border-radius:9px;
+  background:var(--card-2);border:1px solid var(--line);position:relative;padding-left:26px}
+.hh-li::before{position:absolute;left:11px;top:9px;font-size:12px;font-weight:700}
+.hh-li.ok{color:var(--ink-2)}
+.hh-li.ok::before{content:"+";color:var(--jade)}
+.hh-li.warn{color:var(--ink-2)}
+.hh-li.warn::before{content:"!";color:var(--cinnabar)}
+
+/* 结果：时机 / 建议 */
+.hh-timing{font-size:13px;color:var(--ink-2);line-height:1.8;margin:0}
+.hh-timing-adv{font-size:13px;color:var(--ink);line-height:1.8;margin:11px 0 0;
+  padding-top:11px;border-top:1px dashed var(--line)}
+.hh-advice{display:grid;gap:10px}
+.hh-ad{display:flex;gap:9px;font-size:12.5px;line-height:1.75;color:var(--ink-2);
+  padding:10px 13px;border-radius:10px;background:var(--card-2);border:1px solid var(--line)}
+.hh-ad span{color:var(--clay);font-weight:700;flex-shrink:0}
+
+/* 结果：AI 区 */
+.hh-ai-body{font-size:13.5px;line-height:1.85;color:var(--ink-2);min-height:60px}
+.hh-ai-body h1,.hh-ai-body h2,.hh-ai-body h3{font-family:var(--serif);color:var(--ink);font-size:16px;margin:16px 0 8px}
+.hh-ai-body p{margin:0 0 10px}
+.hh-ai-body ul,.hh-ai-body ol{margin:0 0 10px;padding-left:20px}
+.hh-ai-body li{margin-bottom:5px}
+.hh-ai-body strong{color:var(--ink)}
+.hh-ai-pending{font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:9px}
+.hh-ai-pending::before{content:"";width:12px;height:12px;border-radius:50%;
+  border:2px solid var(--line-2);border-top-color:var(--clay);animation:hhSpin .8s linear infinite}
+.hh-ai-actions{display:flex;justify-content:flex-end;margin-top:14px}
+.hh-ask{display:flex;align-items:flex-end;gap:8px;margin-top:14px;padding:8px 8px 8px 13px;
+  border:1.5px solid var(--line);border-radius:13px;background:var(--paper-2);
+  transition:border-color .15s,box-shadow .15s}
+.hh-ask:focus-within{border-color:var(--clay);box-shadow:0 0 0 3px var(--clay-soft)}
+.hh-ask textarea{flex:1;border:none;outline:none;background:transparent;resize:none;
+  font-family:var(--sans);font-size:13.5px;line-height:1.65;color:var(--ink);
+  max-height:110px;padding:5px 0;min-height:24px}
+.hh-ask .chat-send{flex-shrink:0;width:34px;height:34px}
+
+@media(max-width:1100px){
+  .hh-people,.hh-two{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .m-panel.hh-hero{flex-direction:column;align-items:flex-start;gap:16px}
+  .hh-score{padding-right:0;border-right:none}
+  .hh-score b{font-size:44px}
+  .hh-title{font-size:23px}
+}
+
+/* ============================================================
+   紫微增强 · 真太阳时 / 命宫气质 / 命格识别
+   ============================================================ */
+.zw-dst{font-size:11.5px;line-height:1.7;color:var(--clay);background:var(--clay-soft);
+  border:1px solid var(--clay-line);border-radius:8px;padding:7px 11px;margin:0 0 12px}
+.zw-solar{font-size:11.5px;color:var(--ink-3);line-height:1.7;margin:-4px 0 11px}
+.zw-ming{font-size:12.5px;color:var(--ink-2);line-height:1.7;margin:0 0 11px}
+.zw-ming b{color:var(--ink)}
+.zw-patterns{display:grid;gap:9px;margin:0 0 14px}
+.zw-pat-t{font-size:11.5px;font-weight:600;color:var(--ink-3);letter-spacing:.06em}
+.zw-pat{padding:9px 12px;border-radius:10px;background:var(--card-2);
+  border:1px solid var(--line);border-left:3px solid var(--line-2)}
+.zw-pat-h{display:flex;align-items:baseline;gap:9px}
+.zw-pat-name{font-family:var(--serif);font-size:14px;font-weight:600;color:var(--ink)}
+.zw-pat-lv{font-size:10.5px;padding:1px 7px;border-radius:5px;background:var(--card);
+  border:1px solid var(--line);color:var(--ink-3);margin-left:auto;white-space:nowrap}
+.zw-pat-d{font-size:11.5px;color:var(--ink-3);line-height:1.65;margin-top:5px}
+.zw-pat.lv-excellent{border-left-color:var(--gold)}
+.zw-pat.lv-excellent .zw-pat-lv{color:var(--gold);border-color:rgba(169,129,59,.45);background:rgba(169,129,59,.08)}
+.zw-pat.lv-good{border-left-color:var(--jade)}
+.zw-pat.lv-good .zw-pat-lv{color:var(--jade);border-color:rgba(63,134,99,.4);background:var(--jade-soft)}
+.zw-pat.lv-neutral{border-left-color:var(--line-2)}
+.zw-pat.lv-caution{border-left-color:var(--cinnabar)}
+.zw-pat.lv-caution .zw-pat-lv{color:var(--cinnabar);border-color:rgba(188,75,68,.4);background:var(--cinnabar-soft)}
+
+@media(max-width:640px){
+  .zw-patterns{grid-template-columns:1fr}
+  .hh-head{flex-wrap:wrap}
+  .hh-head .btn{margin-left:0}
+}

@@ -891,11 +891,51 @@ const WX_HEX = { '金': '#B7924B', '木': '#5B9A6E', '水': '#5790B5', '火': '#
 let mingCache = null; // {profile,bazi,ziwei}
 let mingBusy = false;
 
+/* 城市经度库：与 APK 端共用 data/ziwei/cities.json（约 484 城），懒加载不占首屏 */
+let _cityIndex = null;
+function loadCityIndex() {
+  if (_cityIndex) return Promise.resolve(_cityIndex);
+  if (!window.ZiweiSolar || !ZiweiSolar.loadCities) return Promise.resolve([]);
+  try {
+    return ZiweiSolar.loadCities().then(data => {
+      const out = [];
+      ((data && data.provinces) || []).forEach(p => (p.cities || []).forEach(c => out.push({ name: c.name, province: p.name, longitude: c.longitude })));
+      ((data && data.extra) || []).forEach(c => out.push({ name: c.name, province: '', longitude: c.longitude }));
+      _cityIndex = out;
+      return out;
+    }).catch(() => []);
+  } catch (e) { return Promise.resolve([]); }
+}
+/* 城市名 → 经度：先精确（忽略「市/省/县/区」后缀），再双向包含取最长匹配 */
+function resolveLongitude(text, list) {
+  if (!text || !list || !list.length) return null;
+  const raw = String(text).trim();
+  const norm = raw.replace(/[市省县区]$/, '');
+  if (!norm) return null;
+  let hit = list.find(c => c.name === raw) || list.find(c => c.name.replace(/[市省县区]$/, '') === norm);
+  if (!hit) {
+    const cands = list.filter(c => c.name.indexOf(norm) >= 0 || norm.indexOf(c.name.replace(/[市省县区]$/, '')) >= 0);
+    if (cands.length) { cands.sort((a, b) => b.name.length - a.name.length); hit = cands[0]; }
+  }
+  return hit && typeof hit.longitude === 'number' ? hit.longitude : null;
+}
+function fillCityDatalist() {
+  return loadCityIndex().then(list => {
+    const dl = $('#cityList') || $('#hhCityList');
+    if (!dl || !Array.isArray(list) || !list.length) return;
+    dl.innerHTML = list.map(c => '<option value="' + esc(c.name) + '"></option>').join('');
+  }).catch(() => {});
+}
+
 function getProfile() { return LS.get(K_MING, null); }
 function birthInfoOf(p) {
   const d0 = new Date(p.iso);
   const d = p.unknownHour ? new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), 12, 0) : d0;
-  return { date: d, gender: p.gender, unknownHour: !!p.unknownHour, zhenTaiyang: !!p.zhenTaiyang, place: p.place || '' };
+  return {
+    date: d, gender: p.gender, unknownHour: !!p.unknownHour,
+    zhenTaiyang: !!p.zhenTaiyang, place: p.place || '',
+    longitude: typeof p.longitude === 'number' ? p.longitude : null
+  };
 }
 
 /* ---------- 云客户端（与 APK 端同契约：/v1/auth/* + /v1/ai/chat） ---------- */
@@ -1136,12 +1176,36 @@ function ziweiHTML(comp) {
   ].join('') : '';
 
   let h = '<div class="m-panel"><h3>紫微斗数<span class="sub">命宫 ' + esc(soulP) + ' · 身宫 ' + esc(bodyP) + '</span></h3>';
+  if (R.dstHint) h += '<p class="zw-dst">' + esc(R.dstHint) + '</p>';
   h += '<div class="m-tags" style="margin-bottom:13px">' +
     '<span class="m-tag clay">命宫 ' + esc(soulP) + (R.majorStars.length ? ' · ' + R.majorStars.join('、') : ' · 空宫') + '</span>' +
     '<span class="m-tag">身宫 ' + esc(bodyP) + '</span>' +
     '<span class="m-tag gold">五行局 ' + esc(a.fiveElementsClass || '—') + '</span>' +
     '<span class="m-tag">命主 ' + esc(a.soul || '—') + ' · 身主 ' + esc(a.body || '—') + '</span>' +
     si4Tags + '</div>';
+  if (R.solarTime) {
+    const st = R.solarTime;
+    const fmt = v => (v > 0 ? '+' : '') + Math.round(v);
+    h += '<p class="zw-solar">真太阳时 ' + pad(st.hour) + ':' + pad(st.minute) +
+      (st.dayOffset ? '（' + (st.dayOffset > 0 ? '次日' : '前一日') + '）' : '') +
+      ' · 经度修正 ' + fmt(st.longitudeCorrectionMinutes) + ' 分 · 均时差 ' + fmt(st.equationOfTimeMinutes) + ' 分</p>';
+  }
+  if (R.mingSummary && (R.mingSummary.nature || (R.mingSummary.keywords && R.mingSummary.keywords.length))) {
+    const ms = R.mingSummary;
+    h += '<p class="zw-ming">命宫气质：' + (ms.nature ? '<b>' + esc(ms.nature) + '</b>' : '') +
+      (ms.keywords && ms.keywords.length ? ' · ' + esc(ms.keywords.join('、')) : '') + '</p>';
+  }
+  if (R.patterns && R.patterns.length) {
+    const lvLabel = { excellent: '上格', good: '吉格', neutral: '平格', caution: '留意' };
+    h += '<div class="zw-patterns"><div class="zw-pat-t">命格识别 · ' + R.patterns.length + '</div>';
+    R.patterns.slice(0, 6).forEach(p => {
+      const lv = p.level || 'neutral';
+      h += '<div class="zw-pat lv-' + esc(lv) + '"><div class="zw-pat-h"><span class="zw-pat-name">' + esc(p.name || '') + '</span>' +
+        '<span class="zw-pat-lv">' + esc(lvLabel[lv] || '') + '</span></div>' +
+        (p.description ? '<div class="zw-pat-d">' + esc(p.description) + '</div>' : '') + '</div>';
+    });
+    h += '</div>';
+  }
   if (R.decadal) h += '<p style="font-size:12.5px;color:var(--ink-2);margin-bottom:12px">大限 ' + esc(R.decadal.palaceName) + '（' + R.decadal.startAge + '-' + R.decadal.endAge + '岁）' +
     (R.decadal.stars && R.decadal.stars.length ? ' · ' + esc(R.decadal.stars.join('、')) : '') +
     (R.yearly ? '　流年 ' + esc(R.yearly.yearlyGanZhi) + ' 走' + esc(R.yearly.palaceName) : '') + '</p>';
@@ -1154,6 +1218,319 @@ function ziweiHTML(comp) {
   if (R.solarDate) h += '<p style="font-size:11.5px;color:var(--ink-3);margin-top:11px">出生 ' + esc(R.solarDate) + ' · 早子/晚子按 iztro 时辰校正</p>';
   h += '</div>';
   return h;
+}
+
+/* ---------- 合婚合盘（双人命盘 + 实时盘 + AI） ----------
+   复用同源引擎：ShuShu.baZiByBirth / ziWeiDouShu + HeHun.analyze + computeMethod。
+   本层只负责表单、取数、渲染与云端 AI 解读，不改任何算法。 */
+const K_HEHUN = 'xj_web_hehun';
+const HEHUN_METHODS = ['大六壬', '六爻', '梅花易数', '小六壬', '塔罗'];
+function defaultHehun() {
+  return {
+    a: { gender: '男', iso: '1995-01-01T08:00', place: '', zhenTaiyang: false },
+    b: { gender: '女', iso: '1993-01-01T08:00', place: '', zhenTaiyang: false },
+    testTime: fmtDT(new Date()), methods: ['大六壬'],
+    analysis: null, aBazi: null, bBazi: null, aZiwei: null, bZiwei: null, realtime: [],
+    aiText: '', chat: [], aiBusy: false, computing: false, testLabel: ''
+  };
+}
+let hehun = null;
+function loadHehun() {
+  if (hehun) return hehun;
+  const saved = LS.get(K_HEHUN, null);
+  hehun = Object.assign(defaultHehun(), saved || {});
+  hehun.analysis = null; hehun.aBazi = null; hehun.bBazi = null;
+  hehun.aZiwei = null; hehun.bZiwei = null; hehun.realtime = [];
+  hehun.aiText = ''; hehun.chat = [];
+  return hehun;
+}
+function saveHehunInput() {
+  if (!hehun) return;
+  LS.set(K_HEHUN, { a: hehun.a, b: hehun.b, testTime: hehun.testTime, methods: hehun.methods });
+}
+
+function hhPersonCard(tag, title, p) {
+  return '<div class="m-panel hh-person">' +
+    '<h3>' + esc(title) + '<span class="sub">' + esc(tag) + '</span></h3>' +
+    '<div class="m-field" style="margin-top:0"><label>性别</label><div class="seg" id="hh' + tag + 'Seg">' +
+    ['男', '女'].map(g => '<button type="button" data-g="' + g + '" class="' + (p.gender === g ? 'on' : '') + '">' + g + '命</button>').join('') +
+    '</div></div>' +
+    '<div class="m-field"><label>出生日期与时辰（公历）</label>' +
+    '<input type="datetime-local" id="hh' + tag + 'Iso" value="' + esc(p.iso) + '"></div>' +
+    '<div class="m-switch-row"><button class="switch' + (p.zhenTaiyang ? ' on' : '') + '" id="hh' + tag + 'Zhen" aria-label="真太阳时"></button>' +
+    '<div><div>真太阳时校正</div><div class="msr-d">按出生地经度修正时辰交界</div></div></div>' +
+    '<div class="m-field" id="hh' + tag + 'PlaceWrap" style="' + (p.zhenTaiyang ? '' : 'display:none') + '"><label>出生城市</label>' +
+    '<input type="text" id="hh' + tag + 'Place" list="hhCityList" placeholder="如：上海，或 东经121.5°" value="' + esc(p.place || '') + '"></div>' +
+    '</div>';
+}
+
+function renderHehun() {
+  loadHehun();
+  if (hehun.analysis) renderHehunResult(); else renderHehunForm();
+}
+
+function renderHehunForm() {
+  const hh = loadHehun();
+  let h = '<div class="reading-inner" data-view="hehun">';
+  h += '<div class="kicker">合婚合盘 · 双人命盘 × 实时盘</div>';
+  h += '<h2 class="hh-title">两个人的合盘</h2>';
+  h += '<p class="hh-intro">填双方出生信息，选一个起盘时间与实时法门。先用八字 + 紫微做七维规则评分，再由 AI 结合当下盘面写关系分析与建议。</p>';
+  h += '<div class="hh-people">' + hhPersonCard('A', '甲方（我）', hh.a) + hhPersonCard('B', '乙方（对方）', hh.b) +
+    '<datalist id="hhCityList"></datalist></div>';
+  h += '<div class="m-panel"><h3>起盘时间与实时法门<span class="sub">看当下时机，不替代长期基础</span></h3>' +
+    '<div class="m-field" style="margin-top:0"><label>起盘时间（默认此刻）</label><input type="datetime-local" id="hhTestTime" value="' + esc(hh.testTime) + '"></div>' +
+    '<div class="m-field"><label>叠加实时盘（可多选）</label><div class="chips">' +
+    HEHUN_METHODS.map(m => '<button type="button" class="chip ' + (hh.methods.indexOf(m) >= 0 ? 'on' : '') + '" data-hh-m="' + m + '">' + m + '</button>').join('') +
+    '</div><p class="hh-note">实时盘反映「当下关系热度与时机」，权重 10%；长期基础仍以双方八字与紫微为主。</p></div>' +
+    '<div class="hh-run"><button class="btn primary" id="hhRun">生成合婚分析<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>' +
+    '<p class="m-note-line">合婚为传统术数文化参考，不构成婚姻决策依据；评分不决定你们能不能在一起。</p></div>';
+  h += '</div>';
+  view.innerHTML = h;
+  if (window.Fx) Fx.enhance(view);
+  bindHehunForm();
+}
+
+function bindHehunForm() {
+  const hh = loadHehun();
+  ['A', 'B'].forEach(tag => {
+    const key = tag.toLowerCase();
+    $$('#hh' + tag + 'Seg button').forEach(b => b.onclick = () => {
+      hh[key].gender = b.dataset.g;
+      $$('#hh' + tag + 'Seg button').forEach(x => x.classList.toggle('on', x === b));
+      saveHehunInput();
+    });
+    const iso = $('#hh' + tag + 'Iso');
+    if (iso) iso.onchange = () => { hh[key].iso = iso.value; saveHehunInput(); };
+    const zhen = $('#hh' + tag + 'Zhen');
+    const wrap = $('#hh' + tag + 'PlaceWrap');
+    if (zhen) zhen.onclick = () => {
+      hh[key].zhenTaiyang = !hh[key].zhenTaiyang;
+      zhen.classList.toggle('on', hh[key].zhenTaiyang);
+      if (wrap) wrap.style.display = hh[key].zhenTaiyang ? '' : 'none';
+      saveHehunInput();
+    };
+    const place = $('#hh' + tag + 'Place');
+    if (place) place.oninput = () => { hh[key].place = place.value.trim(); saveHehunInput(); };
+  });
+  const tt = $('#hhTestTime');
+  if (tt) tt.onchange = () => { hh.testTime = tt.value; saveHehunInput(); };
+  $$('[data-hh-m]').forEach(c => c.onclick = () => {
+    const m = c.dataset.hhM;
+    const i = hh.methods.indexOf(m);
+    if (i >= 0) hh.methods.splice(i, 1); else hh.methods.push(m);
+    c.classList.toggle('on', hh.methods.indexOf(m) >= 0);
+    saveHehunInput();
+  });
+  const run = $('#hhRun');
+  if (run) run.onclick = () => runHehunCompute(run);
+  // 城市表按需加载，只用于输入联想与经度解析
+  fillCityDatalist();
+}
+
+async function runHehunCompute(btn) {
+  const hh = loadHehun();
+  const aDate = new Date(hh.a.iso), bDate = new Date(hh.b.iso);
+  if (isNaN(aDate.getTime()) || isNaN(bDate.getTime())) { toast('请填写双方有效的出生日期'); return; }
+  if (hh.a.zhenTaiyang && !hh.a.place) { toast('甲方开启真太阳时后请填写出生城市'); return; }
+  if (hh.b.zhenTaiyang && !hh.b.place) { toast('乙方开启真太阳时后请填写出生城市'); return; }
+  let testDate = new Date(hh.testTime || Date.now());
+  if (isNaN(testDate.getTime())) testDate = new Date();
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="hh-spin"></span>排盘中…';
+  hh.computing = true;
+  try {
+    await ensureVendor('紫微斗数');
+    const cityList = await loadCityIndex();
+    const mk = p => ({
+      date: new Date(p.iso), gender: p.gender,
+      zhenTaiyang: !!p.zhenTaiyang, place: p.place || '',
+      longitude: p.zhenTaiyang ? resolveLongitude(p.place, cityList) : null
+    });
+    const aInfo = mk(hh.a), bInfo = mk(hh.b);
+    const aBazi = ShuShu.baZiByBirth(aInfo);
+    const bBazi = ShuShu.baZiByBirth(bInfo);
+    if (!aBazi || !bBazi) throw new Error('八字排盘失败，请检查出生信息');
+    let aZiwei = null, bZiwei = null;
+    try { aZiwei = ShuShu.ziWeiDouShu(aInfo); } catch (e) {}
+    try { bZiwei = ShuShu.ziWeiDouShu(bInfo); } catch (e) {}
+    const realtime = [];
+    for (const m of hh.methods) {
+      try {
+        await ensureVendor(m);
+        const r = computeMethod(m, testDate, '感情关系');
+        if (r) realtime.push({ name: m, result: r });
+      } catch (e) {}
+    }
+    const analysis = HeHun.analyze({
+      a: { gender: hh.a.gender, bazi: aBazi, ziwei: aZiwei },
+      b: { gender: hh.b.gender, bazi: bBazi, ziwei: bZiwei },
+      realtime: realtime, testTime: fmtDT(testDate)
+    });
+    hh.aBazi = aBazi; hh.bBazi = bBazi; hh.aZiwei = aZiwei; hh.bZiwei = bZiwei;
+    hh.realtime = realtime; hh.analysis = analysis;
+    hh.testLabel = fmtDT(testDate); hh.aiText = ''; hh.chat = [];
+    hh.computing = false;
+    renderHehunResult();
+    setTimeout(() => runHehunAI(), 80);
+  } catch (e) {
+    hh.computing = false;
+    toast('合婚分析失败：' + (e && e.message ? e.message : '请重试'));
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+function hhBaziBrief(res) {
+  const b = res && (res.result || res);
+  if (!b || !Array.isArray(b.pillars)) return '（资料不足）';
+  const L = ['四柱：' + b.pillars.map(p => p.name + p.gz).join(' ')];
+  L.push('日主：' + (b.dayGan || '') + (b.dayWx ? '（' + b.dayWx + '）' : '') + '，' + (typeof b.dayStrong === 'boolean' ? (b.dayStrong ? '偏强' : '偏弱') : '强弱未知'));
+  if (b.yongShen) L.push('用神：' + b.yongShen);
+  if (b.xiJi) L.push('喜：' + ((b.xiJi.xi || []).join('、') || '—') + '；忌：' + ((b.xiJi.ji || []).join('、') || '—'));
+  if (b.wxStr) L.push('五行：' + b.wxStr);
+  if (b.geJu && b.geJu.name) L.push('格局：' + b.geJu.name);
+  if (b.liuNian && b.liuNian.gz) L.push('当前流年：' + b.liuNian.gz);
+  if (b.xingChong && b.xingChong.summary) L.push('刑冲合害：' + b.xingChong.summary);
+  return L.join('\n');
+}
+function hhZiweiBrief(res) {
+  const z = res && (res.result || res);
+  if (!z || !z.astrolabe) return '（资料不足）';
+  const a = z.astrolabe, L = [];
+  L.push('命宫：' + (z.soulPalace || '—') + '，身宫：' + (z.bodyPalace || '—'));
+  L.push('命宫主星：' + ((z.majorStars || []).join('、') || '空宫'));
+  L.push('命主/身主：' + (a.soul || '—') + '/' + (a.body || '—') + '，五行局：' + (a.fiveElementsClass || '—'));
+  const sp = (a.palaces || []).filter(p => p && p.name === '夫妻')[0];
+  if (sp) L.push('夫妻宫（' + (sp.heavenlyStem || '') + (sp.earthlyBranch || '') + '）：' + (((sp.majorStars || []).map(s => s.name).join('、')) || '无主星'));
+  if (z.patterns && z.patterns.length) L.push('命格：' + z.patterns.slice(0, 4).map(p => p.name).join('、'));
+  if (z.mingSummary && z.mingSummary.nature) L.push('命宫气质：' + z.mingSummary.nature);
+  if (z.decadal) L.push('当前大限：' + (z.decadal.palaceName || '—'));
+  return L.join('\n');
+}
+function buildHehunContext() {
+  const hh = loadHehun();
+  const rt = (hh.realtime || []).map(x => {
+    const p = x.result && x.result.plain;
+    return p ? ('- ' + x.name + '：' + p.tendency + '；' + String(p.state || '').slice(0, 120)) : ('- ' + x.name + '：不可用');
+  }).join('\n') || '（未起实时盘）';
+  return [
+    '# 合婚分析输入（甲方＝提问者，乙方＝对方）',
+    '## 起盘时间\n' + hh.testLabel,
+    '## 甲方 · 八字\n' + hhBaziBrief(hh.aBazi),
+    '## 甲方 · 紫微\n' + hhZiweiBrief(hh.aZiwei),
+    '## 乙方 · 八字\n' + hhBaziBrief(hh.bBazi),
+    '## 乙方 · 紫微\n' + hhZiweiBrief(hh.bZiwei),
+    '## 起盘时间实时盘\n' + rt,
+    '# ' + (hh.analysis ? hh.analysis.summaryText : '')
+  ].join('\n\n');
+}
+function hehunSystemPrompt() {
+  return [
+    '你是「玄决」的合婚分析顾问。基于下方双方八字、紫微命盘与起盘时间的实时盘，帮用户理解两人的关系基础、互动模式与当下时机。',
+    '硬性要求：',
+    '1. 只依据给定的盘面数据，不编造未提供的星曜、神煞或事件；',
+    '2. 不说"必然/一定/注定/克夫克妻/命中无缘"等绝对化与恐吓式断语，改用"倾向、容易、在…情形下"；',
+    '3. 双向视角：同时讲"你给对方什么"和"对方给你什么"，不做单方评判；',
+    '4. 区分「长期基础」（八字与紫微）与「当下时机」（实时盘），不要把一次起盘当成终身结论；',
+    '5. 建议必须可执行：落到沟通方式、边界、节奏、共同活动，而不是空泛祝福；',
+    '6. 不替用户做结婚/分手决定，不涉及医疗、法律、投资结论；',
+    '7. 结尾必须有一句免责：合婚为传统文化参考，最终以现实互动与双方意愿为准。',
+    '输出格式（Markdown，600 字以内）：',
+    '**一句话参考** / **关系基础** / **互动模式** / **当下时机** / **需要留意** / **可执行建议（3 条）** / **免责**'
+  ].join('\n');
+}
+
+function renderHehunResult() {
+  const hh = loadHehun();
+  const r = hh.analysis;
+  if (!r) { renderHehunForm(); return; }
+  const conf = r.confidence || { level: '—', score: 0, note: '' };
+  let h = '<div class="reading-inner" data-view="hehun">';
+  h += '<div class="hh-head"><div><div class="kicker">合婚结果 · 起盘 ' + esc(hh.testLabel) + '</div>' +
+    '<h2 class="hh-title">两个人的合盘</h2></div><button class="btn ghost sm" id="hhBack">重新填写</button></div>';
+  h += '<div class="m-panel hh-hero"><div class="hh-score"><b>' + r.score + '</b><span>/100</span></div>' +
+    '<div class="hh-hero-r"><div class="hh-level">' + esc(r.level) + '</div>' +
+    '<div class="hh-tip">' + esc(r.levelTip) + '</div>' +
+    '<div class="hh-conf">数据置信度 ' + esc(conf.level) + ' · ' + conf.score + '/100 · ' + esc(conf.note) + '</div></div></div>';
+  h += '<div class="m-panel"><h3>七维评分<span class="sub">日主 · 五行 · 夫妻宫 · 年支 · 紫微 · 纳音 · 实时</span></h3><div class="hh-dims">';
+  r.dimensions.forEach(d => {
+    h += '<div class="hh-dim"><div class="hh-dim-h"><span class="hh-dim-l">' + esc(d.label) + '<i>' + d.weight + '%</i></span>' +
+      '<span class="hh-dim-v">' + d.score + '</span></div>' +
+      '<div class="hh-bar"><i style="width:' + d.score + '%"></i></div>' +
+      '<div class="hh-dim-d">' + esc(d.detail) + '</div></div>';
+  });
+  h += '</div></div>';
+  h += '<div class="hh-two">' +
+    '<div class="m-panel"><h3>关系优势</h3><div class="hh-list">' +
+    (r.highlights.length ? r.highlights : ['暂无明显高分项，先看互动中的实际感受']).map(x => '<div class="hh-li ok">' + esc(x) + '</div>').join('') +
+    '</div></div>' +
+    '<div class="m-panel"><h3>需要留意</h3><div class="hh-list">' +
+    (r.risks.length ? r.risks : ['暂无明显低分项，别把顺境当成不用经营']).map(x => '<div class="hh-li warn">' + esc(x) + '</div>').join('') +
+    '</div></div></div>';
+  if (r.timing) {
+    h += '<div class="m-panel"><h3>当下时机<span class="sub">实时盘 + 双方大运流年</span></h3>' +
+      '<p class="hh-timing">' + esc(r.timing.text) + '</p>' +
+      '<p class="hh-timing-adv">' + esc(r.timing.advice) + '</p></div>';
+  }
+  h += '<div class="m-panel"><h3>可执行建议</h3><div class="hh-advice">' +
+    r.advice.map(x => '<div class="hh-ad"><span>›</span>' + esc(x) + '</div>').join('') + '</div></div>';
+  h += '<div class="m-panel"><h3>AI 合婚解读<span class="sub">双方命盘 + 实时盘</span></h3>' +
+    '<div id="hhAiBody" class="hh-ai-body">' + (hh.aiText ? md2html(hh.aiText) : '<div class="hh-ai-pending">正在生成…</div>') + '</div>' +
+    '<div class="hh-ai-actions"><button class="btn ghost sm" id="hhAiRegen">重新生成</button></div>' +
+    '<div class="hh-ask"><textarea id="hhAskInput" rows="1" placeholder="继续追问这段关系… Enter 发送"></textarea>' +
+    '<button class="chat-send" id="hhAskSend" aria-label="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>' +
+    '<p class="m-note-line">AI 内容由云端模型生成，仅供文化参考；与规则评分冲突时，以现实沟通为准。</p></div>';
+  h += '</div>';
+  view.innerHTML = h;
+  if (window.Fx) Fx.enhance(view);
+  setTimeout(() => { $$('.hh-bar i').forEach(i => { const w = i.style.width; i.style.width = '0'; setTimeout(() => { i.style.width = w; }, 40); }); }, 60);
+  bindHehunResult();
+}
+
+function bindHehunResult() {
+  const back = $('#hhBack');
+  if (back) back.onclick = () => { renderHehunForm(); };
+  const regen = $('#hhAiRegen');
+  if (regen) regen.onclick = () => { hehun.aiText = ''; hehun.chat = []; runHehunAI(); };
+  const input = $('#hhAskInput');
+  const send = $('#hhAskSend');
+  if (send) send.onclick = () => askHehunFollow(input);
+  if (input) input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askHehunFollow(input); }
+  });
+}
+function askHehunFollow(input) {
+  const hh = loadHehun();
+  const text = input && input.value.trim();
+  if (!text || hh.aiBusy) return;
+  input.value = '';
+  hh.chat.push({ role: 'user', content: text });
+  runHehunAI(true);
+}
+
+async function runHehunAI(isFollow) {
+  const hh = loadHehun();
+  if (!hh || !hh.analysis) return;
+  const body = $('#hhAiBody');
+  if (!body) return;
+  hh.aiBusy = true;
+  if (!hh.aiText) body.innerHTML = '<div class="hh-ai-pending">正在生成…</div>';
+  const msgs = [{ role: 'system', content: hehunSystemPrompt() }, { role: 'user', content: buildHehunContext() }].concat(hh.chat.slice(-10));
+  try {
+    const ensured = await Cloud.ensure();
+    if (ensured.registered) credentialModal(ensured.s, true);
+    const j = await Cloud.req('/v1/ai/chat', { method: 'POST', body: { messages: msgs, scene: 'decision' } });
+    const content = (j && j.content || '').trim();
+    if (content) {
+      hh.aiText = content;
+      if (isFollow) hh.chat.push({ role: 'assistant', content: content });
+    }
+  } catch (e) {
+    hh.aiText = '⚠ ' + (e.message || '云端连接失败，请稍后重试。');
+  }
+  hh.aiBusy = false;
+  const b2 = $('#hhAiBody');
+  if (b2) b2.innerHTML = md2html(hh.aiText);
 }
 
 /* ---------- 生辰表单（新建/编辑共用） ---------- */
@@ -1185,6 +1562,7 @@ function renderMingForm(profile) {
     '</div></div></div>';
   view.innerHTML = h;
   if (window.Fx) Fx.enhance(view);
+  fillCityDatalist();
 
   let form = { gender: p.gender, unknownHour: !!p.unknownHour, zhenTaiyang: !!p.zhenTaiyang };
   $$('#mfSeg button').forEach(b => b.onclick = () => {
@@ -1211,8 +1589,13 @@ function renderMingForm(profile) {
     const iso = $('#mfDate').value;
     const d = new Date(iso);
     if (!iso || isNaN(d.getTime())) { toast('请选择有效的出生日期'); return; }
-    if (form.zhenTaiyang && !$('#mfPlace').value.trim()) { toast('开启真太阳时后请填写出生城市'); return; }
-    const np = { gender: form.gender, iso, unknownHour: form.unknownHour, zhenTaiyang: form.zhenTaiyang, place: $('#mfPlace').value.trim() };
+    const place = $('#mfPlace').value.trim();
+    if (form.zhenTaiyang && !place) { toast('开启真太阳时后请填写出生城市'); return; }
+    const np = {
+      gender: form.gender, iso, unknownHour: form.unknownHour,
+      zhenTaiyang: form.zhenTaiyang, place,
+      longitude: form.zhenTaiyang ? resolveLongitude(place, _cityIndex) : null
+    };
     LS.set(K_MING, np);
     mingCache = null;
     toast('命盘已排定');
@@ -1764,7 +2147,7 @@ function renderRecent() {
 }
 function setNav(route) {
   $$('#nav .nav-item').forEach(n => n.classList.toggle('active', n.dataset.route === route));
-  const titles = { home: '时课', ming: '命盘', classics: '典籍', history: '问事录', settings: '设置', case: '问事' };
+  const titles = { home: '时课', ming: '命盘', hehun: '合婚', classics: '典籍', history: '问事录', settings: '设置', case: '问事' };
   $('#crumb').textContent = titles[route] || '时课';
 }
 function applyTheme() {
@@ -1779,6 +2162,7 @@ function route() {
   const hash = location.hash || '#/home';
   if (hash.startsWith('#/case/')) { setNav('case'); renderCase(hash.slice(7)); }
   else if (hash === '#/ming') { setNav('ming'); renderMing(); }
+  else if (hash === '#/hehun') { setNav('hehun'); renderHehun(); }
   else if (hash === '#/classics') { setNav('classics'); renderClassics(); }
   else if (hash === '#/history') { setNav('history'); renderHistory(); }
   else if (hash === '#/settings') { setNav('settings'); renderSettings(); }
