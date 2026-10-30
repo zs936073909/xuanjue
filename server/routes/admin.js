@@ -538,7 +538,10 @@ export async function registerAdmin(app) {
           await adminAudit(req.adminId, 'admin_ai_test', req);
           return reply.send({ ok: true, tier, provider: c.providerSlug, model: c.model, sample: res.content, tried });
         }
-        await markKeyResult(c.keyId, false);
+        // 熔断记账看错误归类：401/403 是 Key 本身坏了；404（模型名/路径错）、429（限流）
+        // 不算 Key 的锅 —— 否则在后台试跑一次就把好 Key 打成 suspect，反而永远调不通。
+        const cls = classifyUpstream(res.status);
+        if (cls.keyBad) await markKeyResult(c.keyId, false);
         await logRouting({
           userId: null,
           tier,
@@ -546,7 +549,7 @@ export async function registerAdmin(app) {
           providerSlug: c.providerSlug,
           model: c.model,
           keyId: c.keyId,
-          status: res.ok ? 'upstream_empty' : classifyUpstream(res.status).status,
+          status: res.ok ? 'upstream_empty' : cls.status,
           latencyMs: Date.now() - started,
           charsIn: prompt.length
         });

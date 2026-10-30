@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   './js/cloud.js',
   './js/cross.js',
   './js/daliuren.js',
+  './js/hehun.js',
   './js/huangli.js',
   './js/iztro.min.js',
   './js/lunar.js',
@@ -31,6 +32,8 @@ const STATIC_ASSETS = [
   './js/vendor/iching-shifa.min.js',
   './js/vendor/qimendunjia-standalone.min.js',
   './js/vendor/tarot-kit.min.js',
+  './js/ziwei-patterns.js',
+  './js/ziwei-solar.js',
   './manifest.json'
 ];
 

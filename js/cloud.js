@@ -84,11 +84,33 @@
   function cryptoOk() { return true; }
 
   // ---------- 后端地址与会话持久化 ----------
-  // 默认地址取「当前页面同源」：落地页 / App / 云端本来就部署在同一个 Render 服务下，
-  // 用户打开即已连上，不必手输地址 —— 这是「能打开就能用」的关键一步。
+  // 默认地址取「当前页面同源」：网页端与后端部署在同一个 Render 服务下，
   // 用相对地址 '' 表达同源，fetch 会自己解析成 origin，省掉一次 origin 拼接。
   // 用户在设置里显式填过地址时，始终以用户填的为准（覆盖默认）。
-  function sameOriginDefault() { return ''; }
+  //
+  // 【2026-10 修复】App（Capacitor 原生壳）里页面 origin 是 https://localhost，
+  //   相对路径会被打到 WebView 本机端口，后端必然连不上 —— 这正是「App 里 API 总连不上」的根因。
+  //   因此原生壳必须换成明确的线上后端地址（渲染服务端 CORS 已放行 https://localhost）。
+  //   注意只精确匹配 https://localhost：本地开发用的 http://localhost:4173 不受影响，仍走同源。
+  const NATIVE_API_BASE = 'https://xuanjue-server.onrender.com';
+
+  // 是否运行在原生壳里（Capacitor Android/iOS），或页面根本不在 http(s) 域名下。
+  function inNativeShell() {
+    try {
+      const cap = global.Capacitor;
+      if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) return true;
+    } catch (e) { /* 非 Capacitor：忽略 */ }
+    try {
+      const loc = global.location || {};
+      const proto = String(loc.protocol || '');
+      if (proto === 'file:' || proto === 'capacitor:') return true;
+      // Capacitor Android（androidScheme: https）的页面 origin 就是 https://localhost
+      if (String(loc.origin || '') === 'https://localhost') return true;
+    } catch (e) { /* 无 location：忽略 */ }
+    return false;
+  }
+
+  function sameOriginDefault() { return inNativeShell() ? NATIVE_API_BASE : ''; }
   function getServer() {
     const saved = String(lsGet(KEY_CONFIG) || '').trim();
     return saved || sameOriginDefault();

@@ -153,7 +153,7 @@ async function buildWww() {
   const assets = generateSw();
   checkDrift(assets);
   const total = walkFiles(WWW, '', []).reduce((n, r) => n + fs.statSync(path.join(WWW, r)).size, 0);
-  const firstJs = ['js/lunar.js', 'js/huangli.js', 'js/daliuren.js', 'js/shushu.js', 'js/store.js', 'js/ai.js', 'js/classics.js', 'js/cross.js', 'js/vendor-loader.js', 'js/app.js'];
+  const firstJs = ['js/lunar.js', 'js/huangli.js', 'js/daliuren.js', 'js/hehun.js', 'js/ziwei-solar.js', 'js/ziwei-patterns.js', 'js/shushu.js', 'js/store.js', 'js/ai.js', 'js/classics.js', 'js/cross.js', 'js/vendor-loader.js', 'js/app.js'];
   const shell = ['index.html', 'css/style.css'];
   const sizeOf = (list) => list.reduce((n, r) => n + (fs.existsSync(path.join(WWW, r)) ? fs.statSync(path.join(WWW, r)).size : 0), 0);
   const jsSize = sizeOf(firstJs), shellSize = sizeOf(shell);

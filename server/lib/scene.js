@@ -26,6 +26,9 @@ export const SCENES = {
   daily: { tier: 'mid', temperature: 0.7, maxTokens: 900, desc: '今日宜忌' },
   // 决策对比：A/B 结构化对比，需要表格与分点，体量最大。
   decision: { tier: 'hard', temperature: 0.7, maxTokens: 1400, desc: '决策对比' },
+  // 视频片段分析：多模态请求，必须落到支持视频理解的模型（默认 hard 档的旗舰模型）。
+  // 温度略低：要的是对画面事实的客观描述，不是发挥。
+  video: { tier: 'hard', temperature: 0.4, maxTokens: 1600, desc: '视频片段分析' },
   // 后台一键试跑：管理员主动探活，与用户场景无关。
   admin_test: { tier: 'mid', temperature: 0.6, maxTokens: 64, desc: '后台试跑' }
 };

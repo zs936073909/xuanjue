@@ -8,7 +8,15 @@
 --   代价：数据库被拖库或平台侧人员都能看到用户内容。**App 内的隐私文案已同步改为如实描述**，
 --   不再声称零知识。若日后要恢复加密，需同时改客户端 cloud.js 与本表。
 
-create extension if not exists "pgcrypto";
+-- pgcrypto：PG13 起 gen_random_uuid() 已是内置函数，扩展建不出来也不影响使用。
+-- 托管库的应用角色常常没有 CREATE EXTENSION 权限，而 simple 协议下整段是一个事务 ——
+-- 一条扩展语句失败就会把整份 schema 一起回滚。这里吞掉权限错误，只留一条提示。
+do $$
+begin
+  execute 'create extension if not exists "pgcrypto"';
+exception when insufficient_privilege then
+  raise notice 'pgcrypto: 当前角色无 CREATE EXTENSION 权限，跳过（PG13+ 的 gen_random_uuid 为内置函数，不影响使用）';
+end $$;
 
 create table if not exists users (
   id            uuid primary key default gen_random_uuid(),
@@ -205,3 +213,100 @@ create table if not exists ai_routing_log (
 alter table ai_routing_log add column if not exists scene text;
 create index if not exists ai_routing_log_ts on ai_routing_log(ts desc);
 create index if not exists ai_routing_log_user on ai_routing_log(user_id, ts desc);
+
+-- ============ 迁移：阶跃星辰模型名换新 + 复位被误熔断的 Key ============
+-- 背景（2026-10）：
+--   阶跃星辰下线了 step-1-* / step-2-16k，库里若还留着这些旧模型名，上游会回
+--   404 model not found。此前 404 被归类成「Key 坏了」，连续 3 次就把 Key 标成
+--   suspect 并退出候选池 —— 于是「API 都填好了却永远调不通」。
+--   现在 404 不再算 Key 的错（见 server/lib/airouter.js 的 classifyUpstream），
+--   这里再把库里残留的旧模型行就地改成现行名，并把被误伤熔断的 Key 复位。
+--
+-- 为什么用 UPDATE 而不是删表重建：管理员可能已手工调过 tier/priority，
+--   只换 model 名、保留其余配置，改完立刻生效，不需要站长再点一次「导入预设」。
+
+-- 1) 若同一厂商下已经有现行名，旧名行直接删掉（现行名那行才是要用的，保留它）
+--    —— 先做这步，后面的改名才不会撞 ai_models 的唯一约束 (provider_id, model)。
+delete from ai_models m
+  using ai_models t, ai_providers p
+ where p.id = m.provider_id
+   and p.slug = 'stepfun'
+   and t.provider_id = m.provider_id
+   and t.model = case m.model
+         when 'step-1-8k'   then 'step-3.5-flash'
+         when 'step-1-32k'  then 'step-3.5-flash'
+         when 'step-1-128k' then 'step-3.5-flash'
+         when 'step-2-16k'  then 'step-5-preview'
+       end
+   and m.model in ('step-1-8k','step-1-32k','step-1-128k','step-2-16k');
+
+-- 2) 旧名有四个（三个 step-1-* 都要映到同一个 step-3.5-flash），按目标名去重：
+--    每个目标名只留第一行，其余删掉，留下的那行等下改名。
+with ranked as (
+  select m.id,
+         row_number() over (
+           partition by m.provider_id,
+             case m.model
+               when 'step-1-8k'   then 'step-3.5-flash'
+               when 'step-1-32k'  then 'step-3.5-flash'
+               when 'step-1-128k' then 'step-3.5-flash'
+               when 'step-2-16k'  then 'step-5-preview'
+             end
+           order by m.model
+         ) as rn
+    from ai_models m
+    join ai_providers p on p.id = m.provider_id
+   where p.slug = 'stepfun'
+     and m.model in ('step-1-8k','step-1-32k','step-1-128k','step-2-16k')
+)
+delete from ai_models m
+  using ranked r
+ where m.id = r.id
+   and r.rn > 1;
+
+-- 3) 旧模型名 → 现行名（只动阶跃星辰这一家；其余配置 tier/priority 原样保留）
+--    映射：step-1-8k/32k/128k → step-3.5-flash（easy 档）、step-2-16k → step-5-preview（hard 档）
+update ai_models m
+   set model = case m.model
+         when 'step-1-8k'   then 'step-3.5-flash'
+         when 'step-1-32k'  then 'step-3.5-flash'
+         when 'step-1-128k' then 'step-3.5-flash'
+         when 'step-2-16k'  then 'step-5-preview'
+       end,
+       display_name = case m.model
+         when 'step-1-8k'   then 'Step-3.5 Flash'
+         when 'step-1-32k'  then 'Step-3.5 Flash'
+         when 'step-1-128k' then 'Step-3.5 Flash'
+         when 'step-2-16k'  then 'Step-5 Preview'
+       end,
+       tier = case m.model
+         when 'step-1-8k'   then 'easy'
+         when 'step-1-32k'  then 'easy'
+         when 'step-1-128k' then 'easy'
+         when 'step-2-16k'  then 'hard'
+       end
+  from ai_providers p
+ where p.id = m.provider_id
+   and p.slug = 'stepfun'
+   and m.model in ('step-1-8k','step-1-32k','step-1-128k','step-2-16k');
+
+-- 4) 补齐阶跃星辰缺失的现行模型（没配这家就跳过；已存在的不动）
+insert into ai_models (provider_id, model, display_name, tier, priority, enabled)
+select p.id, v.model, v.display_name, v.tier, 20, true
+  from ai_providers p
+  join (values
+    ('step-3.5-flash', 'Step-3.5 Flash', 'easy'),
+    ('step-3.7-flash', 'Step-3.7 Flash', 'mid'),
+    ('step-5-preview','Step-5 Preview','hard')
+  ) as v(model, display_name, tier) on true
+ where p.slug = 'stepfun'
+   and not exists (
+     select 1 from ai_models m2 where m2.provider_id = p.id and m2.model = v.model
+   );
+
+-- 5) 复位被误熔断的 Key：404/429/5xx 都不是 Key 的错（已在路由层修正判定），
+--    库里那些被旧逻辑打成 suspect 的 Key 恢复为 active，fails 清零。
+--    只复位「自动熔断」的 suspect，不动管理员手工停用的 disabled。
+update ai_keys
+   set status = 'active', fails = 0
+ where status = 'suspect';

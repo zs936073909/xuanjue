@@ -1128,12 +1128,41 @@
     if(!d)return null;
     if(!(d instanceof Date))d=new Date(d);
     if(isNaN(d.getTime()))return null;
+
+    // ===== 真太阳时校正（紫微斗数专用，来源见 js/ziwei-solar.js）=====
+    // 此前这里只往文案里写「已启用真太阳时校正」，实际一秒都没算过 —— 等于骗用户。
+    // 现在真的按出生地经度 + 均时差改时刻：全国东西跨约 60°，最东最西差近 2 小时，
+    // 足以把时辰整个换掉（命宫身宫大限全变）。
+    let solarTime=null;
+    let dstHint='';
+    const lng=typeof info.longitude==='number'?info.longitude:(info.place?parseLongitude(info.place):null);
+    if(info.zhenTaiyang!==false && typeof lng==='number' && isFinite(lng) && global.ZiweiSolar){
+      const st=global.ZiweiSolar.calculateTrueSolarTime({
+        year:d.getFullYear(),month:d.getMonth()+1,day:d.getDate(),
+        clockHour:d.getHours(),clockMinute:d.getMinutes(),
+        longitude:lng,utcOffsetMinutes:info.utcOffsetMinutes
+      });
+      if(st.dateValid){
+        solarTime=st;
+        // 只按真太阳日的跨日偏移改日期；晚子时归日仍交给 timeIndex=12，与 iztro 口径一致
+        d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+st.dayOffset,st.hour,st.minute);
+      }
+    }
+    if(global.ZiweiSolar && global.ZiweiSolar.isChinaDST(d.getFullYear(),d.getMonth()+1,d.getDate())){
+      const rg=global.ZiweiSolar.chinaDSTRange(d.getFullYear());
+      // 只提示、不自动扣减：程序无法区分用户报的是当年钟表读数还是已换算的标准时间
+      dstHint=`出生日期处于中国夏令时期间（${rg.start}–${rg.end}，钟表拨快 1 小时）。若你填的是当年钟表读数，请把时间减 1 小时重排；若已换算过，可忽略此提示。`;
+    }
+
     // iztro 的 timeIndex：0=早子(00:00-01:00),1=丑,...,11=亥,12=晚子(23:00-24:00)
     // 本地 Lunar.getShiChen 的 idx：0=子时(合并早晚子),1=丑,...,11=亥
     // 修复原 sc.index+1 的系统性错位（曾导致所有紫微排盘按下一时辰排，命宫身宫主星整体错位）
     const sc=Lunar.getShiChen(d);
     let timeIndex=1; // fallback 丑时
-    if(sc&&typeof sc.index==='number'){
+    if(solarTime){
+      // 真太阳时已给出地支索引，直接用，避免再走一遍本地时区判定
+      timeIndex=(solarTime.branch===0&&solarTime.normalizedMinutes>=1380)?12:solarTime.branch;
+    }else if(sc&&typeof sc.index==='number'){
       const h=d.getHours();
       if(sc.index===0){
         timeIndex=(h>=23)?12:0; // 23:00-23:59→晚子(12)；00:00-00:59→早子(0)
@@ -1259,6 +1288,29 @@
         };
       }
 
+      // ===== 格局识别（来源见 js/ziwei-patterns.js）=====
+      // 这是原实现完全没有的一层：同一张盘，有格局与没格局，解读深度差一个量级。
+      let patterns=[];
+      let mingSummary=null;
+      try{
+        if(global.ZiweiPatterns){
+          const zc=global.ZiweiPatterns.toZiweiChart(astrolabe);
+          if(zc){
+            patterns=global.ZiweiPatterns.detectPatterns(zc)||[];
+            mingSummary=global.ZiweiPatterns.getMingGongSummary(zc);
+          }
+        }
+      }catch(_e){ patterns=[]; }
+
+      // 十二神：iztro 每个宫都带 changsheng12/boshi12/suiqian12/jiangqian12，原实现没展示
+      const shierShen=palacesArr.map(p=>({
+        name:p.name,
+        changsheng12:p.changsheng12||'',
+        boshi12:p.boshi12||'',
+        suiqian12:p.suiqian12||'',
+        jiangqian12:p.jiangqian12||''
+      }));
+
       const plain={
         state:`紫微斗数排盘：命宫在${palaceName}，主星 ${majorNames.join('、')||'无主星'}；身宫在${bodyName}。五行局 ${astrolabe.fiveElementsClass||'未知'}。`,
         tendency:tendency,
@@ -1273,9 +1325,11 @@
           `主星：${majorNames.join('、')||'无'}`,
           `大限：${decadal?`${decadal.palaceName}(${decadal.heavenlyStem}${decadal.earthlyBranch}) ${decadal.startAge}-${decadal.endAge}岁`:'未知'}`,
           `流年：${yearly?`${yearly.yearlyGanZhi} ${yearly.palaceName}(${yearly.heavenlyStem}${yearly.earthlyBranch})`:'未知'}`,
-          `四化：${siHua?`化禄${siHua.化禄}·化权${siHua.化权}·化科${siHua.化科}·化忌${siHua.化忌}`:'未知'}`
+          `四化：${siHua?`化禄${siHua.化禄}·化权${siHua.化权}·化科${siHua.化科}·化忌${siHua.化忌}`:'未知'}`,
+          ...(patterns.length?[`格局：${patterns.slice(0,4).map(p=>p.name).join('、')}`]:[]),
+          ...(mingSummary&&mingSummary.keywords.length?[`命宫关键词：${mingSummary.keywords.join('、')}`]:[])
         ],
-        env:`出生时间 ${solarDate} ${astrolabe.time||''}，${info.zhenTaiyang?'已启用真太阳时校正':''}`,
+        env:`出生时间 ${solarDate} ${astrolabe.time||''}${solarTime?`（真太阳时 ${String(solarTime.hour).padStart(2,'0')}:${String(solarTime.minute).padStart(2,'0')}，经度修正${global.ZiweiSolar?global.ZiweiSolar.formatSignedMinutes(solarTime.longitudeCorrectionMinutes):''}分，均时差${global.ZiweiSolar?global.ZiweiSolar.formatSignedMinutes(solarTime.equationOfTimeMinutes):''}分）`:''}`,
         reviewDays:60,
         sources:[
           {type:'rule',desc:'紫微斗数以出生年月日时排布十二宫'},
@@ -1286,7 +1340,7 @@
           {type:'rule',desc:`生年四化按生年天干（${birthYearGan||'未知'}）：甲廉破武阳、乙机梁紫阴、丙同机昌廉、丁阴同机巨、戊贪阴右机、己武贪梁曲、庚阳武阴同、辛巨阳曲昌、壬梁紫左武、癸破巨阴贪`}
         ]
       };
-      return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex,decadal,yearly,monthly,siHua},plain};
+      return{name:'紫微斗数',result:{astrolabe,soulPalace:palaceName,bodyPalace:bodyName,majorStars:majorNames,solarDate,timeIndex,decadal,yearly,monthly,siHua,patterns,mingSummary,shierShen,solarTime,dstHint,longitude:(typeof lng==='number'?lng:null)},plain};
     }catch(e){
       return{name:'紫微斗数',result:null,error:String(e.message||e),plain:{state:'紫微斗数排盘失败',tendency:'不可用',opps:[],risks:['排盘异常'],doAct:['请检查出生时间'],dontAct:[],signals:[String(e.message||e)],env:'',reviewDays:0,sources:[]}};
     }

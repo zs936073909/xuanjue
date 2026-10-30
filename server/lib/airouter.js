@@ -13,6 +13,8 @@
 // 一次提问的候选序列 = 目标档位的模型们（同优先级跨厂商轮转）→ 相邻档位兜底，
 // 每个候选配一把该厂商的 Key；打挂了就顺移到下一个候选，直到全试完才报错。
 import { q } from './db.js';
+import { contentText } from './validate.js';
+import { supportsVideo } from './aicapability.js';
 
 const ADJACENT = {
   easy: ['easy', 'mid', 'hard'],
@@ -43,9 +45,10 @@ export function estimateTier(messages, hint) {
 
   const userText = messages
     .filter(m => m.role === 'user')
-    .map(m => m.content)
+    .map(m => contentText(m.content))
     .join('\n');
-  const totalLen = messages.reduce((n, m) => n + m.content.length, 0);
+  // 多模态消息的 content 是数组，length 是片段数不是字数 —— 必须走 contentText
+  const totalLen = messages.reduce((n, m) => n + contentText(m.content).length, 0);
 
   let score = 0;
   if (totalLen > 1200) score += 2;
@@ -92,25 +95,38 @@ function rotate(list) {
  *   2. 同 priority 的厂商之间轮转 —— 无偏好时分摊到多家（「换着来」）；
  *   3. 同厂商内按 priority / 创建顺序铺开模型与 Key。
  * 每个候选带一把该厂商的可用 Key；同模型的备用 Key 排在其后（容灾顺移）。
+ *
+ * opts.video = true 时只保留「支持视频理解」的模型：把视频发给纯文本模型
+ * 只会换来一句「不支持」，不如直接告诉用户池子里没有能看视频的模型。
  * @returns {Promise<Array<{tier,providerSlug,protocol,baseUrl,model,modelId,keyId,apiKey}>>}
  */
-export async function buildCandidates(tier) {
+export async function buildCandidates(tier, opts) {
   const want = ADJACENT[tier] || ADJACENT.mid;
   const r = await q(
-    `select m.id as model_id, m.model, m.tier, m.priority,
+    `select m.id as model_id, m.model, m.tier, m.priority, k.status as key_status,
             p.slug, p.name as provider_name, p.protocol, p.base_url,
             k.id as key_id, k.key_plain
      from ai_models m
      join ai_providers p on p.id = m.provider_id
-     join ai_keys k on k.provider_id = p.id and k.status = 'active'
+     join ai_keys k on k.provider_id = p.id and k.status in ('active','suspect')
      where m.enabled and p.enabled
      order by m.priority asc, k.created_at asc`
   );
   if (!r.rowCount) return [];
 
+  // 只用 active 的 Key。但一把 active 的都不剩时（全池被熔断），把 suspect 的捡回来当最后兜底：
+  // 否则上游抽风 → Key 全被撤 → 池子空了 → 用户看到「没配置 AI」，而真相是「上游在报错」。
+  // 兜底只取 suspect（管理员手动停用的 disabled 不捡），且只在真的没 active 时才生效。
+  let rows = r.rows.filter(x => x.key_status === 'active');
+  if (!rows.length) rows = r.rows.filter(x => x.key_status === 'suspect');
+
+  // 视频请求：先按模型能力过滤，再进档位分组
+  const rows0 = (opts && opts.video) ? rows.filter(x => supportsVideo(x.model)) : rows;
+  if (!rows0.length) return [];
+
   // 1) 按档位分组
   const byTier = new Map();
-  for (const row of r.rows) {
+  for (const row of rows0) {
     if (!byTier.has(row.tier)) byTier.set(row.tier, []);
     byTier.get(row.tier).push(row);
   }
@@ -180,11 +196,18 @@ export function maxAttempts() {
 
 const SUSPECT_AFTER_FAILS = 3;
 
-/** 记录一次结果：成功清零失败计数，连续失败若干次自动标 suspect 并停用 */
+/** 记录一次结果：成功清零失败计数并把 suspect 拉回 active，连续失败若干次自动标 suspect 并停用 */
 export async function markKeyResult(keyId, ok) {
   if (!keyId) return;
   if (ok) {
-    await q(`update ai_keys set fails=0, last_ok_at=now() where id=$1`, [keyId]).catch(() => {});
+    // 成功即自愈：suspect 的 Key 被兜底路径重试成功后要回到候选池，
+    // 否则一次上游抽风就等于永久下线这把 Key。disabled 是管理员手动停的，不碰。
+    await q(
+      `update ai_keys set fails=0, last_ok_at=now(),
+         status = case when status='suspect' then 'active' else status end
+       where id=$1`,
+      [keyId]
+    ).catch(() => {});
     return;
   }
   await q(
@@ -223,11 +246,17 @@ export async function logRouting(entry) {
   ).catch(() => {});
 }
 
-/** 上游错误 → 路由日志状态 + 是否值得换下一个候选 */
+/** 上游错误码 → 路由日志状态 + 是否值得换下一个候选 + 该不该记这笔账到 Key 头上 */
 export function classifyUpstream(status) {
   if (status === 401 || status === 403) return { status: 'upstream_unauthorized', retry: true, keyBad: true };
   if (status === 429) return { status: 'rate_limited', retry: true, keyBad: false };
-  if (status === 404) return { status: 'upstream_not_found', retry: true, keyBad: true };
-  if (status >= 500) return { status: 'upstream_error', retry: true, keyBad: false };
-  return { status: 'upstream_rejected', retry: false, keyBad: true };
+  // 404 是「模型名 / 路径不对」，不是 Key 的问题：同一家的所有 Key 都会一样错。
+  // 把它算到 Key 头上会造成雪崩 —— 改一次模型名 → 全池 404 → 连续 3 次 → 所有 Key 被熔断
+  // → 候选池空了 → 用户永远调不通，还以为「没配 AI」。这是 stepfun 那次故障的真凶。
+  if (status === 404) return { status: 'upstream_not_found', retry: true, keyBad: false };
+  // 5xx 是上游自己在抽风（网关挂了/服务过载），Key 本身多半是好的；但这条链路连续出错
+  // 就该先把 Key 撤下来，别让每次提问都先撞同一口井（撤下来后仍可被兜底路径重试并自愈）。
+  if (status >= 500) return { status: 'upstream_error', retry: true, keyBad: true };
+  // 其余 4xx：请求本身不合法（参数/模型名写错），换谁都一样，不该牵连 Key。
+  return { status: 'upstream_rejected', retry: false, keyBad: false };
 }

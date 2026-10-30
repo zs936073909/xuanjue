@@ -227,6 +227,11 @@ body::before{
 .btn.sm{padding:6px 12px;font-size:12px}
 .btn.mini{padding:6px 12px;font-size:12px;flex-shrink:0}
 .btn.danger{background:#C94F48;color:#fff;border-color:transparent}
+/* 按钮忙碌态：加载排盘库时按钮自带转圈，避免「点了没反应」的错觉 */
+.btn.busy{pointer-events:none;opacity:.78;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn-spin{width:13px;height:13px;flex:0 0 auto;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:btnSpin .7s linear infinite}
+@keyframes btnSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.btn-spin{animation:none;border-top-color:currentColor;opacity:.5}}
 
 /* 涟漪 — 手指落点扩散，比缩放更接近原生触控观感 */
 .btn .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.32);transform:scale(0);opacity:1;pointer-events:none;animation:btnRipple .5s var(--ease-out) forwards}
@@ -506,24 +511,60 @@ body::before{
 .field{margin-bottom:14px}
 .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:6px;font-weight:500}
 .field .req{color:var(--red)}
-.field input[type=text],.field input[type=date],.field input[type=datetime-local],.field textarea,.field select{
+.field input[type=text],.field input[type=date],.field input[type=datetime-local],.field input[type=file],.field textarea,.field select{
   width:100%;background:var(--input-glass);border:1px solid var(--line);border-radius:12px;
   padding:11px 12px;color:var(--ink);font-size:14px;font-family:inherit;
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   transition:border-color .15s var(--ease-out),background .15s var(--ease-out);
 }
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
-.field textarea{min-height:80px;resize:vertical}
-/* 问事页表单：chip 从「药丸」改为 3 列等宽方砖，让选项本身成为一屏的主角，
-   标题输入升为 20px 衬线 + 下划线式，弱化边框、强调书写感 */
-.field .chips.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.field .chips.tiles .chip{
-  padding:14px 6px;border-radius:12px;text-align:center;font-size:13px;line-height:1.4;
-  min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+.field input[type=file]{padding:9px 10px;font-size:13px;color:var(--ink2)}
+.field input[type=file]::file-selector-button{
+  margin-right:10px;padding:7px 14px;border-radius:9px;border:1px solid var(--line2);
+  background:var(--glass-control);color:var(--ink);font-size:13px;font-family:inherit;cursor:pointer;
 }
-.field .chips.tiles .chip .rec{margin-left:0;margin-top:2px}
-.field .chips.tiles .chip:active{transform:scale(.96)}
-.field .chips.tiles .chip.on{box-shadow:0 6px 18px -6px var(--accent-border),inset 0 1px 0 rgba(255,255,255,.18)}
+.field textarea{min-height:80px;resize:vertical}
+/* 问事页表单：chip 从「药丸」改为 3 列等宽方砖 —— 选项本身就是一屏的主角。
+   未选：上亮下暗的微渐变玻璃 + 内高光；选中：整块换成实心强调色并微微上浮，
+   让「选中」成为一次明确的视觉跃迁，而不是只换个底色。
+   标题输入升为 20px 衬线 + 下划线式，弱化边框、强调书写感。 */
+.field .chips.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.field .chips.tiles .chip{
+  padding:14px 6px 15px;border-radius:16px;text-align:center;font-size:13px;line-height:1.35;font-weight:500;
+  min-height:82px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  background:linear-gradient(180deg,var(--glass-1),var(--glass-2));
+  box-shadow:inset 0 1px 0 var(--glass-edge);
+  transition:transform .16s var(--ease-out),background .2s var(--ease-out),color .2s var(--ease-out),
+             border-color .2s var(--ease-out),box-shadow .22s var(--ease-out);
+}
+.field .chips.tiles .chip .rec{margin-left:0;margin-top:1px}
+.field .chips.tiles .chip:active{transform:scale(.95)}
+.field .chips.tiles .chip.on{
+  background:linear-gradient(180deg,var(--accent),var(--accent-3));
+  color:var(--on-primary);font-weight:700;border-color:transparent;transform:translateY(-2px);
+  box-shadow:0 12px 24px -12px var(--accent),inset 0 1px 0 rgba(255,255,255,.30);
+}
+/* 类型方砖的线性图标：用 CSS mask 画，绝不往 DOM 里插节点 ——
+   test_dom 以 chip.textContent 精确匹配类型名，插图标会破坏断言。
+   未选是强调色描线，选中跟随文字反白。 */
+.field .chips.tiles .chip[data-type]::before{
+  content:"";width:21px;height:21px;flex:0 0 auto;background-color:var(--accent);opacity:.82;
+  -webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;
+  transition:background-color .2s var(--ease-out),opacity .2s var(--ease-out);
+}
+.field .chips.tiles .chip.on::before{background-color:var(--on-primary);opacity:1}
+/* —— 11 个类型图标：24×24 线性 SVG 内联为 data URI（'#' 须写成 %23）—— */
+.chip[data-type="感情关系"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20.3C10.7 19.3 4 14.7 4 9.9A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 8 2.3c0 4.8-6.7 9.4-8 10.4z'/%3E%3C/svg%3E")}
+.chip[data-type="事业合作"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='12' r='3.6'/%3E%3Ccircle cx='15' cy='12' r='3.6'/%3E%3C/svg%3E")}
+.chip[data-type="学习考试"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h14v16H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 4z'/%3E%3Cpath d='M8 4v16'/%3E%3C/svg%3E")}
+.chip[data-type="出行移动"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12h14'/%3E%3Cpath d='M12 6l6 6-6 6'/%3E%3C/svg%3E")}
+.chip[data-type="签约交易"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 4h8l4 4v12H6z'/%3E%3Cpath d='M14 4v4h4'/%3E%3Cpath d='M9 14l2 2 4-4'/%3E%3C/svg%3E")}
+.chip[data-type="人际沟通"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-5 4z'/%3E%3C/svg%3E")}
+.chip[data-type="财务决策"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3Cpath d='M12 8v8'/%3E%3Cpath d='M9.5 10h5M9.5 14h5'/%3E%3C/svg%3E")}
+.chip[data-type="健康倾向"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12h4l2.2-4.5L12.5 16l2-4h6.5'/%3E%3C/svg%3E")}
+.chip[data-type="失物寻找"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='M20 20l-3.6-3.6'/%3E%3C/svg%3E")}
+.chip[data-type="二选一决策"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v6'/%3E%3Cpath d='M12 10l-5 5v4M12 10l5 5v4'/%3E%3C/svg%3E")}
+.chip[data-type="其他"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12h.01M12 12h.01M18 12h.01'/%3E%3C/svg%3E")}
 .field input#fTitle,.field input.title-input{
   font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:var(--track-display);
   background:transparent;border:none;border-bottom:1px solid var(--line2);border-radius:0;
@@ -538,19 +579,24 @@ body::before{
 .chip.on .rec{background:rgba(34,26,8,.18);color:var(--on-primary);border-color:rgba(34,26,8,.35)}
 .switch{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
 
-/* step bar —— 从「5 个 30px 圆 + 横线」改为「圆点 + 完成度线」：
-   圆点收小到 8px，文字升到 11px 并随步骤加粗，进度线只铺到当前步，
-   视觉重量让给表单本身 */
-.steps{display:flex;justify-content:space-between;margin-bottom:18px;position:relative}
-.steps::before{content:"";position:absolute;top:4px;left:8%;right:8%;height:2px;background:var(--line);z-index:0}
-.steps::after{content:"";position:absolute;top:4px;left:8%;height:2px;background:var(--accent);z-index:0;
-  transition:width .35s var(--stagger);width:0}
-.steps.s2::after{width:21%}.steps.s3::after{width:42%}.steps.s4::after{width:63%}.steps.s5::after{width:84%}
-.step-dot{position:relative;z-index:1;width:10px;height:10px;border-radius:50%;background:var(--glass-control);border:2px solid var(--glass-line);display:flex;align-items:center;justify-content:center;font-size:0;color:transparent;overflow:hidden;transition:transform .15s var(--ease-out),background .15s var(--ease-out),border-color .15s var(--ease-out)}
-.step-dot.done{background:var(--primary);color:transparent;border-color:var(--accent-3)}
-.step-dot.cur{border-color:var(--accent);color:transparent;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
-.step-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
-.step-wrap .stt{font-size:11px;color:var(--muted);letter-spacing:1px;transition:color .15s var(--ease-out)}
+/* 问事步骤条 —— 从「细线 + 小圆点」换成「5 段式进度条」：
+   等宽 grid 铺满，未到段是玻璃底、已完成段实色、当前段点亮并带光晕，
+   每段再压一道顶部高光。比一串小圆点更有分量，进度也一眼可读。 */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:18px;position:relative}
+.steps::before,.steps::after{content:none}
+.step-wrap{display:flex;flex-direction:column;gap:7px;align-items:stretch;min-width:0}
+.step-dot{position:relative;width:100%;height:4px;border-radius:999px;background:var(--glass-control);
+  border:none;font-size:0;color:transparent;overflow:hidden;
+  transition:background .22s var(--ease-out),box-shadow .22s var(--ease-out)}
+/* 段顶高光：让「点亮」不是单纯换色，而是有厚度 */
+.step-dot::after{content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.34),transparent 70%);
+  transition:opacity .22s var(--ease-out)}
+.step-dot.done{background:var(--primary)}
+.step-dot.done::after{opacity:.45}
+.step-dot.cur{background:var(--accent);box-shadow:0 0 10px -1px var(--accent)}
+.step-dot.cur::after{opacity:1}
+.step-wrap .stt{font-size:11px;color:var(--muted);letter-spacing:.5px;text-align:center;transition:color .18s var(--ease-out)}
 .step-wrap.cur .stt{color:var(--accent);font-weight:700}
 .step-wrap.done .stt{color:var(--ink2)}
 
@@ -902,9 +948,10 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ai-fu-chip:active{background:var(--glass-2);transform:scale(.96)}
 
 /* 问事向导步骤内分组 */
-.step-section{margin:14px 0;padding:12px;background:var(--glass-in);border-radius:10px;border:1px solid var(--glass-line)}
-.step-section-title{font-size:13px;color:var(--accent);font-family:var(--serif);letter-spacing:1px;margin-bottom:4px}
-.step-section-desc{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5}
+.step-section{margin:16px 0;padding:14px 13px;background:var(--glass-in);border-radius:14px;border:1px solid var(--glass-line);box-shadow:inset 0 1px 0 var(--glass-edge)}
+.step-section-title{font-size:13.5px;color:var(--accent);font-family:var(--serif);letter-spacing:1px;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.step-section-title::before{content:"";flex:0 0 auto;width:3px;height:14px;border-radius:2px;background:var(--accent)}
+.step-section-desc{font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.55}
 
 /* ===== 信息补充与依据来源 ===== */
 .yao-roll{display:flex;flex-direction:column;gap:6px;margin:10px 0}
@@ -963,6 +1010,51 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .zw-palace .zwp-tag{position:absolute;top:-1px;right:-1px;font-size:8px;padding:1px 4px;border-radius:0 8px 0 8px;color:#fff;font-weight:600;line-height:1.3}
 .zw-palace .zwp-tag.tag-soul{background:var(--primary);color:var(--on-primary)}
 .zw-palace .zwp-tag.tag-body{background:var(--blue)}
+.zw-palace .zwp-shen{font-size:8.5px;color:var(--muted);letter-spacing:.3px;margin-top:3px}
+/* 真太阳时 / 夏令时提示 · 命格识别 */
+.field-hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+.zw-dst{margin:0 0 10px;padding:10px 12px;border-radius:9px;border:1px solid rgba(224,164,94,.5);background:rgba(224,164,94,.12);color:var(--warn);font-size:12px;line-height:1.6}
+.zw-ming{margin:6px 0 4px;font-size:12px;color:var(--ink2);font-family:var(--serif)}
+.zw-ming b{color:var(--accent);font-weight:600}
+.zw-patterns{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
+.zw-pat{border:1px solid var(--line2);border-left-width:3px;border-radius:9px;padding:9px 11px;background:var(--glass-in)}
+.zw-pat-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.zw-pat-name{font-family:var(--serif);font-size:14px;color:var(--ink);font-weight:600;letter-spacing:.5px}
+.zw-pat-lv{font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.zw-pat-desc{font-size:12px;color:var(--ink2);line-height:1.65;margin-top:5px}
+.zw-pat-src{font-size:10px;color:var(--muted);margin-top:4px}
+.zw-pat.lv-excellent{border-left-color:var(--accent)}
+.zw-pat.lv-excellent .zw-pat-lv{color:var(--accent);border-color:var(--accent)}
+.zw-pat.lv-good{border-left-color:var(--blue)}
+.zw-pat.lv-good .zw-pat-lv{color:var(--blue);border-color:var(--blue)}
+.zw-pat.lv-neutral{border-left-color:var(--line2)}
+.zw-pat.lv-caution{border-left-color:var(--warn)}
+.zw-pat.lv-caution .zw-pat-lv{color:var(--warn);border-color:var(--warn)}
+/* 合婚合盘 */
+.hh-hero{display:flex;align-items:center;gap:16px}
+.hh-score{flex:0 0 auto;text-align:center;line-height:1}
+.hh-score b{display:block;font-size:40px;color:var(--accent);font-family:var(--serif);font-weight:600}
+.hh-score span{font-size:11px;color:var(--muted)}
+.hh-hero-r{flex:1;min-width:0}
+.hh-level{font-size:16px;color:var(--ink);font-family:var(--serif);font-weight:600;margin-bottom:5px}
+.hh-tip{font-size:12px;color:var(--ink2);line-height:1.6}
+.hh-dims{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.hh-dim-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.hh-dim-l{font-size:13px;color:var(--ink);font-weight:500}
+.hh-dim-l i{font-style:normal;font-size:10px;color:var(--muted);margin-left:6px}
+.hh-dim-v{font-size:14px;color:var(--accent);font-family:var(--serif);font-weight:600}
+.hh-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden}
+.hh-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent),var(--accent-2,var(--accent)));transition:width .5s var(--ease-out)}
+.hh-dim-d{font-size:11px;color:var(--muted);line-height:1.55;margin-top:5px}
+.hh-list{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+.hh-li{font-size:12px;line-height:1.6;padding:8px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--glass-in)}
+.hh-li.ok{border-left:3px solid var(--accent)}
+.hh-li.warn{border-left:3px solid var(--warn)}
+.hh-advice{display:flex;flex-direction:column;gap:9px}
+.hh-ad{font-size:12px;color:var(--ink2);line-height:1.7;display:flex;gap:7px}
+.hh-ad span{color:var(--accent);flex:0 0 auto}
+.hh-ai-body{font-size:13px;line-height:1.75;color:var(--ink2);margin-top:6px}
+@media (prefers-reduced-motion:reduce){.hh-bar i{transition:none}}
 
 /* ===== T3 多盘交叉摘要 ===== */
 .cross-sec{margin-bottom:12px}
@@ -2102,6 +2194,34 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .now-ke .nk-acts .lab.dont .lk{color:var(--red)}
 .now-ke .nk-acts .lab .lv{flex:1;min-width:0;color:var(--ink)}
 .now-ke .nk-cmd{margin-top:2px}
+
+/* 首页快签：一句话即刻起课 —— 首页最短路径的入口卡。
+   底色压一层极淡的强调色渐变，与「此刻大六壬」的平铺玻璃区分开，
+   让「可以马上问一句」这件事在视觉上先被看见。 */
+.quick-sign{
+  background:linear-gradient(180deg,var(--accent-soft),rgba(217,119,87,0) 62%),var(--glass-blend);
+  border-color:var(--accent-border);
+}
+.quick-sign h3{display:flex;align-items:baseline;gap:8px}
+.quick-sign h3 .rt-live{margin-left:auto;float:none}
+.qs-chips{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
+.qs-chip{
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;line-height:1;
+  color:var(--ink);background:var(--glass-control);border:1px solid var(--glass-line);
+  box-shadow:inset 0 1px 0 var(--glass-edge);cursor:pointer;font-family:var(--sans);
+  transition:transform .14s var(--ease-out),background .18s var(--ease-out),
+             border-color .18s var(--ease-out),color .18s var(--ease-out);
+}
+.qs-chip:active{transform:scale(.95);background:var(--primary);color:var(--on-primary);border-color:transparent}
+.qs-custom{display:flex;gap:8px;align-items:stretch}
+.qs-custom input{
+  flex:1;min-width:0;padding:10px 13px;border-radius:12px;font-size:14px;font-family:var(--sans);
+  color:var(--ink);background:var(--input-glass);border:1px solid var(--glass-line);outline:none;
+  transition:border-color .18s var(--ease-out),box-shadow .18s var(--ease-out);
+}
+.qs-custom input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.qs-custom input::placeholder{color:var(--muted)}
+.qs-custom .btn{flex:0 0 auto}
 
 /* 首页实时起课 · 同刻多法门对比：从 2 列网格改为横向 snap 轨道
    —— 六个并列项不再挤成三行小方块，而是一条可横滑的「法门带」 */

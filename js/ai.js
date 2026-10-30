@@ -53,12 +53,63 @@
     lingyi   :{label:'零一万物 (Yi)',      protocol:'openai',    baseUrl:'https://api.lingyiwanwu.com/v1',                    model:'yi-large',                models:['yi-large','yi-medium','yi-spark']},
     baichuan :{label:'百川 (Baichuan)',    protocol:'openai',    baseUrl:'https://api.baichuan-ai.com/v1',                    model:'Baichuan4',               models:['Baichuan4','Baichuan3-Turbo']},
     minimax  :{label:'MiniMax',            protocol:'openai',    baseUrl:'https://api.minimax.chat/v1',                       model:'abab6.5-chat',            models:['abab6.5-chat','abab6-chat']},
-    stepfun  :{label:'阶跃星辰 (Step)',    protocol:'openai',    baseUrl:'https://api.stepfun.com/v1',                        model:'step-1-8k',               models:['step-1-8k','step-1-32k','step-1-128k','step-2-16k']},
+    // 阶跃星辰现行模型（2026-10 核对官方文档）：step-1-*/step-2-16k 已下线，
+    // 填旧名会被上游判 404 model not found，连带把 Key 熔断成 suspect → 永远调不通。
+    stepfun  :{label:'阶跃星辰 (Step)',    protocol:'openai',    baseUrl:'https://api.stepfun.com/v1',                        model:'step-3.5-flash',          models:['step-3.5-flash','step-3.7-flash','step-5-preview']},
     ollama   :{label:'Ollama (本地开源)',  protocol:'openai',    baseUrl:'http://localhost:11434/v1',                         model:'qwen2.5:7b',              models:['qwen2.5:7b','llama3.1:8b','deepseek-r1:7b','glm4:9b']},
     openai   :{label:'OpenAI',             protocol:'openai',    baseUrl:'https://api.openai.com/v1',                         model:'gpt-4o-mini',             models:['gpt-4o-mini','gpt-4o','gpt-4-turbo','gpt-3.5-turbo']},
     claude   :{label:'Anthropic Claude',   protocol:'anthropic', baseUrl:'https://api.anthropic.com/v1',                      model:'claude-3-5-haiku-20241022',models:['claude-3-5-haiku-20241022','claude-3-5-sonnet-20241022','claude-3-opus-20240229']},
     custom   :{label:'自定义 / 中转站',    protocol:'openai',    baseUrl:'',                                                  model:'',                        models:[]}
   };
+
+  // ============ 2.1 视频理解能力（模型名单 / 消息构造） ============
+  // 哪些模型能接 video_url。前端这份只用于两件事：
+  //   1) 自带 Key 直连时，先行判断模型支不支持视频，不支持就别发过去浪费一次；
+  //   2) 给用户一句能照做的提示。
+  // 云代理链路由服务端判定（server/lib/aicapability.js），两份名单需同步。
+  const VIDEO_MODEL_RE=[
+    /^step-5(-|$)/,            // step-5-preview / step-5（阶跃旗舰，1M 上下文，支持视频）
+    /^step-3\.7-flash/,        // step-3.7-flash（多模态）
+    /^step-1o-turbo-vision/,   // 阶跃视觉版
+    /^gpt-4o/, /^gpt-4\.1/, /^gpt-5/, /^gemini-2/,
+    /^qwen-vl/, /^qwen.*-vl-/, /^doubao-.*(vision|video)/,
+    /^kimi-k2/, /^glm-4v/, /^minicpm-v/, /^internvl/, /^hunyuan-vision/
+  ];
+  function supportsVideo(model){
+    const m=String(model||'').trim().toLowerCase();
+    if(!m)return false;
+    return VIDEO_MODEL_RE.some(re=>re.test(m));
+  }
+  // 视频片段分析的专用系统提示词：跟「玄顾问」那套术数提示词是两回事，
+  // 这里要的是客观的画面描述与可用事实，不允许发挥、也不允许预测。
+  const VIDEO_SYSTEM_PROMPT=[
+    '# 角色',
+    '你是视频片段分析助手，负责把一段视频里「看得见的事实」整理成结构化要点，供用户参考。',
+    '',
+    '# 硬性要求',
+    '1. 只描述画面里确实出现的内容：人物、场景、动作、物品、可见文字、镜头变化。看不到就写「画面中未出现」，绝不推测或补全。',
+    '2. 时间顺序：关键片段按出现先后排列，尽量标注大致时间点（如「约 0:12 处」）。',
+    '3. 不做命理断语、不做吉凶断言、不给医疗/法律/投资结论；只给事实性描述与观察要点。',
+    '4. 涉及人物身份的判断一律写「无法确认」，不要按外貌猜身份、国籍、年龄。',
+    '5. 中文输出，结构化分节，控制在 800 字以内。'
+  ].join('\n');
+  // 构造「视频片段分析」的多模态消息。
+  // 视频放在指令之前 —— 上游对「先给媒体、后给指令」的顺序识别更稳。
+  function buildVideoMessages(videoUrl,focus){
+    const ask=String(focus||'').trim()
+      || '请客观描述这段视频：内容梗概、关键片段与时间点、画面中出现的人物与物品、可见文字、可作为事实依据的观察要点。';
+    return [
+      {role:'system',content:VIDEO_SYSTEM_PROMPT},
+      {role:'user',content:[
+        {type:'video_url',video_url:{url:videoUrl}},
+        {type:'text',text:ask}
+      ]}
+    ];
+  }
+  // 消息里是否带视频片段（决定能不能走自带 Key 直连的某些协议）
+  function hasVideoPart(messages){
+    return (messages||[]).some(m=>Array.isArray(m.content)&&m.content.some(p=>p&&p.type==='video_url'));
+  }
 
   // ============ 3. 系统提示词（开源最佳实践 + 自主优化） ============
   // 参考：Anthropic/LangChain 提示词工程规范，无可用开源占卜专用提示词，自主优化至详细级别。
@@ -461,6 +512,8 @@
       upstream_empty:'模型这次没有返回内容，请重试。',
       upstream_unauthorized:'云端 Key 校验失败：请站长检查服务端 AI Key 配置。',
       upstream_not_found:'云端配置的模型不存在：请站长检查模型名。',
+      ai_no_video_model:'云端模型池里没有支持视频理解的模型。请站长在后台配置 step-5-preview / step-3.7-flash 等多模态模型。',
+      anthropic_no_video:'该厂商协议暂不支持视频分析，已自动跳过这一路。',
       upstream_rate_limited:'云端 Key 被模型服务商限流，请稍后重试。',
       upstream_error:'模型服务内部错误，请稍后重试。',
       upstream_rejected:'模型服务拒绝了这次请求，请稍后重试。',
@@ -488,13 +541,21 @@
     const C=global.Cloud;
     const cfg=Store.getSettings();
     const body={
-      messages:messages.map(m=>({role:m.role,content:m.content})),
-      temperature:temperature,
-      max_tokens:maxTokens
+      messages:messages.map(m=>({role:m.role,content:m.content}))
     };
+    // 视频场景的参数交给服务端按场景定（低温度、要的是画面事实不是发挥），
+    // 通用配置（0.6 / 1800）会把它覆盖掉，所以这里不传。
+    if(scene!=='video'){
+      body.temperature=temperature;
+      body.max_tokens=maxTokens;
+    }
     if(scene)body.scene=scene;
     // 超时上限 90s 对齐服务端出站超时；外部 signal 仍可随时中止
-    const timeoutSec=Math.max(30,Math.min(90,Number(cfg.aiTimeout)||60));
+    // 视频例外：上游要先下载 + 审核 + 抽帧再推理，纯文本那套超时对它来说太短
+    const isVideo=scene==='video'||hasVideoPart(messages);
+    const timeoutSec=isVideo
+      ?Math.max(120,Math.min(300,Number(cfg.aiTimeout)||240))
+      :Math.max(30,Math.min(90,Number(cfg.aiTimeout)||60));
     let timer=null;
     let ac=null;
     try{
@@ -681,6 +742,16 @@
     }
     if(!cfg.aiBaseUrl)throw new Error('未配置 BaseUrl。');
     if(!cfg.aiModel)throw new Error('未配置模型名。');
+    // 自带 Key 直连的两道前置检查：协议不支持视频、模型不认识 video_url。
+    // 与其在请求发出后被上游 400/404 弄一头雾水，不如先说清楚该换什么。
+    if(hasVideoPart(messages)){
+      if(cfg.aiProtocol==='anthropic'){
+        throw new Error('Anthropic 协议不支持视频分析（video_url）。请改用 OpenAI 兼容协议，或直接使用云端 AI。');
+      }
+      if(!supportsVideo(cfg.aiModel)){
+        throw new Error('当前模型「'+cfg.aiModel+'」不支持视频理解。请在「我的 → 玄顾问 → 模型配置」里换成支持视频的模型（如 step-5-preview、step-3.7-flash、gpt-4o）。');
+      }
+    }
 
     const maxRetries=opts.retries!==undefined?opts.retries:2;
     let lastErr=null;
@@ -753,7 +824,11 @@
         opts.signal.addEventListener('abort',onExternalAbort,{once:true});
       }
     }
-    timer=setTimeout(()=>{internalTimeout=true;controller.abort();},(Number(cfg.aiTimeout)||60)*1000);
+    // 超时秒数：视频分析要等上游下载 + 审核 + 推理，默认 60s 必然超时，故单独放宽
+    const timeoutSec=hasVideoPart(messages)
+      ?Math.max(120,Math.min(300,Number(cfg.aiTimeout)||240))
+      :(Number(cfg.aiTimeout)||60);
+    timer=setTimeout(()=>{internalTimeout=true;controller.abort();},timeoutSec*1000);
     const signal=controller.signal;
 
     let res;
@@ -761,7 +836,7 @@
       res=await fetch(url,{method:'POST',headers,body,signal});
     }catch(e){
       if(e.name==='AbortError'){
-        if(internalTimeout)throw new Error('请求超时（'+(Number(cfg.aiTimeout)||60)+'秒），请检查网络或在配置中调大超时时间。');
+        if(internalTimeout)throw new Error('请求超时（'+timeoutSec+'秒），请检查网络或在配置中调大超时时间。');
         throw new Error('请求被中止。');
       }
       throw new Error('网络请求失败：'+e.message+'（常见原因：CORS 跨域、BaseUrl 不可达、HTTPS 证书问题）');
@@ -1205,6 +1280,36 @@
           });
         }
       }
+      // 时间校正与夏令时
+      if(result.solarTime){
+        const st=result.solarTime;
+        L.push('## 真太阳时校正');
+        L.push(`出生钟表时间按出生地经度 ${result.longitude!=null?result.longitude+'°E':'—'} 校正为真太阳时 ${st.hour}:${String(st.minute).padStart(2,'0')}（经度修正 ${st.longitudeCorrectionMinutes>0?'+':''}${Math.round(st.longitudeCorrectionMinutes)} 分，均时差 ${st.equationOfTimeMinutes>0?'+':''}${Math.round(st.equationOfTimeMinutes)} 分）${st.dayOffset?(st.dayOffset>0?'，已跨到次日':'，已跨到前一日'):''}`);
+      }
+      if(result.dstHint)L.push('## 夏令时提示\n'+result.dstHint);
+      // 十二神（每宫长生/博士/岁前/将前）
+      if(Array.isArray(result.shierShen)&&result.shierShen.length){
+        L.push('## 十二神');
+        result.shierShen.forEach(s=>{
+          if(!s)return;
+          L.push(`${s.name||'—'}：长生${s.changsheng12||'—'} · 博士${s.boshi12||'—'} · 岁前${s.suiqian12||'—'} · 将前${s.jiangqian12||'—'}`);
+        });
+      }
+      // 命格识别（格局库）
+      if(Array.isArray(result.patterns)&&result.patterns.length){
+        L.push('## 命格识别');
+        result.patterns.forEach(p=>{
+          if(!p)return;
+          L.push(`- ${p.name||'—'}（${p.level||'neutral'}）：${p.description||''}${p.palaces&&p.palaces.length?(' 宫位：'+p.palaces.join('、')):''}`);
+        });
+      }
+      if(result.mingSummary&&(result.mingSummary.nature||(result.mingSummary.keywords||[]).length)){
+        const ms=result.mingSummary;
+        L.push('## 命宫气质');
+        L.push(`${ms.nature||''}${(ms.keywords&&ms.keywords.length)?('｜关键词：'+ms.keywords.join('、')):''}`);
+      }
+      L.push('## 解读口径');
+      L.push('紫微部分优先采用三合派（倪海厦《天纪》）思路：命宫为本、三方为用，不做飞星派复杂化；格局与十二神只用于描述倾向，不下确定性断语。可适当引用《骨髓赋》《紫微斗数全书》原句作为参考。');
     }catch(e){
       L.push('（命盘序列化异常：'+(e.message||e)+'）');
     }
@@ -1409,6 +1514,7 @@
 
   global.AI={
     FORBIDDEN,SENSITIVE,DISCLAIMER,TONES,PROVIDERS,
+    supportsVideo,buildVideoMessages,hasVideoPart,VIDEO_SYSTEM_PROMPT,
     detectSensitive,hasForbidden,sanitize,
     buildSystemPrompt,buildUserPrompt,buildPrompt,buildMultiShuUserPrompt,appendClassicsToPrompt,
     generateAI,

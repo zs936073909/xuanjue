@@ -16,6 +16,7 @@ import { registerMe } from './routes/me.js';
 import { registerAI } from './routes/ai.js';
 import { registerAdmin } from './routes/admin.js';
 import { getEnv, assertEnv } from './lib/env.js';
+import { runStartupMigrations } from './lib/migrate.js';
 
 const env = getEnv();
 assertEnv(env);
@@ -348,6 +349,16 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
 const isMain = process.argv[1] && process.argv[1].endsWith('index.js');
 if (isMain) {
   const app = await build();
+  // 启动期跑一遍幂等 schema + 迁移：库里残留的旧模型名、被误熔断的 Key 会在启动时
+  // 就地修好，用户不必再手动执行 npm run db:init（托管平台也不会替你执行）。
+  // 失败不阻断启动：数据库不可用时服务照常起，只是 AI 相关功能会报错。
+  try {
+    const r = await runStartupMigrations(app.log);
+    if (r.ok) app.log.info('数据库结构自检与迁移完成');
+    else app.log.warn({ reason: r.reason }, '跳过启动期数据库迁移');
+  } catch (err) {
+    app.log.error({ err: err.message }, '启动期数据库迁移失败：请检查 DATABASE_URL，或手动执行 npm run db:init');
+  }
   await app.listen({ port: env.PORT, host: '0.0.0.0' }).catch(e => {
     app.log.error(e);
     process.exit(1);

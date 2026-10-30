@@ -39,9 +39,12 @@ import {
   assertTemperature,
   assertMaxTokens,
   assertTier,
-  assertScene
+  assertScene,
+  contentText,
+  hasVideo
 } from '../lib/validate.js';
 import { sceneTier, sceneSampling } from '../lib/scene.js';
+import { supportsVideo } from '../lib/aicapability.js';
 
 const env = getEnv();
 // 站长内置 Key：env 直配、只活在进程内存，配了它就是「用户端零配置」的那条路
@@ -52,6 +55,9 @@ const AI_RATE_PER_MIN_DEFAULT = env.AI_RATE_PER_MINUTE;
 
 // 服务端转发超时：比客户端默认 60s 长，长回答（典籍 RAG + 长盘面）需要更多时间
 const UPSTREAM_TIMEOUT_MS = 90_000;
+// 视频理解超时：上游要先下载 + 审核 + 抽帧，再推理，比纯文本慢一个量级。
+// 沿用 90s 的话，用户会在模型还在算的时候收到超时，体验上就是「这功能坏了」。
+const UPSTREAM_TIMEOUT_VIDEO_MS = 240_000;
 // 出站响应体上限，防上游返回异常大的内容把服务端内存吃满
 const UPSTREAM_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -153,7 +159,9 @@ export async function registerAI(app) {
 
   // ---------- 对话转发（模型池 + 难度分级 + 自动降级） ----------
 
-  app.post('/chat', async (req, reply) => {
+  // bodyLimit 单独抬高：视频片段分析会把视频以 base64 内联进请求体（10MB 视频 ≈ 13.4MB base64），
+  // 全局 8MB 上限会把这种请求挡在门外。同步接口的 8MB 上限不变（各自路由各自设）。
+  app.post('/chat', { bodyLimit: 24 * 1024 * 1024 }, async (req, reply) => {
     const messages = assertMessages(req.body?.messages);
     // 场景：客户端知道自己在哪个栏目（实时卜筮 / 命盘问对 / 典籍问答…）。
     // 不传 scene 的老客户端走通用路径，行为与从前完全一致。
@@ -171,6 +179,8 @@ export async function registerAI(app) {
     // 难度：客户端 hint > 场景默认 > 文本启发式
     const hint = assertTier(req.body?.difficulty) || sceneTier(sceneName);
     const tier = estimateTier(messages, hint);
+    // 视频请求：只有支持视频理解的模型能接，否则直接回「池子里没有能看视频的模型」
+    const wantVideo = messages.some(m => hasVideo(m.content));
 
     // 限额：按用户覆盖优先（管理员在后台单独调过的人），否则全局默认
     const limits = await userLimits(req.userId);
@@ -186,7 +196,7 @@ export async function registerAI(app) {
     // 候选序列：模型池（难度分级 + 跨厂商轮转）优先，
     // 池子为空时回落到 env 站长 Key / 用户自存 Key（老路径，行为不变）。
     // 必须在扣每日额度之前确定「有得可试」——没配置就 409，不该吃掉用户配额。
-    const pool = await buildCandidates(tier);
+    const pool = await buildCandidates(tier, { video: wantVideo });
     const fallback = await resolveFallbackCredential(req.userId);
     const attempts = [];
     for (const c of pool) {
@@ -200,8 +210,12 @@ export async function registerAI(app) {
         providerSlug: c.providerSlug
       });
     }
-    if (fallback) attempts.push(fallback);
-    if (!attempts.length) return reply.code(409).send({ error: 'ai_not_configured' });
+    // 兜底凭证也要看能力：视频请求不能落到纯文本模型上（那只会得到一句「不支持」）
+    if (fallback && (!wantVideo || supportsVideo(fallback.model))) attempts.push(fallback);
+    if (!attempts.length) {
+      if (wantVideo) return reply.code(409).send({ error: 'ai_no_video_model' });
+      return reply.code(409).send({ error: 'ai_not_configured' });
+    }
 
     // 每日限次：先查后增，超限直接返回 429（不消耗厂商额度）
     const usageR = await q(
@@ -214,17 +228,35 @@ export async function registerAI(app) {
     if (!usageR.rowCount) return reply.code(429).send({ error: 'daily_limit_reached' });
     const used = Number(usageR.rows[0].count);
 
-    const charsIn = messages.reduce((n, m) => n + m.content.length, 0);
+    // 字数统计：多模态消息的 content 是数组，length 会算成片段数 —— 走 contentText 取真实字数
+    const charsIn = messages.reduce((n, m) => n + contentText(m.content).length, 0);
     let lastError = null;
 
     for (let i = 0; i < attempts.length && i < maxAttempts(); i++) {
       const cred = attempts[i];
       const started = Date.now();
-      const { url, headers, body } = buildUpstream(cred, messages, temperature, maxTokens);
+      const up = buildUpstream(cred, messages, temperature, maxTokens);
+      if (up.skip) {
+        // 这家接不住这次的消息（如 Anthropic 协议不支持视频）→ 顺移到下一个候选
+        lastError = { status: 502, error: up.skip };
+        await logRouting({
+          userId: req.userId,
+          tier,
+          scene: sceneName,
+          providerSlug: cred.providerSlug,
+          model: cred.model,
+          keyId: cred.keyId,
+          status: up.skip,
+          latencyMs: Date.now() - started,
+          charsIn
+        });
+        continue;
+      }
+      const { url, headers, body } = up;
 
       let res;
       const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+      const timer = setTimeout(() => ac.abort(), wantVideo ? UPSTREAM_TIMEOUT_VIDEO_MS : UPSTREAM_TIMEOUT_MS);
       try {
         res = await fetch(url, { method: 'POST', headers, body, signal: ac.signal });
       } catch (e) {
@@ -255,7 +287,10 @@ export async function registerAI(app) {
         // 只在服务端日志留状态码与协议，不留上游响应体（可能含 Key 回显或错误详情）
         req.log.warn({ status: res.status, protocol: cred.protocol }, 'ai upstream error');
         const cls = classifyUpstream(res.status);
-        if (cred.keyId) await markKeyResult(cred.keyId, false);
+        // 熔断记账看错误归类：401/403 是 Key 本身坏了；404 是模型名/路径错、429 是限流，
+        // 都不算 Key 的锅 —— 否则改一次模型名就把好 Key 打成 suspect，永远调不通。
+        // 5xx 记一笔：这条链路连续出错就先把它撤下来，别让每次提问都先撞同一口井。
+        if (cred.keyId && cls.keyBad) await markKeyResult(cred.keyId, false);
         await logRouting({
           userId: req.userId,
           tier,
@@ -370,6 +405,8 @@ async function resolveFallbackCredential(userId) {
 // ---------- 上游请求构造 ----------
 
 // cred: {protocol, baseUrl, model, apiKey} —— 已按「站长内置优先」解析好
+// 返回 {url, headers, body}；若该协议接不住这次的消息（如 Anthropic 不吃视频），
+// 返回 {skip:'原因码'}，由调用方顺移到下一个候选，而不是直接失败。
 function buildUpstream(cred, messages, temperature, maxTokens) {
   let url;
   let headers;
@@ -384,12 +421,12 @@ function buildUpstream(cred, messages, temperature, maxTokens) {
       'x-api-key': cred.apiKey
     };
     const sys = messages.find(m => m.role === 'system');
+    const conv = toAnthropicMessages(messages.filter(m => m.role !== 'system'));
+    if (conv.error) return { skip: conv.error };
     body = JSON.stringify({
       model: cred.model,
-      system: sys ? sys.content : '',
-      messages: messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+      system: sys ? contentText(sys.content) : '',
+      messages: conv.messages,
       max_tokens: maxTokens,
       temperature,
       stream: false
@@ -409,6 +446,41 @@ function buildUpstream(cred, messages, temperature, maxTokens) {
     });
   }
   return { url, headers, body };
+}
+
+/**
+ * OpenAI 多模态 content → Anthropic content block。
+ * Anthropic 的块结构与 OpenAI 不同（image 用 source，不是 image_url），且不支持视频。
+ * 转换不了就返回 {error:'anthropic_no_video'}，让路由换下一个候选。
+ */
+function toAnthropicMessages(list) {
+  const out = [];
+  for (const m of list) {
+    if (typeof m.content === 'string') {
+      out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+      continue;
+    }
+    const blocks = [];
+    for (const p of m.content) {
+      if (p.type === 'text') {
+        blocks.push({ type: 'text', text: p.text });
+        continue;
+      }
+      if (p.type === 'video_url') return { error: 'anthropic_no_video' };
+      // image_url → Anthropic image block
+      const url = p.image_url && p.image_url.url;
+      if (typeof url !== 'string' || !url) continue;
+      const dm = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/i.exec(url);
+      if (dm) {
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: dm[1], data: dm[2] } });
+      } else {
+        blocks.push({ type: 'image', source: { type: 'url', url } });
+      }
+    }
+    if (!blocks.length) continue;
+    out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: blocks });
+  }
+  return { messages: out };
 }
 
 /** 带体积上限地读上游响应体：超限即中止读取，防异常大的响应把服务端内存吃满 */

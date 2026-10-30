@@ -217,11 +217,30 @@ export function assertModel(v, field = 'model') {
 /**
  * 对话消息数组：1–40 条，role 白名单，内容 1–32000 字符，总量 64KB。
  * 上限既要挡住「塞一整个命盘库刷额度」，又不能砍掉真实场景的长 prompt（盘面 + 典籍 RAG）。
+ *
+ * content 允许两种形态：
+ *   1) 字符串 —— 纯文本对话（绝大多数场景）；
+ *   2) 多模态数组 —— [{type:'text',text},{type:'image_url',image_url:{url}},
+ *                      {type:'video_url',video_url:{url}}]，
+ *      供「视频片段智能分析」把视频交给多模态模型。
+ *      数组里的每个元素都逐条严格校验（类型白名单 + URL 形态白名单），
+ *      未知字段一律拒 —— 上游厂商字段名极多，放开就等于让任意 JSON 直通上游。
  */
 const MAX_MSGS = 40;
 const MAX_CONTENT = 32_000;
 const MAX_TOTAL = 64 * 1024;
+const MAX_PARTS = 12;                 // 单条消息最多 12 个片段
+// 单个 data: 内联数据上限（base64 字符数）。
+// 视频走内联时体积 = 原文件 × 4/3，16MB 的视频 ≈ 21MB 的 base64，
+// 与 /chat 路由的 24MB bodyLimit 对齐 —— 再大就得上公网直链了。
+const MAX_INLINE_DATA = 22 * 1024 * 1024;
 const ROLES = new Set(['system', 'user', 'assistant']);
+const PART_TYPES = new Set(['text', 'image_url', 'video_url']);
+
+// 远程媒体地址只允许 https：明文链路上的视频/图片地址等于把内容裸奔给中间人
+const HTTPS_URL_RE = /^https:\/\/[^\s]+$/i;
+// 内联 base64：只认 image/* 与 video/*，且必须是 ;base64, 结尾
+const DATA_URL_RE = /^data:(image|video)\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$/i;
 
 export function assertMessages(v, field = 'messages') {
   if (!Array.isArray(v) || v.length === 0 || v.length > MAX_MSGS) {
@@ -233,26 +252,109 @@ export function assertMessages(v, field = 'messages') {
   const out = [];
   for (const m of v) {
     const role = m && typeof m.role === 'string' ? m.role : '';
-    const content = m && typeof m.content === 'string' ? m.content : '';
     if (!ROLES.has(role)) {
       const e = new Error(field + '_invalid');
       e.statusCode = 400;
       throw e;
     }
-    if (!content.length || content.length > MAX_CONTENT) {
-      const e = new Error(field + '_invalid');
-      e.statusCode = 400;
-      throw e;
+    const raw = m ? m.content : undefined;
+    if (typeof raw === 'string') {
+      if (!raw.length || raw.length > MAX_CONTENT) {
+        const e = new Error(field + '_invalid');
+        e.statusCode = 400;
+        throw e;
+      }
+      total += raw.length;
+      if (total > MAX_TOTAL) {
+        const e = new Error(field + '_too_large');
+        e.statusCode = 400;
+        throw e;
+      }
+      out.push({ role, content: raw });
+      continue;
     }
-    total += content.length;
-    if (total > MAX_TOTAL) {
-      const e = new Error(field + '_too_large');
-      e.statusCode = 400;
-      throw e;
+    if (Array.isArray(raw)) {
+      const parts = assertParts(raw, field);
+      const len = parts.reduce((n, p) => n + (p.type === 'text' ? p.text.length : 0), 0);
+      if (!len) {
+        // 至少要有一段文字，纯媒体消息没有指令上游看不懂
+        const e = new Error(field + '_invalid');
+        e.statusCode = 400;
+        throw e;
+      }
+      total += len;
+      if (total > MAX_TOTAL) {
+        const e = new Error(field + '_too_large');
+        e.statusCode = 400;
+        throw e;
+      }
+      out.push({ role, content: parts });
+      continue;
     }
-    out.push({ role, content });
+    const e = new Error(field + '_invalid');
+    e.statusCode = 400;
+    throw e;
   }
   return out;
+}
+
+/** 多模态片段校验：类型白名单 + URL 形态白名单 + 体积上限 */
+function assertParts(arr, field) {
+  const bad = () => {
+    const e = new Error(field + '_invalid');
+    e.statusCode = 400;
+    throw e;
+  };
+  if (!arr.length || arr.length > MAX_PARTS) bad();
+  const out = [];
+  for (const p of arr) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) bad();
+    if (!PART_TYPES.has(p.type)) bad();
+    if (p.type === 'text') {
+      if (typeof p.text !== 'string' || !p.text.length || p.text.length > MAX_CONTENT) bad();
+      out.push({ type: 'text', text: p.text });
+      continue;
+    }
+    // image_url / video_url：url 必须是字符串，且落在允许的两种形态内
+    const holder = p[p.type];
+    if (!holder || typeof holder !== 'object' || Array.isArray(holder)) bad();
+    const url = holder.url;
+    if (typeof url !== 'string' || !url.length) bad();
+    if (url.length > MAX_INLINE_DATA) bad();
+    if (DATA_URL_RE.test(url)) {
+      out.push({ type: p.type, [p.type]: { url } });
+      continue;
+    }
+    if (!HTTPS_URL_RE.test(url)) bad();
+    out.push({ type: p.type, [p.type]: { url } });
+  }
+  return out;
+}
+
+/**
+ * 取消息里的纯文本（多模态数组只取 text 片段）。
+ * 难度估算、字数统计、路由留痕都用它 —— 直接读 content.length 会在数组上得到片段数而非字数。
+ */
+export function contentText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  let s = '';
+  for (const p of content) {
+    if (p && p.type === 'text' && typeof p.text === 'string') s += p.text;
+  }
+  return s;
+}
+
+/** 消息里是否含图片/视频（决定路由到多模态模型） */
+export function hasMedia(content) {
+  if (!Array.isArray(content)) return false;
+  return content.some(p => p && (p.type === 'image_url' || p.type === 'video_url'));
+}
+
+/** 消息里是否含视频 */
+export function hasVideo(content) {
+  if (!Array.isArray(content)) return false;
+  return content.some(p => p && p.type === 'video_url');
 }
 
 /**
