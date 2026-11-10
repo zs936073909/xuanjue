@@ -914,9 +914,10 @@ body::before{
 }
 
 @media(prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   #pointer-fx{display:none}
   .wx-fill{transition:none}
+  .ink-rip{display:none}
 }
 
 /* ============ 玄学物件背景层 · 罗盘/铜钱/卦爻 ============ */
@@ -1490,3 +1491,73 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
   .bp-zhi{font-size:23px}
   .bp-cg{line-height:1.5}
 }
+
+/* ============================================================
+   动效层 · 中国风国际范
+   墨滴涟漪 / 呼吸时课点 / 导航墨条 / 印玺微旋 / 笔触错峰生长 / 弹性浮层
+   原则：动效只解释状态，不抢注意力；全部受 reduced-motion 总开关约束
+   ============================================================ */
+
+/* 墨滴涟漪：JS 全局委托，在 body 上以 fixed 落点，宿主无需定位 */
+.ink-rip{
+  position:fixed;z-index:400;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(190,94,59,.26) 0%,rgba(190,94,59,.10) 55%,transparent 72%);
+  transform:scale(0);
+  animation:inkRip .62s var(--ease) forwards;
+}
+[data-theme="dark"] .ink-rip{
+  background:radial-gradient(circle,rgba(222,129,94,.30) 0%,rgba(222,129,94,.12) 55%,transparent 72%);
+}
+@keyframes inkRip{to{transform:scale(1);opacity:0}}
+
+/* 呼吸时课点：涟漪式脉冲环，暗示"盘在实时走" */
+.clock-dot,.nav-live{animation:pulseRing 2.8s var(--ease) infinite}
+@keyframes pulseRing{
+  0%{box-shadow:0 0 0 0 rgba(63,134,99,.38)}
+  70%{box-shadow:0 0 0 7px rgba(63,134,99,0)}
+  100%{box-shadow:0 0 0 0 rgba(63,134,99,0)}
+}
+
+/* 左导航当前项：竖向墨条生长 */
+.nav-item{position:relative}
+.nav-item.active::before{
+  content:"";position:absolute;left:2px;top:50%;width:3px;border-radius:2px;
+  background:var(--clay);transform:translateY(-50%);
+  animation:inkGrow .45s var(--ease) both;
+}
+@keyframes inkGrow{from{height:0;opacity:0}to{height:58%;opacity:1}}
+
+/* 品牌印玺：悬停轻旋提起，像钤印前的一转 */
+.brand-mark{transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+.brand:hover .brand-mark{transform:rotate(-8deg) scale(1.07);box-shadow:0 6px 16px rgba(190,94,59,.32)}
+
+/* 按钮：悬停提起、按下回墨（覆盖旧的纯缩放，保留 overflow 光扫） */
+.btn.primary:hover,.new-btn:hover,.ask-send:hover{transform:translateY(-1px)}
+.btn.primary:active,.new-btn:active,.ask-send:active{transform:translateY(0) scale(.975)}
+.btn.ghost:hover,.btn.soft:hover{transform:translateY(-1px);box-shadow:var(--sh-1)}
+.btn.ghost:active,.btn.soft:active{transform:translateY(0) scale(.97)}
+
+/* 七维评分条：自上而下如笔触逐笔生长 */
+.hh-dim:nth-child(2) .hh-bar i{transition-delay:.07s}
+.hh-dim:nth-child(3) .hh-bar i{transition-delay:.14s}
+.hh-dim:nth-child(4) .hh-bar i{transition-delay:.21s}
+.hh-dim:nth-child(5) .hh-bar i{transition-delay:.28s}
+.hh-dim:nth-child(6) .hh-bar i{transition-delay:.35s}
+.hh-dim:nth-child(7) .hh-bar i{transition-delay:.42s}
+
+/* 五行分布条：错峰生长 */
+.wx-row:nth-child(2) .wx-fill{transition-delay:.06s}
+.wx-row:nth-child(3) .wx-fill{transition-delay:.12s}
+.wx-row:nth-child(4) .wx-fill{transition-delay:.18s}
+.wx-row:nth-child(5) .wx-fill{transition-delay:.24s}
+
+/* 合婚大分数：等宽数字防滚动抖动 */
+.hh-score b{font-variant-numeric:tabular-nums}
+
+/* 弹窗与吐司：收尾带一点弹性，落定不生硬 */
+.modal{animation:pop .34s cubic-bezier(.34,1.42,.64,1)}
+.toast{transition:opacity .22s,transform .34s cubic-bezier(.34,1.45,.64,1)}
+
+/* 右栏盘面：内容如卷面展开 */
+.board-inner.in{animation:boardUnfurl .42s var(--ease)}
+@keyframes boardUnfurl{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}

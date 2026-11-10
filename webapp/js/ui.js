@@ -149,9 +149,40 @@ function confirmModal(title, text, okText, onOk) {
   $('[data-act=yes]', m.root).onclick = () => { m.close(); onOk(); };
 }
 
+/* ---------------- 动效：墨滴涟漪 / 分数滚动 ---------------- */
+const noMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches);
+// 全局委托：可点控件按下时在落点洇开一滴墨（fixed 挂 body，宿主无需定位）
+document.addEventListener('pointerdown', e => {
+  if (noMotion()) return;
+  const t = e.target.closest && e.target.closest('button,.chip,.m-cap,.nav-item,.recent-item');
+  if (!t || t.disabled) return;
+  const r = t.getBoundingClientRect();
+  const d = Math.max(r.width, r.height) * 2.1;
+  const rip = document.createElement('span');
+  rip.className = 'ink-rip';
+  rip.style.cssText = 'width:' + d + 'px;height:' + d + 'px;left:' + (e.clientX - d / 2) + 'px;top:' + (e.clientY - d / 2) + 'px';
+  document.body.appendChild(rip);
+  rip.addEventListener('animationend', () => rip.remove());
+  setTimeout(() => rip.remove(), 900);
+}, { passive: true });
+// 合婚大分数：从 0 滚到实分，easeOut 收速
+function countUp(el, to, dur) {
+  if (!el || noMotion()) { if (el) el.textContent = to; return; }
+  const t0 = performance.now();
+  (function step(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
 /* ---------------- 右栏：盘面抽屉 ---------------- */
 function openBoard(html) {
   boardInner.innerHTML = html;
+  // 重触发"展卷"动画：先摘 class、强制回流、再挂回
+  boardInner.classList.remove('in');
+  void boardInner.offsetWidth;
+  boardInner.classList.add('in');
   app.classList.add('board-open');
   $('#board').setAttribute('aria-hidden', 'false');
   const c = $('.board-close', boardInner);
@@ -1484,6 +1515,7 @@ function renderHehunResult() {
   view.innerHTML = h;
   if (window.Fx) Fx.enhance(view);
   setTimeout(() => { $$('.hh-bar i').forEach(i => { const w = i.style.width; i.style.width = '0'; setTimeout(() => { i.style.width = w; }, 40); }); }, 60);
+  countUp($('.hh-score b'), r.score, 900);
   bindHehunResult();
 }
 
