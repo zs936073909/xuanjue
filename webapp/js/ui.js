@@ -2146,7 +2146,11 @@ function renderRecent() {
   $$('.recent-item', el).forEach(it => it.onclick = () => location.hash = '#/case/' + it.dataset.case);
 }
 function setNav(route) {
-  $$('#nav .nav-item').forEach(n => n.classList.toggle('active', n.dataset.route === route));
+  $$('#nav .nav-item').forEach(n => {
+    const on = n.dataset.route === route;
+    n.classList.toggle('active', on);
+    if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+  });
   const titles = { home: '时课', ming: '命盘', hehun: '合婚', classics: '典籍', history: '问事录', settings: '设置', case: '问事' };
   $('#crumb').textContent = titles[route] || '时课';
 }
