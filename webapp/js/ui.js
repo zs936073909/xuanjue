@@ -2159,6 +2159,7 @@ function applyTheme() {
 /* ---------------- 路由 ---------------- */
 function route() {
   closeBoard();
+  closeRailOnNarrow();
   const hash = location.hash || '#/home';
   if (hash.startsWith('#/case/')) { setNav('case'); renderCase(hash.slice(7)); }
   else if (hash === '#/ming') { setNav('ming'); renderMing(); }
@@ -2185,8 +2186,9 @@ let clockTimer = setInterval(() => {
 /* ---------------- 快捷键 & 全局 ---------------- */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (app.classList.contains('board-open')) closeBoard();
-    else if ($('#modalRoot').classList.contains('show')) { $('#modalRoot').classList.remove('show'); $('#modalRoot').innerHTML = ''; }
+    if ($('#modalRoot').classList.contains('show')) { $('#modalRoot').classList.remove('show'); $('#modalRoot').innerHTML = ''; }
+    else if (app.classList.contains('board-open')) closeBoard();
+    else if (isNarrow()) app.classList.add('rail-hidden');
     return;
   }
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
@@ -2200,7 +2202,7 @@ function goAsk() {
   setTimeout(() => { const i = $('#askInput'); if (i) i.focus(); }, 60);
 }
 
-$('#newAsk').onclick = goAsk;
+$('#newAsk').onclick = () => { goAsk(); closeRailOnNarrow(); };
 // 六爻重摇（全局事件委托，覆盖时课页/案例页/盘面抽屉）
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-replay]');
@@ -2208,18 +2210,34 @@ document.addEventListener('click', e => {
 });
 $('#nav').addEventListener('click', e => {
   const b = e.target.closest('.nav-item');
-  if (b) location.hash = '#/' + b.dataset.route;
+  if (b) { location.hash = '#/' + b.dataset.route; closeRailOnNarrow(); }
 });
 $('#themeBtn').onclick = () => {
   settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
   saveSettings(); applyTheme();
 };
+/* 窄屏左导航是抽屉：开合只改当前会话，不写进桌面端的「收起侧栏」偏好 */
+function isNarrow() { return !!(window.matchMedia && window.matchMedia('(max-width:900px)').matches); }
+function closeRailOnNarrow() { if (isNarrow()) app.classList.add('rail-hidden'); }
 $('#railCollapse').onclick = () => {
-  app.classList.add('rail-hidden'); settings.railHidden = true; saveSettings();
+  app.classList.add('rail-hidden');
+  if (!isNarrow()) { settings.railHidden = true; saveSettings(); }
 };
 $('#railOpen').onclick = () => {
-  app.classList.remove('rail-hidden'); settings.railHidden = false; saveSettings();
+  app.classList.remove('rail-hidden');
+  if (!isNarrow()) { settings.railHidden = false; saveSettings(); }
 };
+const railScrim = $('#railScrim');
+if (railScrim) railScrim.onclick = () => app.classList.add('rail-hidden');
+// 跨过 900px 断点时重置左栏形态：变窄自动收起，变宽恢复常驻
+let _narrow = isNarrow();
+window.addEventListener('resize', () => {
+  const n = isNarrow();
+  if (n === _narrow) return;
+  _narrow = n;
+  app.classList.toggle('rail-hidden', n);
+  closeBoard();
+});
 window.addEventListener('hashchange', route);
 
 /* ---------------- 玄学背景交互：磁针追鼠标 / 铜钱 3D 倾摆可拨 / 景深视差 ---------------- */
@@ -2339,7 +2357,7 @@ if (ambCompass) {
 }
 if (motionOK) setTimeout(() => document.documentElement.classList.remove('boot'), 1500);
 applyTheme();
-if (settings.railHidden) app.classList.add('rail-hidden');
+if (settings.railHidden || isNarrow()) app.classList.add('rail-hidden');
 renderRecent();
 tickClock();
 route();

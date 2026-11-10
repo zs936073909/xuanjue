@@ -87,13 +87,14 @@ export async function build() {
   app.get('/icon.svg', async (req, reply) => reply.type('image/svg+xml').send(favicon));
 
   // ============================================================
-  // 玄决网页端双端托管：同一个域名，按 UA 自动分发
+  // 玄决网页端托管：全端统一进桌面版 webapp/
   //
-  // 2026-10 起主域名 / 是双端入口：
-  //   - 桌面 UA（Mac/Windows/Linux 桌面浏览器、iPad 大屏等）→ webapp/
-  //     三区布局（左导航 / 中阅读台 / 右盘面抽屉）的玻璃质感桌面版；
-  //   - 手机 UA（Android/iPhone/Windows Phone 等）→ www/
-  //     即 APK 同源那套 PWA（Capacitor 打包源，线上直接可用）。
+  // 2026-11 起手机端网页（www/ 那套 PWA）下线：它和桌面版是两套界面，
+  // 维护两份样式反而更难统一视觉。现在不分 UA，手机也直接打开桌面版，
+  // 由 webapp 的窄屏样式（左导航抽屉 + 盘面浮层）自适应。
+  //   - / 与 /* 一律取 webapp/；
+  //   - www/ 仍保留在仓库，作为 Capacitor 打 APK 的构建源，只是不再对外提供页面；
+  //   - /game 的根绝对引用（/js/lunar.js 等）仍从 www/ 取，游戏页不受影响。
   // 两端资源全部相对引用、API 都走绝对 /v1/*，同域托管无需改一行前端代码。
   // /app 前缀固定指向桌面版（历史链接、书签、落地页旧按钮继续可用）；
   // 服务门面落地页在 /portal；/admin 不受影响。
@@ -117,7 +118,7 @@ export async function build() {
     new URL('../www', import.meta.url),
     new URL('./www', import.meta.url)
   ]);
-  // 手机根：就是 APK 同源的 www/。
+  // 旧手机端产物 www/：不再对外提供页面，只服务 /game 的根绝对引用与资源兜底。
   const MOBILE_ROOT = pickFirstDir([
     new URL('../www', import.meta.url),
     new URL('./www', import.meta.url)
@@ -128,23 +129,21 @@ export async function build() {
     new URL('../game', import.meta.url),
     new URL('./game', import.meta.url)
   ]);
-  if (!DESKTOP_ROOT && !MOBILE_ROOT) {
-    app.log.warn('未找到 webapp/ 与 www/ 目录，网页端入口将返回 404（账号与 AI 路由不受影响）');
+  if (!DESKTOP_ROOT) {
+    app.log.warn('未找到 webapp/ 目录，网页端入口将返回 404（账号与 AI 路由不受影响）');
   } else {
     app.log.info({
-      desktop: DESKTOP_ROOT ? path.relative(process.cwd(), DESKTOP_ROOT) : null,
-      mobile: MOBILE_ROOT ? path.relative(process.cwd(), MOBILE_ROOT) : null,
+      desktop: path.relative(process.cwd(), DESKTOP_ROOT),
+      legacyMobile: MOBILE_ROOT ? path.relative(process.cwd(), MOBILE_ROOT) : null,
       game: GAME_ROOT ? path.relative(process.cwd(), GAME_ROOT) : null
-    }, '网页端静态目录就绪（桌面/手机双端 + 夜盘游戏）');
+    }, '网页端静态目录就绪（全端桌面版 + 夜盘游戏）');
   }
   // 名称保留历史叫法：WWW_ROOT = /app 固定指向的桌面根
   const WWW_ROOT = DESKTOP_ROOT;
   const APP_PREFIX = '/app';
 
-  /** 手机 UA 识别：命中移动端操作系统/浏览器即为手机版；iPad 桌面 UA 归桌面大屏。 */
-  const MOBILE_UA = /android|iphone|ipod|windows phone|blackberry|opera mini|mobile/i;
-  function rootForUA(req) {
-    if (MOBILE_UA.test(req.headers['user-agent'] || '')) return MOBILE_ROOT || DESKTOP_ROOT;
+  /** 不分 UA：始终返回桌面版根。手机与桌面看到同一套界面，只是布局自适应。 */
+  function rootForUA() {
     return DESKTOP_ROOT || MOBILE_ROOT;
   }
 
@@ -232,11 +231,11 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
   }
 
   // /app（无尾斜杠）必须重定向到 /app/，这不是洁癖，是 App 能不能打开的分水岭：
-  //   www/index.html 里所有资源都是相对引用（css/style.css、js/app.js、data/classics/…），
-  //   service-worker 也用 './service-worker.js' 注册。相对路径按「文档 URL」解析：
-  //     /app  →  基准是 /，于是 /css/style.css 404、SW 注册到 /service-worker.js 也 404
+  //   webapp/index.html 里所有资源都是相对引用（css/app.css、js/ui.js、js/engines/…），
+  //   相对路径按「文档 URL」解析：
+  //     /app  →  基准是 /，于是 /css/app.css 404
   //     /app/ →  基准是 /app/，全部命中
-  //   后果上 /app 会白屏，且 SW 抢不到作用域，PWA 离线直接失效。
+  //   后果上 /app 会白屏。
   //   用 301 而非 302：这个地址形态是永久约定，浏览器可以放心缓存，省一次往返。
   //   Fastify 的签名是 redirect(url, code)，顺序反了会把 301 当成 URL、把 /app/ 当成状态码。
   app.get(APP_PREFIX, async (req, reply) => {
@@ -281,20 +280,16 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
     });
   }
 
-  // 站根绝对路径：不分 UA，一律从手机端根 www/ 取。两类请求走这份名单：
-  //  1) 游戏页 game/index.html 的开发期根绝对引用（/js/lunar.js、/js/daliuren.js、
-  //     /img/hero-seal.jpg、/icon-192.png）——桌面 UA 的静态根是 webapp/，直接解析会 404；
-  //  2) /service-worker.js —— 手机端页在根作用域「/」注册 SW，浏览器之后不论当前页是哪端，
-  //     都会按根绝对 URL 做 SW 更新检查；桌面 UA 走 webapp/ 会 404，控制台净增一条报错，
-  //     Lighthouse errors-in-console 也会被它打挂。桌面页自身不注册 SW，回手机端产物无副作用。
+  // 站根绝对路径：不分 UA，一律从旧手机端根 www/ 取。
+  // 只剩游戏页 game/index.html 的开发期根绝对引用（/js/lunar.js、/js/daliuren.js、
+  // /img/hero-seal.jpg、/icon-192.png）——桌面 UA 的静态根是 webapp/，直接解析会 404。
   // 必须显式注册在根通配之前 —— find-my-way 静态路径本就优先于通配，
   // 这里写清楚也让意图可查。缺手机端根时由 sendAppFile 统一回 404。
   const SHARED_FROM_MOBILE = [
     '/js/lunar.js',
     '/js/daliuren.js',
     '/img/hero-seal.jpg',
-    '/icon-192.png',
-    '/service-worker.js'
+    '/icon-192.png'
   ];
   for (const shared of SHARED_FROM_MOBILE) {
     app.get(shared, async (req, reply) => {
@@ -306,12 +301,42 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
   }
 
   // ============================================================
-  // 根路径双端入口：/ 与 /* 按 UA 分发桌面 webapp/ 或手机 www/。
+  // /service-worker.js —— 旧手机网页端的注销哨兵
   //
-  // 两端资源全部是相对引用（桌面 css/app.css、手机 css/style.css 等），
-  // 同一 UA 的后续资源请求会再次落到同一个静态根，天然对得上；
-  // API 则走绝对 /v1/*，两端共用。不提供 ?force 之类的查询参数切换：
-  // 参数只在首个 HTML 请求上、后续资源请求不带它，反而会把 CSS/JS 路由到错端。
+  // 手机网页端下线后，老访客的浏览器里可能还留着一份作用域为「/」的
+  // 手机版 SW：它是缓存优先，会把缓存里的旧手机页面一直发回来，
+  // 换 UA 分发也救不了（请求根本没出浏览器）。
+  // 这里对同一个 /service-worker.js 地址返回一个「清理型 SW」：
+  // 接管后删掉全部缓存 → 注销自己 → 刷新受控页面。
+  // 之后页面不再受 SW 控制，直接走网络拿到新的桌面版。
+  // 旧手机页每次加载都会 register 一次，正好触发这次更新检查。
+  // ============================================================
+  const KILL_SW = `/* 手机网页端已下线：本 SW 只清理旧缓存并注销自己 */
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch (e) {}
+    const list = await self.clients.matchAll({ type: 'window' });
+    try { await self.registration.unregister(); } catch (e) {}
+    list.forEach((c) => { try { c.navigate(c.url); } catch (e) {} });
+  })());
+});
+`;
+  app.get('/service-worker.js', async (req, reply) => reply
+    .header('cache-control', 'no-store')
+    .header('x-content-type-options', 'nosniff')
+    .type('text/javascript; charset=utf-8')
+    .send(KILL_SW));
+
+  // ============================================================
+  // 根路径入口：/ 与 /* 一律走桌面版 webapp/（不再按 UA 分发）。
+  //
+  // 桌面与手机共用同一套前端，窄屏由 webapp/css/app.css 的 900px 断点
+  // 把左导航改成抽屉、盘面改成浮层。资源全部相对引用，同一次访问内
+  // 所有后续请求都会落到同一个静态根，天然对得上；API 走绝对 /v1/*。
   //
   // 优先级安全性：Fastify(find-my-way) 中静态/参数段永远优先于根通配，
   //   /health、/admin、/portal、/favicon.ico、/icon.svg 以及 /v1/*、/app/*
