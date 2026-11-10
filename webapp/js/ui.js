@@ -2160,6 +2160,9 @@ function applyTheme() {
 function route() {
   closeBoard();
   closeRailOnNarrow();
+  // 阅读台是内部滚动容器，换页要回到顶部，否则会停在上一页的滚动位置
+  const rd = $('.reading');
+  if (rd) rd.scrollTop = 0;
   const hash = location.hash || '#/home';
   if (hash.startsWith('#/case/')) { setNav('case'); renderCase(hash.slice(7)); }
   else if (hash === '#/ming') { setNav('ming'); renderMing(); }

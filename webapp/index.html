@@ -159,10 +159,11 @@
     <div class="board-inner" id="boardInner"></div>
   </aside>
 
-</div>
+  <!-- 窄屏：左导航展开时的遮罩，点按收起（必须留在 .app 内：.app 自身是层叠上下文，
+       放到外面会盖住整个 .app，连导航抽屉一起挡住） -->
+  <div class="rail-scrim" id="railScrim" aria-hidden="true"></div>
 
-<!-- 窄屏：左导航展开时的遮罩，点按收起 -->
-<div class="rail-scrim" id="railScrim" aria-hidden="true"></div>
+</div>
 
 <div class="modal-root" id="modalRoot"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

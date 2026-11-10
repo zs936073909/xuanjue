@@ -518,16 +518,7 @@ input,textarea,select{font-family:inherit;color:inherit}
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* ================= 降级：窄屏（手机版以后专门做，此处仅保证可用） ================= */
-@media(max-width:1023px){
-  body::after{
-    content:"桌面版体验最佳 · 手机版即将上线";
-    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
-    background:var(--ink);color:var(--paper-2);font-size:12px;
-    padding:8px 16px;border-radius:999px;z-index:400;opacity:.9;
-  }
-  .app.board-open .board{width:100vw;position:fixed;right:0;top:0;z-index:100}
-}
+/* 窄屏适配统一在文件末尾的 900px 断点里处理（左导航抽屉 + 盘面浮层） */
 
 /* ============================================================
    质感层 · 2025 增补
@@ -786,7 +777,7 @@ body::before{
 .m-note-line{font-size:12px;color:var(--ink-3);margin-top:14px;line-height:1.7}
 
 /* 八字四柱 */
-.bazi-pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.bazi-pillars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .bp{
   border:1px solid var(--line);border-radius:12px;background:var(--card-2);
   padding:11px 8px 9px;text-align:center;position:relative;
@@ -805,7 +796,7 @@ body::before{
 [data-theme="dark"] .wx-水{color:#73A2C4}[data-theme="dark"] .wx-火{color:#DE815E}[data-theme="dark"] .wx-土{color:#C0A873}
 
 /* 五行条 */
-.wx-bars{display:grid;grid-template-columns:1fr 1fr;gap:9px 22px;margin-top:4px}
+.wx-bars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 22px;margin-top:4px}
 .wx-row{display:flex;align-items:center;gap:9px;font-size:12.5px}
 .wx-row .w-lab{width:14px;font-family:var(--serif)}
 .wx-track{flex:1;height:6px;border-radius:99px;background:var(--card-2);border:1px solid var(--line);overflow:hidden}
@@ -829,7 +820,7 @@ body::before{
 .dy-now{margin-top:10px;font-size:12.5px;color:var(--ink-2);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
 /* 紫微斗数 */
-.zw-grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:5px;height:486px}
+.zw-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,1fr);gap:5px;height:486px}
 .zw-cell{
   background:var(--card-2);border:1px solid var(--line);border-radius:8px;
   padding:6px 8px;display:flex;flex-direction:column;min-width:0;position:relative;
@@ -913,7 +904,7 @@ body::before{
   .ming-grid{grid-template-columns:minmax(0,1fr) 340px}
 }
 @media(max-width:1023px){
-  .ming-grid{grid-template-columns:1fr}
+  .ming-grid{grid-template-columns:minmax(0,1fr)}
   .ming-chat{position:static;height:560px}
 }
 
@@ -1413,7 +1404,7 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
     -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
     opacity:0;pointer-events:none;transition:opacity .28s var(--ease);
   }
-  .app:not(.rail-hidden)~.rail-scrim{opacity:1;pointer-events:auto}
+  .app:not(.rail-hidden) .rail-scrim{opacity:1;pointer-events:auto}
 
   /* 中栏：收窄留白 */
   .topbar{height:52px;padding:0 14px;gap:8px}
@@ -1426,6 +1417,8 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
   .m-panel{padding:16px 15px;border-radius:14px;margin-bottom:13px}
   .m-panel>h3{font-size:15.5px;margin-bottom:13px;flex-wrap:wrap;gap:6px}
   .m-panel>h3 .sub{width:100%;margin-left:0}
+  /* 合婚甲方/乙方的 A、B 是徽标，不跟着副标题占满一行 */
+  .hh-person>h3 .sub{width:auto;margin-left:0;flex-shrink:0}
   .m-form{margin-top:16px}
   .m-form .m-panel{padding:20px 16px}
   .ming-head{flex-wrap:wrap;gap:12px}
