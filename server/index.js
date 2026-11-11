@@ -211,17 +211,20 @@ a:hover{background:rgba(217,119,87,.12)}</style></head>
     if (!st || !st.isFile()) return false;
     const ext = path.extname(abs).toLowerCase();
     const body = await fs.promises.readFile(abs);
-    // 缓存策略分三档，为什么：
+    // 缓存策略：
     //   index.html 是 SPA 入口且文件名不带内容指纹，必须 no-store ——
     //     否则发版后老用户仍持旧 index.html，引用的 js/css 名没变就会把旧版锁死；
-    //   service-worker.js 同样无指纹且浏览器默认会绕过缓存做更新检查，
-    //     但中间代理可能认 immutable，显式 no-cache 保证新 SW 能及时下发；
-    //   其余（js/css/字体/图片）内容与文件名绑定，长缓存 + SW 预缓存才对得上。
-    const cache = ext === '.html'
-      ? 'no-store'
-      : path.basename(abs) === 'service-worker.js'
-        ? 'no-cache'
-        : 'public, max-age=86400, immutable';
+    //   js/css 同样不带内容指纹（webapp/js/ui.js 这类文件名是稳定的），
+    //     早期给过 max-age=86400 immutable，结果发版后用户 24 小时内仍跑旧代码，
+    //     还会出现「index 是新的、ui.js 是旧的」这种半新旧错配。改为 no-cache：
+    //     每次都向服务端复验，命中 ETag 只回 304，代价很小，换来发版即时生效。
+    //   图片/字体变化少，且体积大、复验成本高，仍可长缓存。
+    //   service-worker.js 无指纹且要能及时更新，显式 no-cache。
+    const noStore = ext === '.html';
+    const revalidate = noStore
+      || ext === '.js' || ext === '.css'
+      || path.basename(abs) === 'service-worker.js';
+    const cache = noStore ? 'no-store' : revalidate ? 'no-cache' : 'public, max-age=86400';
     await reply
       .header('cache-control', cache)
       .header('x-content-type-options', 'nosniff')
