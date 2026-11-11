@@ -51,7 +51,8 @@ const DEFAULT_SET = { theme: 'light', dlGuiRen: '昼夜贵人', dlSheHai: '涉�
 let settings = Object.assign({}, DEFAULT_SET, LS.get(K_SET, {}));
 function saveSettings() { LS.set(K_SET, settings); }
 
-function listCases() { return LS.get(K_CASES, []); }
+// 读出来就升到 v2：老记录只有"应验/未应验"，新结构改为「判断—行动—复盘」
+function listCases() { return LS.get(K_CASES, []).map(XD.migrate); }
 function getCase(id) { return listCases().find(c => c.id === id) || null; }
 function saveCase(c) {
   const arr = listCases();
@@ -165,17 +166,6 @@ document.addEventListener('pointerdown', e => {
   rip.addEventListener('animationend', () => rip.remove());
   setTimeout(() => rip.remove(), 900);
 }, { passive: true });
-// 合婚大分数：从 0 滚到实分，easeOut 收速
-function countUp(el, to, dur) {
-  if (!el || noMotion()) { if (el) el.textContent = to; return; }
-  const t0 = performance.now();
-  (function step(t) {
-    const p = Math.min(1, (t - t0) / dur);
-    el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
-    if (p < 1) requestAnimationFrame(step);
-  })(t0);
-}
-
 /* ---------------- 右栏：盘面抽屉 ---------------- */
 function openBoard(html) {
   boardInner.innerHTML = html;
@@ -615,15 +605,57 @@ function meihuaHTML(r) {
 }
 
 /* ---------------- 视图：时课首页 ---------------- */
+/* 问题卡：五问不是门槛，是「帮我想清楚」展开后的可选脚手架。
+   用户只想写一句话就起课，产品不该拦他；愿意多想两分钟的人，这里接得住。 */
+const QCARD_FIELDS = [
+  ['choice', '在什么之间选择', '例如：接 offer A / 留在现公司'],
+  ['deadline', '什么时候要定', '例如：本月底前要给答复'],
+  ['control', '你能控制的部分', '例如：准备材料、约人聊一次'],
+  ['worry', '现在最担心什么', '例如：去了不适应'],
+  ['unchecked', '还有哪些现实信息没核实', '例如：对方团队稳定性、薪资结构']
+];
+function qcardInputsHTML(card) {
+  return QCARD_FIELDS.map(([k, label, ph]) =>
+    '<label class="qc-row"><span>' + label + '</span><input data-qc="' + k + '" value="' +
+    esc(card && card[k] || '') + '" placeholder="' + esc(ph) + '"></label>').join('');
+}
+
 function renderHome() {
   const r = getRt();
-  const weekCN = '周' + ['日', '一', '二', '三', '四', '五', '六'][r.date.getDay()];
+  const cases = listCases();
+  const due = cases.filter(c => { const s = XD.dueState(c).state; return s === 'due' || s === 'late'; });
   const cur = r.current === '大六壬' ? r.dl : (r.others[r.current] && r.others[r.current].comp);
 
   let h = '<div class="reading-inner" data-view="home">';
-  h += '<div class="kicker">此刻时课 · 实时</div>';
+  h += '<div class="kicker">玄决 · 传统文化视角</div>';
+  h += '<h1 class="home-h1">现在要拿的主意，是什么？</h1>';
+  h += '<p class="home-sub">写下来，先看清选项与期限；起一课，得到一个<b>有出处</b>的传统视角；然后留下你自己的判断，过些天回来对照。</p>';
 
-  // 元信息条（只出现一次）
+  // 到期复盘：产品的回头钩子。不催"准不准"，只提醒"该看看当时的判断了"
+  if (due.length) {
+    h += '<button class="due-banner" id="dueGo"><span class="due-n">' + due.length + '</span>' +
+      '<span class="due-t">条问事到了复盘的时候<i>不是查准不准，是看你当时怎么想的</i></span>' +
+      '<span class="due-arrow">→</span></button>';
+  }
+
+  // 起课：唯一创建入口，放在首屏最前
+  h += '<div class="ask-box" id="askBox">' +
+    '<textarea id="askInput" rows="2" placeholder="一句话说清处境：这个 offer 要不要接，月底前要给答复…"></textarea>' +
+    '<div class="ask-tip" id="askTip" hidden></div>' +
+    '<div class="qcard" id="qcard" hidden>' + qcardInputsHTML(null) +
+      '<p class="qc-note">这些都只存在你本机，用来以后对照"你当时怎么想"。</p></div>' +
+    '<div class="ask-bar">' +
+    '<button class="card-toggle" id="cardToggle" aria-expanded="false" aria-controls="qcard">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>帮我想清楚</button>' +
+    '<div class="q-chips" id="qChips">' +
+    QTYPES.map(q => '<button class="chip' + (q === '其他' ? ' on' : '') + '" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('') +
+    '</div>' +
+    '<button class="ask-send" id="askSend">起课<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>' +
+    '</div></div>';
+  h += '<div class="ask-hint"><span><kbd>Enter</kbd> 起课</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span><span><kbd>/</kbd> 快速聚焦</span></div>';
+
+  // 此刻天时：保留它的美，但明确降为背景，不针对用户的问题
+  h += '<section class="now-sec"><div class="now-head"><h3>此刻天时</h3><span>背景参考 · 不针对你的问题</span></div>';
   h += '<div class="now-meta"><div class="now-gz">' +
     gzSpan(r.bz.year.gz) + '<span class="sep">·</span>' + gzSpan(r.bz.month.gz) + '<span class="sep">·</span>' +
     gzSpan(r.bz.day.gz) + gzSpan(r.bz.hour.gz) + '</div>';
@@ -640,11 +672,11 @@ function renderHome() {
     r.hl.ji.slice(0, 5).map(x => '<span class="yj-tag">' + esc(x) + '</span>').join('') + '</span></div>';
   h += '</div>';
 
-  // 当前法门断语（同一时刻只渲染一个，不重复）
+  // 当前法门的传统解释（同一时刻只渲染一个）
   h += '<div id="readZone">' + (cur ? readingBlock(r.current, cur) : loadingBlock()) + '</div>';
 
-  // 同刻他法胶囊
-  h += '<div class="other-methods"><div class="om-head"><h3>同刻别法</h3><span>同一时刻独立起盘，点按切换对照</span></div><div class="om-row">';
+  // 换一种视角：并列参考，不做"多法一致=更准"的暗示
+  h += '<div class="other-methods"><div class="om-head"><h3>换一种视角</h3><span>不同方法依据不同，并列看看即可，不互相验证</span></div><div class="om-row">';
   METHODS.forEach(name => {
     if (name === r.current) { h += '<span class="m-cap current">' + esc(name) + '</span>'; return; }
     const o = name === '大六壬' ? null : r.others[name];
@@ -661,19 +693,11 @@ function renderHome() {
   });
   h += '</div></div>';
 
-  // 实时决策顾问（同一时刻的课，问多少轮都不重新起盘）
+  // 此刻问对（同一时刻的课，问多少轮都不重新起盘）
   h += rtChatHTML();
+  h += '</section>';
 
-  // 问事输入（唯一的创建入口）
-  h += '<div class="ask-box" id="askBox">' +
-    '<textarea id="askInput" rows="1" placeholder="想问什么？一句话说清处境，比如：这个 offer 要不要接…"></textarea>' +
-    '<div class="ask-bar"><div class="q-chips" id="qChips">' +
-    QTYPES.map((q, i) => '<button class="chip' + (q === '其他' ? ' on' : '') + '" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('') +
-    '</div>' +
-    '<button class="ask-send" id="askSend">起课<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>' +
-    '</div></div>';
-  h += '<div class="ask-hint"><span><kbd>Enter</kbd> 起课</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span><span><kbd>/</kbd> 快速聚焦</span></div>';
-
+  h += '<p class="stance-note">玄决不预测现实，也不替你做决定。它只是把一套传统观察方式摆在你面前，判断与选择始终是你的。</p>';
   h += '</div>';
   view.innerHTML = h;
   bindHome();
@@ -690,29 +714,69 @@ function loadingBlock() {
 let qtypeSel = '其他';
 function bindHome() {
   const input = $('#askInput');
+  const tip = $('#askTip');
+  const qcard = $('#qcard');
+  const toggle = $('#cardToggle');
+
   // chip 选择
   $$('#qChips .chip').forEach(c => c.onclick = () => {
     $$('#qChips .chip').forEach(x => x.classList.remove('on'));
     c.classList.add('on'); qtypeSel = c.dataset.q;
   });
+
+  // 边写边提示：模糊就建议改写，碰到健康/钱/法律就挂一条伴随说明（都不阻断）
+  const showTip = () => {
+    const text = input.value.trim();
+    if (!text) { tip.hidden = true; tip.innerHTML = ''; return; }
+    const major = XD.topicHint(text);
+    const vague = XD.vagueReason(text);
+    let html = '';
+    if (major) html += '<div class="tip-major"><b>' + esc(major.tag) + '</b>' + esc(major.text) + '</div>';
+    if (vague) html += '<div class="tip-rewrite">' + esc(vague) + '</div>';
+    tip.innerHTML = html;
+    tip.hidden = !html;
+  };
+
+  // 问题卡：渐进披露，不展开就只用一句话
+  if (toggle) toggle.onclick = () => {
+    const open = qcard.hidden;
+    qcard.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.classList.toggle('on', open);
+    if (open) { const f = $('input', qcard); if (f) f.focus(); }
+  };
+  const collectCard = () => {
+    const card = XD.blankCard();
+    if (qcard && !qcard.hidden) $$('[data-qc]', qcard).forEach(i => { card[i.dataset.qc] = i.value.trim(); });
+    return card;
+  };
+
   const doAsk = () => {
     const text = input.value.trim();
     if (!text) { input.focus(); toast('先写一句你想问的事'); return; }
+    const card = collectCard();
     const c = {
       id: uid(), title: text.length > 28 ? text.slice(0, 28) + '…' : text,
       desc: text, qType: qtypeSel, createdAt: new Date().toISOString(),
+      card, plan: XD.blankPlan(), review: XD.blankReview(),
       reviewed: false, reviewNote: '', reviewAt: null
     };
     saveCase(c);
     renderRecent();
     location.hash = '#/case/' + c.id;
-    toast('已起课，存入问事录');
+    toast(XD.cardFilled(card) >= 2 ? '已建档：问题卡 + 盘面，记得回来复盘' : '已起课，存入你的档案');
   };
   $('#askSend').onclick = doAsk;
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doAsk(); }
   });
-  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 180) + 'px'; });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+    showTip();
+  });
+
+  const dueBtn = $('#dueGo');
+  if (dueBtn) dueBtn.onclick = () => { location.hash = '#/history'; };
 
   // 展开盘面
   $$('#readZone [data-board]').forEach(b => b.onclick = () => {
@@ -770,26 +834,187 @@ function paintCapsules() {
   $$('.om-row [data-method]').forEach(btn => btn.onclick = () => switchRtMethod(btn.dataset.method));
 }
 
-/* ---------------- 视图：案例读盘 ---------------- */
+/* ---------------- 视图：案例读盘 ----------------
+   结果页刻意拆三层：事实（算法算出了什么，可核对）/ 传统解释（这套体系为什么这么看）
+   / 反思（你手里还有哪些现实材料）。用户最容易把三层揉成一句"结论"，拆开才不误读。 */
+function factsOf(name, comp, c) {
+  const out = [];
+  const d = new Date(c.createdAt);
+  out.push(['起课', fmtDT(d)]);
+  try {
+    const bz = Lunar.getBaZi(d);
+    out.push(['四柱', bz.year.gz + ' ' + bz.month.gz + ' ' + bz.day.gz + ' ' + bz.hour.gz]);
+  } catch (e) {}
+  if (name === '大六壬' && comp && comp.ke) {
+    const ke = comp.ke;
+    out.push(['月将', ke.yueJiang.zhi + '（' + ke.yueJiang.wx + '）']);
+    if (comp.sc) out.push(['占时', comp.sc.name + ' ' + comp.sc.range]);
+    out.push(['贵人', ke.guiRen.label + ' · ' + ke.guiRen.zhi]);
+    out.push(['空亡', Lunar.ZHI[ke.kongWang[0]] + Lunar.ZHI[ke.kongWang[1]]]);
+    out.push(['三传', ke.sanChuan.chu.zhi + ' → ' + ke.sanChuan.zhong.zhi + ' → ' + ke.sanChuan.mo.zhi]);
+    out.push(['发用', ke.sanChuan.method]);
+    if (ke.geju && ke.geju.length) out.push(['课体', ke.geju.join('、')]);
+    return out;
+  }
+  const R = (comp && comp.result) || {};
+  if (name === '梅花易数' && R.guaName) {
+    out.push(['本卦', R.guaName]);
+    if (R.huGua) out.push(['互卦', R.huGua.name]);
+    if (R.bianGua) out.push(['变卦', R.bianGua.name]);
+    out.push(['动爻', '第 ' + R.dongLine + ' 爻']);
+  } else if (name === '六爻' && R.benGua) {
+    out.push(['本卦', R.benGua]);
+    if (R.bianGua) out.push(['变卦', R.bianGua]);
+    if (R.dongPositions) out.push(['动爻', R.dongPositions.length ? R.dongPositions.join('、') : '无']);
+    if (R.kongWang) out.push(['空亡', R.kongWang]);
+  } else if (name === '塔罗' && Array.isArray(R.cards)) {
+    if (R.spreadName) out.push(['牌阵', R.spreadName]);
+    R.cards.forEach((cd, i) => {
+      const nm = cd.card && (typeof cd.card === 'string' ? cd.card
+        : (cd.card.name && (cd.card.name.zh || cd.card.name.en)));
+      out.push(['第 ' + (i + 1) + ' 张', (nm || '—') + (cd.reverse ? '（逆）' : '（正）')]);
+    });
+  } else if (name === '奇门遁甲' && Array.isArray(R.palaces)) {
+    if (R.info && R.info.ju) out.push(['局', R.info.ju]);
+    if (R.targetName && R.targetPal) out.push(['用神宫', R.targetName + ' · ' + R.targetPal.num + ' 宫']);
+  } else if (name === '小六壬' && Array.isArray(R.positions)) {
+    R.positions.forEach(p => out.push([p.k + '宫', p.v]));
+  }
+  return out.filter(x => x[1]);
+}
+
+/* 依据 chips：优先用引擎自带的 sources，大六壬再补课体与发用 */
+function sourcesOf(name, comp) {
+  const p = (comp && comp.plain) || {};
+  const out = [];
+  (p.sources || []).forEach(s => { if (s && s.desc) out.push(s.desc); });
+  if (name === '大六壬' && comp && comp.ke) {
+    out.push('月将加时 → 天地盘');
+    out.push('四课：日干 / 干阴 / 日支 / 支阴');
+    if (comp.ke.sanChuan && comp.ke.sanChuan.method) out.push('发用：' + comp.ke.sanChuan.method);
+    if (comp.ke.geju) comp.ke.geju.slice(0, 2).forEach(g => out.push('课体：' + g));
+  }
+  return out.slice(0, 6);
+}
+function ruleLine(name) {
+  if (name === '大六壬') return '按 ' + settings.dlGuiRen + ' · ' + settings.dlSheHai + ' · ' + settings.yueJiang;
+  if (name === '塔罗') return '按 ' + settings.tarotReverse;
+  return '流派不同，取法会变';
+}
+function layerHead(n, title, sub) {
+  return '<div class="layer-h"><span class="layer-n">' + esc(n) + '</span><div><h3>' + esc(title) + '</h3><span>' + esc(sub) + '</span></div></div>';
+}
+function qcardViewHTML(card) {
+  const rows = QCARD_FIELDS.filter(([k]) => card && card[k]).map(([k, label]) =>
+    '<div class="qc-v"><span>' + esc(label) + '</span><b>' + esc(card[k]) + '</b></div>');
+  if (!rows.length) {
+    return '<div class="layer-card-empty"><button class="link-btn" id="qcEdit">＋ 补一张问题卡</button>' +
+      '<span>记下当时的选择、期限与顾虑，几周后才知道自己在纠结什么</span></div>';
+  }
+  return '<section class="layer layer-card">' + layerHead('卡', '问题卡', '起课时你写下的处境') +
+    '<div class="qc-view">' + rows.join('') + '</div>' +
+    '<button class="link-btn" id="qcEdit">修改问题卡</button></section>';
+}
+function editCardModal(c) {
+  const m = openModal('<h3>问题卡</h3><p>把处境写清楚，几周后才知道当时在纠结什么。</p>' +
+    '<div class="qc-edit">' + qcardInputsHTML(c.card || XD.blankCard()) + '</div>' +
+    '<div class="modal-foot"><button class="btn ghost" data-act="no">取消</button>' +
+    '<button class="btn primary" data-act="yes">保存</button></div>');
+  $('[data-act=no]', m.root).onclick = m.close;
+  $('[data-act=yes]', m.root).onclick = () => {
+    const card = XD.blankCard();
+    $$('[data-qc]', m.root).forEach(i => { card[i.dataset.qc] = i.value.trim(); });
+    c.card = card; saveCase(c); m.close(); renderCase(c.id); toast('问题卡已更新');
+  };
+}
+function planViewHTML(c) {
+  const p = c.plan || {};
+  const filled = !!(p.judgment || p.action);
+  return '<section class="layer layer-plan">' + layerHead('判', '我的判断与行动', '这一层不来自盘面，只来自你') +
+    '<div class="plan-form">' +
+    '<label><span>当时我的判断</span><textarea data-plan="judgment" rows="2" placeholder="我倾向……，因为……">' + esc(p.judgment || '') + '</textarea></label>' +
+    '<label><span>我打算采取的行动</span><textarea data-plan="action" rows="2" placeholder="我会先做哪一步，什么时候做">' + esc(p.action || '') + '</textarea></label>' +
+    '<label><span>我预期会看到什么信号</span><textarea data-plan="signals" rows="2" placeholder="如果判断对，接下来应该出现……">' + esc(p.signals || '') + '</textarea></label>' +
+    '<label><span>计划回来复盘的日期</span><input type="date" data-plan="reviewAt" value="' + esc(p.reviewAt || '') + '"></label>' +
+    '<button class="btn primary sm" id="planSave">' + (filled ? '更新记录' : '留下我的判断') + '</button>' +
+    '</div>' +
+    '<p class="layer-note">这些内容只存在本机。写下来是为了几周后还能对照，而不是给自己打分。</p></section>';
+}
+function reflectViewHTML(c) {
+  const card = c.card || {};
+  const fixed = [
+    '这套说法里，哪一条和你已经观察到的现实对得上？哪一条对不上？',
+    '如果盘面的倾向和你的直觉相反，你直觉的依据是什么？',
+    '起课之前，你其实已经更想选哪个？盘面有没有改变它？'
+  ];
+  let items = '';
+  if (card.unchecked) items += '<div class="rf-item major"><span>先核实这些</span><b>' + esc(card.unchecked) + '</b></div>';
+  if (card.worry) items += '<div class="rf-item"><span>你最担心的</span><b>' + esc(card.worry) + '</b></div>';
+  if (card.control) items += '<div class="rf-item"><span>你能动的</span><b>' + esc(card.control) + '</b></div>';
+  items += fixed.map(q => '<div class="rf-q">' + esc(q) + '</div>').join('');
+  return '<section class="layer layer-reflect">' + layerHead('思', '留给你自己判断', '盘面提供视角，不提供答案') +
+    '<div class="rf-list">' + items + '</div></section>';
+}
+
 function renderCase(id) {
   const c = getCase(id);
   if (!c) { renderNotFound(); return; }
   if (!caseCache[id]) caseCache[id] = { '大六壬': { status: 'ready', comp: computeDL(new Date(c.createdAt), c.qType) }, current: '大六壬' };
   const cache = caseCache[id];
   const date = new Date(c.createdAt);
+  const ds = XD.dueState(c);
+  const major = XD.topicHint(c.desc);
+
   let h = '<div class="reading-inner" data-view="case">';
   h += '<div class="case-head"><div class="kicker">问事 · ' + esc(c.qType) + '</div>' +
     '<div class="case-q">' + esc(c.desc) + '</div>' +
-    '<div class="case-meta"><span>起课于 <b>' + fmtDT(date) + '</b></span><span>主法 <b>大六壬</b></span></div></div>';
+    '<div class="case-meta"><span>起课于 <b>' + fmtDT(date) + '</b></span><span>主法 <b>大六壬</b></span>' +
+    '<span>状态 <b class="st-' + ds.state + '">' + esc(ds.label) + '</b></span></div></div>';
 
-  if (c.reviewed) {
-    h += '<div class="review-banner"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>已复盘：' + esc(c.reviewNote || '已记录结果') + '</div>';
+  if (major) {
+    h += '<div class="case-major"><b>' + esc(major.tag) + '</b>' + esc(major.text) + '</div>';
   }
-  const cur = cache.current === '大六壬' ? cache['大六壬'].comp : (cache[cache.current] && cache[cache.current].comp);
-  h += '<div id="readZone">' + (cur ? readingBlock(cache.current, cur) : loadingBlock()) + '</div>';
+  if (ds.state === 'due' || ds.state === 'late') {
+    h += '<div class="review-banner due"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>' +
+      '到了回头看看的时候：当时的判断，现在怎么看？</div>';
+  }
+  if (XD.isReviewed(c)) {
+    h += '<div class="review-banner">已复盘 · ' + esc(fmtDT(new Date(c.review.at))) +
+      (c.review.note ? '<br><span class="rb-note">' + esc(c.review.note) + '</span>' : '') + '</div>';
+  }
 
-  h += '<div class="read-actions" style="margin-top:18px">' +
-    '<button class="btn ghost" id="btnReview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>' + (c.reviewed ? '修改复盘' : '事后复盘') + '</button>' +
+  h += qcardViewHTML(c.card);
+
+  // 第 1 层：事实
+  const cur = cache.current === '大六壬' ? cache['大六壬'].comp : (cache[cache.current] && cache[cache.current].comp);
+  const facts = cur ? factsOf(cache.current, cur, c) : [];
+  h += '<section class="layer layer-fact">' + layerHead('一', '盘面事实', '算法算出来的，可逐项核对') +
+    '<dl class="fact-grid">' + facts.map(([k, v]) =>
+      '<div class="fact"><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl></section>';
+
+  // 第 2 层：传统解释
+  h += '<section class="layer layer-trad">' + layerHead('二', '传统解释', '这套体系为什么这么看') +
+    '<div class="rule-line"><span>' + esc(ruleLine(cache.current)) + '</span>' +
+    '<a href="#/settings" class="link-btn">改取法</a></div>' +
+    '<div id="readZone">' + (cur ? readingBlock(cache.current, cur) : loadingBlock()) + '</div>';
+  if (cur) {
+    const srcs = sourcesOf(cache.current, cur);
+    if (srcs.length) {
+      h += '<div class="src-block"><div class="src-h">依据</div><div class="src-row">' +
+        srcs.map(s => '<span class="src-chip">' + esc(s) + '</span>').join('') + '</div>' +
+        '<p class="layer-note">依据是这套体系内部规则，不等于对现实的验证；不同流派可能给出不同结论。</p></div>';
+    }
+  }
+  h += '</section>';
+
+  // 第 3 层：反思
+  h += reflectViewHTML(c);
+
+  // 我的判断 / 复盘
+  h += planViewHTML(c);
+  h += '<div class="read-actions">' +
+    '<button class="btn ghost" id="btnReview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>' + (XD.isReviewed(c) ? '修改复盘' : '现在复盘') + '</button>' +
+    '<button class="btn ghost" id="btnExportCase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>导出记录</button>' +
     '<button class="btn ghost" id="btnDelCase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>删除</button>' +
     '</div>';
 
@@ -809,8 +1034,25 @@ function renderCase(id) {
 
   view.innerHTML = h;
 
+  const qcEdit = $('#qcEdit');
+  if (qcEdit) qcEdit.onclick = () => editCardModal(c);
+  const planSave = $('#planSave');
+  if (planSave) planSave.onclick = () => {
+    const p = c.plan || XD.blankPlan();
+    $$('[data-plan]').forEach(el => { p[el.dataset.plan] = el.value.trim(); });
+    c.plan = p; saveCase(c); renderCase(id); toast('已记下你的判断');
+  };
   $('#btnReview').onclick = () => reviewModal(c);
-  $('#btnDelCase').onclick = () => confirmModal('删除这条问事？', '删除后不可恢复，排盘记录与复盘都会一并清除。', '删除', () => {
+  $('#btnExportCase').onclick = () => {
+    const blob = new Blob([XD.exportJSON([c])], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'xuanjue-case-' + c.id + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('已导出到本机');
+  };
+  $('#btnDelCase').onclick = () => confirmModal('删除这条问事？', '删除后不可恢复，盘面、问题卡与复盘都会一并清除。', '删除', () => {
     deleteCase(id); delete caseCache[id]; renderRecent();
     location.hash = '#/history'; toast('已删除');
   });
@@ -893,19 +1135,34 @@ async function replayLiuYao(btn) {
   }
 }
 function reviewModal(c) {
+  const rv = c.review || XD.blankReview();
   const m = openModal(
-    '<h3>事后复盘</h3><p>过几天回头看：当时这一课，和事情的实际走向对得上吗？复盘只存在你本机。</p>' +
-    '<label>结果</label><select id="rvOutcome">' +
-    ['应验', '部分应验', '未应验'].map(x => '<option' + (c.reviewNote && c.reviewNote.indexOf(x) === 0 ? ' selected' : '') + '>' + x + '</option>').join('') +
-    '</select>' +
-    '<label>备注（实际发生了什么）</label><textarea id="rvNote" placeholder="例如：一周后对方主动联系，合作谈成…">' + esc(c.reviewNote.replace(/^(应验|部分应验|未应验)/, '')) + '</textarea>' +
-    '<div class="modal-foot"><button class="btn ghost" data-act="no">取消</button><button class="btn primary" data-act="yes">保存复盘</button></div>'
+    '<h3>复盘 · 不是查"准不准"</h3>' +
+    '<p>你当时留下了判断与行动。现在回头，看三件事——结果是否发生、依据是否帮上忙、你是否行动了。</p>' +
+    '<div class="rv-block"><label>事情的实际走向</label><select id="rvOutcome">' +
+    ['yes', 'partial', 'no', 'unclear'].map(x => '<option value="' + x + '"' + (rv.happened === x ? ' selected' : '') + '>' + XD.OUTCOME_LABEL[x] + '</option>').join('') +
+    '</select></div>' +
+    '<div class="rv-block"><label>当时的盘面依据，帮你理清了吗</label><select id="rvBasis">' +
+    ['帮上了', '部分有用', '没帮上', '没想起来看'].map(x => '<option' + (rv.basis === x ? ' selected' : '') + '>' + x + '</option>').join('') +
+    '</select></div>' +
+    '<div class="rv-block"><label>你按当时的判断行动了吗</label><select id="rvAction">' +
+    ['行动了', '部分行动', '没有行动', '时机还没到'].map(x => '<option' + (rv.action === x ? ' selected' : '') + '>' + x + '</option>').join('') +
+    '</select></div>' +
+    '<div class="rv-block"><label>实际发生了什么（留几句，只给你自己）</label>' +
+    '<textarea id="rvNote" rows="3" placeholder="例如：接了一个电话，信息核实时发现对方团队刚重组…">' + esc(rv.note || '') + '</textarea></div>' +
+    '<div class="modal-foot"><button class="btn ghost" data-act="no">取消</button>' +
+    '<button class="btn primary" data-act="yes">保存复盘</button></div>'
   );
   $('[data-act=no]', m.root).onclick = m.close;
   $('[data-act=yes]', m.root).onclick = () => {
-    const oc = $('#rvOutcome', m.root).value;
-    const nt = $('#rvNote', m.root).value.trim();
-    c.reviewed = true; c.reviewAt = new Date().toISOString(); c.reviewNote = oc + (nt ? ' · ' + nt : '');
+    c.review = {
+      happened: $('#rvOutcome', m.root).value,
+      basis: $('#rvBasis', m.root).value,
+      action: $('#rvAction', m.root).value,
+      note: $('#rvNote', m.root).value.trim(),
+      at: new Date().toISOString()
+    };
+    c.reviewed = true;
     saveCase(c); renderRecent(); m.close(); renderCase(c.id); toast('复盘已保存');
   };
 }
@@ -1457,8 +1714,9 @@ function buildHehunContext() {
 }
 function hehunSystemPrompt() {
   return [
-    '你是「玄决」的合婚分析顾问。基于下方双方八字、紫微命盘与起盘时间的实时盘，帮用户理解两人的关系基础、互动模式与当下时机。',
+    '你是「玄决」的传统文化解释助手。基于下方双方八字、紫微命盘与起盘时间的实时盘，帮用户理解两人在传统框架里的关系基础与互动模式——这是视角，不是判决。',
     '硬性要求：',
+    '0. 开篇不要复述分数，也不要把分值当结论；分值只是规则加权的参考数字；',
     '1. 只依据给定的盘面数据，不编造未提供的星曜、神煞或事件；',
     '2. 不说"必然/一定/注定/克夫克妻/命中无缘"等绝对化与恐吓式断语，改用"倾向、容易、在…情形下"；',
     '3. 双向视角：同时讲"你给对方什么"和"对方给你什么"，不做单方评判；',
@@ -1479,18 +1737,19 @@ function renderHehunResult() {
   let h = '<div class="reading-inner" data-view="hehun">';
   h += '<div class="hh-head"><div><div class="kicker">合婚结果 · 起盘 ' + esc(hh.testLabel) + '</div>' +
     '<h2 class="hh-title">两个人的合盘</h2></div><button class="btn ghost sm" id="hhBack">重新填写</button></div>';
-  h += '<div class="m-panel hh-hero"><div class="hh-score"><b>' + r.score + '</b><span>/100</span></div>' +
-    '<div class="hh-hero-r"><div class="hh-level">' + esc(r.level) + '</div>' +
+  // 分值降为小号参考值：它是规则加权的结果，不是对两个人关系的判定
+  h += '<div class="m-panel hh-hero"><div class="hh-hero-r"><div class="hh-level">' + esc(r.level) + '</div>' +
     '<div class="hh-tip">' + esc(r.levelTip) + '</div>' +
-    '<div class="hh-conf">数据置信度 ' + esc(conf.level) + ' · ' + conf.score + '/100 · ' + esc(conf.note) + '</div></div></div>';
-  h += '<div class="m-panel"><h3>七维评分<span class="sub">日主 · 五行 · 夫妻宫 · 年支 · 紫微 · 纳音 · 实时</span></h3><div class="hh-dims">';
+    '<div class="hh-conf">规则加权参考分 <b class="hh-score-sm">' + r.score + '</b>/100 · 数据置信度 ' +
+    esc(conf.level) + ' · ' + conf.score + '/100 · ' + esc(conf.note) + '</div></div></div>';
+  h += '<div class="m-panel"><h3>七维参考<span class="sub">各维度独立看，不合成结论</span></h3><div class="hh-dims">';
   r.dimensions.forEach(d => {
     h += '<div class="hh-dim"><div class="hh-dim-h"><span class="hh-dim-l">' + esc(d.label) + '<i>' + d.weight + '%</i></span>' +
       '<span class="hh-dim-v">' + d.score + '</span></div>' +
       '<div class="hh-bar"><i style="width:' + d.score + '%"></i></div>' +
       '<div class="hh-dim-d">' + esc(d.detail) + '</div></div>';
   });
-  h += '</div></div>';
+  h += '</div><p class="m-note-line">分值是规则加权的参考数字，不是对这段关系的判定。请优先看每条维度下的具体描述。</p></div>';
   h += '<div class="hh-two">' +
     '<div class="m-panel"><h3>关系优势</h3><div class="hh-list">' +
     (r.highlights.length ? r.highlights : ['暂无明显高分项，先看互动中的实际感受']).map(x => '<div class="hh-li ok">' + esc(x) + '</div>').join('') +
@@ -1515,7 +1774,6 @@ function renderHehunResult() {
   view.innerHTML = h;
   if (window.Fx) Fx.enhance(view);
   setTimeout(() => { $$('.hh-bar i').forEach(i => { const w = i.style.width; i.style.width = '0'; setTimeout(() => { i.style.width = w; }, 40); }); }, 60);
-  countUp($('.hh-score b'), r.score, 900);
   bindHehunResult();
 }
 
@@ -1721,8 +1979,9 @@ function bindChat() {
 
 function buildMingSystem() {
   const L = [
-    '你是用户的「终身命理顾问」。基于下方八字与紫微斗数命盘，通过多轮对话帮用户做自我觉察与趋吉避凶参考。',
+    '你是「玄决」的传统文化解释助手。基于下方八字与紫微斗数命盘，用这套传统框架帮用户做自我觉察，而不是算命。',
     '要求：',
+    '0. 明确这是传统体系的解释视角，不是对命运的事实判断；',
     '1. 白话、具体、分阶段（结合大运/流年），不下"断终身"式绝对结论；',
     '2. 以喜用神为日常建议核心，多用方位、颜色、行业、作息、人际等可执行语言；',
     '3. 重大选择给"宜观察的信号 / 宜等待的时机"，不替用户做决定；',
@@ -1826,16 +2085,16 @@ function credentialModal(s, justRegistered) {
   };
 }
 
-/* ---------- 实时决策顾问（此刻时课问对） ---------- */
+/* ---------- 此刻问对（解释这一课，不给结论） ---------- */
 // 与命盘问对共用 Cloud 令牌与 .chat-* 玻璃样式，但走独立的会话线程与 system 提示：
 // 命盘问对谈「一辈子」，这里只谈「此刻这一课」，跨时辰即换盘，历史不混用。
 const K_RT_CHAT = 'xj_web_rt_chat';
-const RT_SUGGESTS = ['现在该不该推进这件事？', '两个选择哪个更合适？', '接下来要注意什么风险？', '该等还是该动手？', '观察哪些信号再决定？'];
+const RT_SUGGESTS = ['这一课在讲什么？', '哪些术语是关键？', '我可以先核实什么？', '哪些迹象值得观察？', '和我的处境怎么对应？'];
 let rtBusy = false;
 function rtChatHTML() {
   return '<div class="ming-chat rt-chat">' +
-    '<div class="chat-h"><div class="ch-ico">时</div><div><div class="ch-t">实时决策顾问</div>' +
-    '<div class="ch-d">此刻时课 · ' + esc(fmtMD(getRt().date)) + ' 起</div></div>' +
+    '<div class="chat-h"><div class="ch-ico">时</div><div><div class="ch-t">此刻问对</div>' +
+    '<div class="ch-d">只解释这一课 · ' + esc(fmtMD(getRt().date)) + ' 起</div></div>' +
     '<button class="chat-status" id="rtChatStatus" title="云令牌"><span class="cd"></span><span id="rtStatusTxt">待连接</span></button></div>' +
     '<div class="chat-msgs" id="rtMsgs"></div>' +
     '<div class="chat-suggest" id="rtSuggest">' +
@@ -1843,7 +2102,7 @@ function rtChatHTML() {
     '</div>' +
     '<div class="chat-input"><textarea id="rtInput" rows="1" placeholder="就此刻这一课问点什么… Enter 发送"></textarea>' +
     '<button class="chat-send" id="rtSend" type="button" aria-label="发送提问" title="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>' +
-    '<div class="chat-foot">AI 内容由云端模型生成，卦象为短期参考（数日至数周），不构成医疗、法律、投资建议</div>' +
+    '<div class="chat-foot">AI 由云端模型生成，只做术语解释与追问整理，不给结论；不构成医疗、法律、投资建议</div>' +
     '</div>';
 }
 function getRtChat() { return LS.get(K_RT_CHAT, []); }
@@ -1855,10 +2114,10 @@ function paintRtChat(withWelcome) {
   if (!msgs.length && withWelcome) {
     const r = getRt();
     const p = r.dl.plain;
-    let hi = '这一课已起好。我是你的「实时决策顾问」，重点回答"现在该不该做""选哪个""何时做""有什么风险"。\n\n';
-    hi += '此刻倾向：**' + esc(p.tendency) + '** —— ' + esc(p.state);
-    if (p.risks && p.risks.length) hi += '\n\n需留意：' + p.risks.slice(0, 2).map(x => esc(x)).join('；');
-    hi += '\n\n直接输入你的事，或点下面的问题；同一时辰内可以一直追问，卦不会重起。';
+    let hi = '这一课已经起好。我帮你读它——解释术语、说明依据、把问题问得更清楚，但不替你下判断。\n\n';
+    hi += '这一课的传统说法：**' + esc(p.tendency) + '** —— ' + esc(p.state);
+    if (p.risks && p.risks.length) hi += '\n\n传统上会提醒留意：' + p.risks.slice(0, 2).map(x => esc(x)).join('；');
+    hi += '\n\n你可以问"这个术语什么意思""我该先核实什么"；同一时辰内可以一直追问，卦不会重起。';
     box.innerHTML = '<div class="msg ai">' + md2html(hi) + '</div>';
     box.scrollTop = box.scrollHeight;
     return;
@@ -1910,10 +2169,11 @@ function bindRtChat() {
 // 另附此刻时课的节气、值神、冲煞、宜忌，供模型判断"此时此地"的宜忌。
 function buildRtSystem() {
   const L = [
-    '你是用户的「实时决策顾问」。基于下方此刻起的大六壬课式与即时宜忌，通过多轮对话帮用户做短期决策。',
-    '要求：',
-    '1. 重点回答"现在该不该做""选哪个""何时做""有什么风险"，白话、具体、可执行；',
-    '2. 卦象为短期参考（数日至数周），不断长期命运，不做绝对化断言；',
+    '你是「玄决」的传统文化解释助手。用户此刻起了一课，你要做的是解释术语、帮他追问、整理已知信息，而不是下判断。',
+    '硬性要求：',
+    '0. 先用一两句话说明"这一课在传统体系里是怎么看的、依据哪条规则"，再谈别的；',
+    '1. 不回答"该不该/选哪个"这类替用户拍板的问题；把问题改写成"你可以先核实什么""哪些迹象值得观察"；',
+    '2. 卦象为短期参考（数日至数周），不断长期命运，不做绝对化断言；任何结论都要标明这是传统解释，不是事实预测；',
     '3. 每次回答给出可观察的现实信号，便于用户事后复盘校准；',
     '4. 涉及健康仅作文化参考，必要时提示就医；禁止法事、符咒、消灾等说法；',
     '5. 回答控制在 350 字内，可用小标题或分点，关键处可用 **加粗**。'
@@ -2080,35 +2340,73 @@ function paintClassicsBody() {
   $$('.book-row', body).forEach(r => r.onclick = () => { clsState.bookId = r.dataset.book; paintClassicsBody(); });
 }
 
-/* ---------------- 视图：问事录 ---------------- */
+/* ---------------- 视图：复盘 ---------------- */
 function renderHistory() {
   const cases = listCases();
+  const st = XD.stats(cases);
+  const bucket = { late: [], due: [], wait: [], done: [] };
+  cases.forEach(c => bucket[XD.dueState(c).state].push(c));
+  const order = ['late', 'due', 'wait', 'done'];
+
   let h = '<div class="reading-inner" data-view="history">';
-  h += '<div class="kicker">问事录 · 仅存本机</div>';
-  h += '<h2 style="font-family:var(--serif);font-size:26px;font-weight:600;margin-bottom:22px">历次问事</h2>';
+  h += '<div class="kicker">复盘 · 仅存本机</div>';
+  h += '<h2 class="page-h2">你的问事档案</h2>';
+  h += '<p class="page-sub">这里不做命中率统计。它只是让你看见：当时问了什么、怎么判断的、后来有没有回来。</p>';
+
   if (!cases.length) {
     h += emptyHTML(
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.7 1.6"/></svg>',
-      '还没有问事记录', '回到时课页，在底部写下你想问的事，一课即成一条可复盘的记录。',
-      '<button class="btn primary" id="emptyGo">去起一课</button>'
+      '还没有问事记录', '回到问事页写下一个真实的处境，一课即成一条可复盘的档案。',
+      '<button class="btn primary" id="emptyGo">去记一个问题</button>'
     );
-  } else {
-    h += cases.map(c => {
+    h += '</div>';
+    view.innerHTML = h;
+    $('#emptyGo').onclick = () => { location.hash = '#/home'; };
+    if (window.Fx) Fx.enhance(view);
+    return;
+  }
+
+  // 本机行为统计：看的是"有没有用起来"，不是"算得准不准"
+  h += '<div class="stat-row">' +
+    '<div class="stat"><b>' + st.total + '</b><span>条记录</span></div>' +
+    '<div class="stat"><b>' + st.planRate + '%</b><span>留下了判断</span></div>' +
+    '<div class="stat"><b>' + st.reviewRate + '%</b><span>回来复盘</span></div>' +
+    '<div class="stat' + (st.due ? ' alert' : '') + '"><b>' + st.due + '</b><span>待你回看</span></div>' +
+    '</div>';
+  h += '<div class="hist-tools"><button class="btn ghost sm" id="btnExportAll">导出全部（JSON）</button>' +
+    '<span>导出后可以随时带走，数据是你的。</span></div>';
+
+  const LABEL = { late: '该回头看了', due: '复盘期已到', wait: '还没到复盘的时候', done: '已复盘' };
+  order.forEach(key => {
+    if (!bucket[key].length) return;
+    h += '<div class="hist-group"><div class="hist-group-h"><h3>' + LABEL[key] + '</h3><span>' + bucket[key].length + '</span></div>';
+    h += bucket[key].map(c => {
       const d = new Date(c.createdAt);
-      let dot = 'todo', tip = '待复盘';
-      if (c.reviewed) { dot = 'done'; tip = '已复盘'; }
-      else if (Date.now() - d.getTime() > 7 * 864e5) { dot = 'due'; tip = '复盘期已到'; }
+      const ds = XD.dueState(c);
+      const hasPlan = !!(c.plan && (c.plan.judgment || c.plan.action));
       return '<div class="hist-item" data-case="' + esc(c.id) + '">' +
-        '<span class="review-dot ' + dot + '" title="' + tip + '"></span>' +
+        '<span class="review-dot ' + ds.state + '" title="' + esc(ds.label) + '"></span>' +
         '<div class="hist-main"><div class="hist-t">' + esc(c.title) + '</div>' +
-        '<div class="hist-m"><span>' + esc(c.qType) + '</span><span>' + fmtMD(d) + '</span><span>' + tip + '</span></div></div>' +
+        '<div class="hist-m"><span>' + esc(c.qType) + '</span><span>' + fmtMD(d) + '</span>' +
+        (hasPlan ? '<span class="m-ok">已留判断</span>' : '<span class="m-warn">未留判断</span>') +
+        '<span>' + esc(ds.label) + '</span></div></div>' +
         '<button class="hist-del" data-del="' + esc(c.id) + '" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg></button>' +
         '</div>';
     }).join('');
-  }
+    h += '</div>';
+  });
   h += '</div>';
   view.innerHTML = h;
-  const go = $('#emptyGo'); if (go) go.onclick = () => location.hash = '#/home';
+
+  $('#btnExportAll').onclick = () => {
+    const blob = new Blob([XD.exportJSON(cases)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'xuanjue-cases-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('已导出全部记录');
+  };
   $$('.hist-item').forEach(it => it.onclick = e => {
     if (e.target.closest('[data-del]')) return;
     location.hash = '#/case/' + it.dataset.case;
@@ -2118,6 +2416,7 @@ function renderHistory() {
     const id = b.dataset.del;
     confirmModal('删除这条问事？', '删除后不可恢复。', '删除', () => { deleteCase(id); delete caseCache[id]; renderRecent(); renderHistory(); toast('已删除'); });
   });
+  if (window.Fx) Fx.enhance(view);
 }
 
 /* ---------------- 视图：设置 ---------------- */
@@ -2130,17 +2429,22 @@ function renderSettings() {
   h += '<div class="set-sec"><h3>外观</h3><div class="set-row"><div class="set-main"><div class="set-t">深色模式</div><div class="set-d">暖纸 / 暖墨双主题，随时切换</div></div>' +
     '<button class="switch' + (s.theme === 'dark' ? ' on' : '') + '" id="swTheme" aria-label="深色模式"></button></div></div>';
 
-  h += '<div class="set-sec"><h3>排盘口径</h3><div class="sec-d">仅影响起课算法取值，与 APK 端默认一致。</div>';
+  h += '<div class="set-sec"><h3>排盘口径</h3><div class="sec-d">仅影响起课算法取值。这些选项本身就是「规则存在分歧」的证据：同一个时刻，换一种取法，结论会不同。没有哪一种是唯一正确的。</div>';
   h += '<div class="set-row"><div class="set-main"><div class="set-t">大六壬贵人</div></div>' + sel('dlGuiRen', ['昼夜贵人', '夜贵人', '甲戊庚牛羊']) + '</div>';
   h += '<div class="set-row"><div class="set-main"><div class="set-t">涉害取法</div></div>' + sel('dlSheHai', ['涉害取深', '涉害取孟仲季']) + '</div>';
   h += '<div class="set-row"><div class="set-main"><div class="set-t">月将设置</div></div>' + sel('yueJiang', ['中气定将', '节气定将']) + '</div>';
   h += '<div class="set-row"><div class="set-main"><div class="set-t">塔罗正逆位</div></div>' + sel('tarotReverse', ['随机正逆位', '仅正位']) + '</div></div>';
 
-  h += '<div class="set-sec"><h3>数据</h3><div class="sec-d">所有问事与偏好只保存在此浏览器的 localStorage，不经过服务器。</div>' +
-    '<div class="set-row"><div class="set-main"><div class="set-t">清空本机数据</div><div class="set-d">删除全部问事录并还原默认设置</div></div>' +
+  h += '<div class="set-sec"><h3>数据</h3><div class="sec-d">所有问事、问题卡与复盘只保存在此浏览器的 localStorage，不经过服务器。</div>' +
+    '<div class="set-row"><div class="set-main"><div class="set-t">导出全部记录</div><div class="set-d">JSON 格式，含问题卡、判断与复盘；随时可以带走</div></div>' +
+    '<button class="btn ghost sm" id="btnExportAll2">导出</button></div>' +
+    '<div class="set-row"><div class="set-main"><div class="set-t">清空本机数据</div><div class="set-d">删除全部问事与复盘，并还原默认设置</div></div>' +
     '<button class="btn ghost sm" id="btnWipe">清空</button></div></div>';
 
-  h += '<div class="set-sec"><h3>关于</h3><div class="sec-d">玄决网页版（桌面端）· 排盘引擎与安卓端同源同算。</div></div>';
+  h += '<div class="set-sec"><h3>关于</h3>' +
+    '<div class="sec-d">玄决是一个<b>以传统术数为文化视角</b>的个人工具：帮你把问题说清、给一个有出处的传统解释、留下你的判断，并提醒你回来复盘。</div>' +
+    '<div class="sec-d">它不预测现实，也不替你做决定。不同术数依据不同，结果并列呈现，不构成相互验证。健康、法律、投资等重大事项，请以专业人士与现实信息为准。</div>' +
+    '<div class="sec-d" style="opacity:.75">排盘引擎与安卓端同源同算；同一输入同一时刻，结果可复现。</div></div>';
   h += '</div>';
   view.innerHTML = h;
 
@@ -2151,7 +2455,16 @@ function renderSettings() {
     if (location.hash === '#/home' || !location.hash) renderHome();
     toast('已保存，时课将按新口径重算');
   });
-  $('#btnWipe').onclick = () => confirmModal('清空全部本机数据？', '问事录、偏好都会被删除，页面会刷新。', '全部清空', () => {
+  $('#btnExportAll2').onclick = () => {
+    const blob = new Blob([XD.exportJSON(listCases())], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'xuanjue-cases-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('已导出全部记录');
+  };
+  $('#btnWipe').onclick = () => confirmModal('清空全部本机数据？', '问事、问题卡、复盘与偏好都会被删除，页面会刷新。', '全部清空', () => {
     localStorage.removeItem(K_CASES); localStorage.removeItem(K_SET);
     location.reload();
   });
@@ -2160,7 +2473,7 @@ function renderSettings() {
 function renderNotFound() {
   view.innerHTML = '<div class="reading-inner">' + emptyHTML(
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>',
-    '没有找到这条记录', '它可能已被删除。', '<button class="btn primary" onclick="location.hash=\'#/home\'">回到时课</button>'
+    '没有找到这条记录', '它可能已被删除。', '<button class="btn primary" onclick="location.hash=\'#/home\'">回到问事</button>'
   ) + '</div>';
 }
 function emptyHTML(iconSvg, title, desc, action) {
@@ -2172,7 +2485,7 @@ function emptyHTML(iconSvg, title, desc, action) {
 function renderRecent() {
   const cases = listCases().slice(0, 6);
   const el = $('#recentList');
-  if (!cases.length) { el.innerHTML = '<div class="recent-empty">还没有记录<br>在时课页底部问事</div>'; return; }
+  if (!cases.length) { el.innerHTML = '<div class="recent-empty">还没有记录<br>在问事页写下一个处境</div>'; return; }
   el.innerHTML = cases.map(c =>
     '<div class="recent-item" data-case="' + esc(c.id) + '" title="' + esc(c.desc) + '">' + esc(c.title) + '</div>').join('');
   $$('.recent-item', el).forEach(it => it.onclick = () => location.hash = '#/case/' + it.dataset.case);
@@ -2183,8 +2496,8 @@ function setNav(route) {
     n.classList.toggle('active', on);
     if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
-  const titles = { home: '时课', ming: '命盘', hehun: '合婚', classics: '典籍', history: '问事录', settings: '设置', case: '问事' };
-  $('#crumb').textContent = titles[route] || '时课';
+  const titles = { home: '问事', ming: '命盘', hehun: '合婚', classics: '典籍', history: '复盘', settings: '设置', case: '问事' };
+  $('#crumb').textContent = titles[route] || '问事';
 }
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', settings.theme);

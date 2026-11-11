@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#F0EEE6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#211F1C" media="(prefers-color-scheme: dark)">
-<meta name="description" content="玄决 · 个人时课决策台 —— 此刻起课，白话断事，盘面可考">
-<title>玄决 · 时课决策台</title>
+<meta name="description" content="玄决 —— 以传统术数为文化视角，帮你梳理问题、记录判断、回看决策的个人工具。排盘与记录都在本机完成，不替你做决定。">
+<title>玄决 · 把问题想清楚，把判断留下来</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7.5' fill='%23C15F3C'/%3E%3Cg fill='none' stroke='%23FBF6F0'%3E%3Ccircle cx='16' cy='16' r='13.6' stroke-width='1.8'/%3E%3Cg stroke-width='1.15'%3E%3Cline x1='16' y1='26.4' x2='16' y2='29.1'/%3E%3Cline x1='21.75' y1='6.04' x2='22.55' y2='4.66'/%3E%3Cline x1='25.96' y1='10.25' x2='27.34' y2='9.45'/%3E%3Cline x1='26.4' y1='16' x2='29.1' y2='16'/%3E%3Cline x1='25.96' y1='21.75' x2='27.34' y2='22.55'/%3E%3Cline x1='21.75' y1='25.96' x2='22.55' y2='27.34'/%3E%3Cline x1='16' y1='26.1' x2='16' y2='29.1'/%3E%3Cline x1='10.25' y1='25.96' x2='9.45' y2='27.34'/%3E%3Cline x1='6.04' y1='21.75' x2='4.66' y2='22.55'/%3E%3Cline x1='5.6' y1='16' x2='2.9' y2='16'/%3E%3Cline x1='6.04' y1='10.25' x2='4.66' y2='9.45'/%3E%3Cline x1='10.25' y1='6.04' x2='9.45' y2='4.66'/%3E%3C/g%3E%3Cg stroke-width='1.9'%3E%3Cline x1='16' y1='5.6' x2='16' y2='2.9'/%3E%3Cline x1='26.4' y1='16' x2='29.1' y2='16'/%3E%3Cline x1='16' y1='26.4' x2='16' y2='29.1'/%3E%3Cline x1='5.6' y1='16' x2='2.9' y2='16'/%3E%3C/g%3E%3Crect x='9.1' y='9.1' width='13.8' height='13.8' rx='1.6' transform='rotate(45 16 16)' stroke-width='1.7'/%3E%3C/g%3E%3Ccircle cx='16' cy='16' r='1.5' fill='%23FBF6F0'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/app.css">
 </head>
@@ -24,17 +24,17 @@
       </button>
     </div>
 
-    <button class="new-btn" id="newAsk" title="新建问事 (⌘K)">
+    <button class="new-btn" id="newAsk" title="记一个问题 (⌘K)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-      <span>新建问事</span>
+      <span>记一个问题</span>
       <kbd>⌘K</kbd>
     </button>
 
     <nav class="nav" id="nav">
       <button class="nav-item active" data-route="home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.5V19h11v-8.5"/></svg>
-        <span>时课</span>
-        <em class="nav-live" title="实时"></em>
+        <span>问事</span>
+        <em class="nav-live" title="此刻天时在走"></em>
       </button>
       <button class="nav-item" data-route="ming">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="3.4"/><path d="M12 3.8v2.6M12 17.6v2.6M3.8 12h2.6M17.6 12h2.6M6.2 6.2l1.9 1.9M15.9 15.9l1.9 1.9M17.8 6.2l-1.9 1.9M8.1 15.9l-1.9 1.9"/></svg>
@@ -50,7 +50,7 @@
       </button>
       <button class="nav-item" data-route="history">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.7 1.6"/></svg>
-        <span>问事录</span>
+        <span>复盘</span>
       </button>
       <button class="nav-item" data-route="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.7"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18"/></svg>
@@ -69,7 +69,7 @@
         <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 14.6A8 8 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6z"/></svg>
         <span id="themeLabel">深色模式</span>
       </button>
-      <p class="rail-note">排盘与数据均在本机完成</p>
+      <p class="rail-note">排盘与记录均在本机完成<br>不预测，不替你做决定</p>
     </div>
   </aside>
 
@@ -147,7 +147,7 @@
       <button class="rail-open" id="railOpen" aria-label="展开侧栏">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-      <div class="crumb" id="crumb">时课</div>
+      <div class="crumb" id="crumb">问事</div>
       <div class="clock"><span class="clock-dot"></span><span id="clock">--:--</span></div>
     </header>
 
@@ -177,6 +177,7 @@
 <script src="js/engines/shushu.js"></script>
 <script src="js/engines/hehun.js"></script>
 <script src="js/engines/classics.js"></script>
+<script src="js/decision.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/ui.js"></script>
 </body>

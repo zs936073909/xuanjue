@@ -214,7 +214,7 @@ input,textarea,select{font-family:inherit;color:inherit}
 .now-meta{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:30px}
 .now-gz{font-family:var(--serif);font-size:23px;letter-spacing:.1em;margin-bottom:14px}
 .now-gz .sep{color:var(--ink-3);margin:0 7px;font-weight:400}
-.now-cols{display:flex;flex-wrap:wrap;gap-x:34px;gap-y:10px;font-size:13px}
+.now-cols{display:flex;flex-wrap:wrap;gap:10px 34px;font-size:13px}
 .now-cols .nc{display:flex;gap:8px;align-items:baseline}
 .now-cols .k{color:var(--ink-3);font-size:12px;flex-shrink:0}
 .now-cols .v{color:var(--ink)}
@@ -340,10 +340,11 @@ input,textarea,select{font-family:inherit;color:inherit}
 .case-meta{display:flex;flex-wrap:wrap;gap:7px 18px;font-size:12.5px;color:var(--ink-3)}
 .case-meta b{color:var(--ink-2);font-weight:600}
 .review-banner{
-  display:flex;align-items:center;gap:12px;
+  display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;
   background:var(--jade-soft);border:1px solid color-mix(in srgb,var(--jade) 25%,transparent);
   border-radius:12px;padding:12px 16px;font-size:13px;color:var(--jade);margin-bottom:24px;
 }
+.review-banner .rb-note{width:100%}
 
 /* ================= 右栏盘面 ================= */
 .board-h{display:flex;align-items:center;gap:10px;margin-bottom:20px}
@@ -1445,7 +1446,7 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
   .board-inner{width:100%;height:100dvh;padding:18px 16px 64px}
 
   /* 宽表 / 多列在窄屏一律退为单列 */
-  .now-cols{gap-x:22px;gap-y:8px}
+  .now-cols{gap:8px 22px}
   .bazi-pillars{gap:6px}
   .bp{padding:9px 4px 7px}
   .bp-gan{font-size:25px}
@@ -1561,3 +1562,180 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
 /* 右栏盘面：内容如卷面展开 */
 .board-inner.in{animation:boardUnfurl .42s var(--ease)}
 @keyframes boardUnfurl{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   立意改版 · 问事闭环与三层结果
+   视觉分工：事实用方格（可核对）/ 传统解释用正文（叙述）/ 反思用留白（不逼答）。
+   强调色只留给"该你自己动"的地方，盘面本身不抢主位。
+   ============================================================ */
+
+/* ---------- 首页主线 ---------- */
+.home-h1{font-family:var(--serif);font-size:30px;line-height:1.35;font-weight:600;letter-spacing:.01em;margin:6px 0 10px}
+.home-sub{font-size:14px;color:var(--ink-2);line-height:1.8;max-width:34em;margin-bottom:22px}
+.home-sub b{color:var(--clay);font-weight:600}
+.reading-inner[data-view="home"] .ask-box{margin-top:0}
+.stance-note{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-3);line-height:1.8}
+
+/* 到期复盘：只提醒"该看了"，不暗示"算准了" */
+.due-banner{display:flex;align-items:center;gap:13px;width:100%;text-align:left;
+  padding:13px 16px;margin-bottom:16px;border-radius:14px;
+  background:linear-gradient(145deg,rgba(169,129,59,.12),rgba(190,94,59,.06));
+  border:1px solid rgba(169,129,59,.32);
+  transition:transform .18s var(--ease),box-shadow .2s}
+.due-banner:hover{transform:translateY(-1px);box-shadow:var(--sh-1)}
+.due-n{font-family:var(--serif);font-size:26px;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+.due-t{flex:1;font-size:13.5px;color:var(--ink);line-height:1.5}
+.due-t i{display:block;font-style:normal;font-size:12px;color:var(--ink-3);margin-top:2px}
+.due-arrow{color:var(--gold);font-size:16px}
+
+/* ---------- 问题卡（渐进披露） ---------- */
+.card-toggle{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+  font-size:12.5px;color:var(--ink-2);border:1px dashed var(--line-2);background:none;transition:all .15s}
+.card-toggle svg{width:14px;height:14px}
+.card-toggle:hover{border-color:var(--clay-line);color:var(--clay)}
+.card-toggle.on{border-style:solid;border-color:var(--clay-line);background:var(--clay-soft);color:var(--clay)}
+.qcard{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);animation:rise .3s var(--ease) both}
+.qc-row{display:grid;grid-template-columns:118px 1fr;align-items:center;gap:10px;margin-bottom:8px}
+.qc-row>span{font-size:12.5px;color:var(--ink-3)}
+.qc-row input{width:100%;min-width:0;border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+  font-size:13.5px;background:var(--card-2);outline:none;transition:border-color .15s,background .15s}
+.qc-row input:focus{border-color:var(--clay-line);background:var(--card)}
+.qc-note{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.ask-tip{margin-top:10px}
+.tip-major{display:flex;gap:8px;font-size:12.5px;line-height:1.7;color:var(--ink-2);
+  background:var(--cinnabar-soft);border-radius:10px;padding:9px 12px;margin-top:8px}
+.tip-major b{flex-shrink:0;color:var(--cinnabar);font-weight:700}
+.tip-rewrite{font-size:12.5px;color:var(--gold);margin-top:8px;line-height:1.7}
+
+/* ---------- 此刻天时（降为背景） ---------- */
+.now-sec{margin-top:48px;padding-top:26px;border-top:1px solid var(--line)}
+.now-head{display:flex;align-items:baseline;gap:10px;margin-bottom:16px}
+.now-head h3{font-family:var(--serif);font-size:17px;font-weight:600}
+.now-head span{font-size:12px;color:var(--ink-3)}
+
+/* ---------- 三层结果 ---------- */
+.layer{margin-top:26px;padding:20px 22px;border-radius:16px;background:var(--card);
+  border:1px solid var(--line);box-shadow:var(--sh-1)}
+.layer-h{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+.layer-n{flex-shrink:0;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  font-family:var(--serif);font-size:12.5px;color:var(--clay);
+  background:var(--clay-soft);border:1px solid var(--clay-line)}
+.layer-h h3{font-family:var(--serif);font-size:16.5px;font-weight:600;line-height:1.3}
+.layer-h div>span{font-size:12px;color:var(--ink-3)}
+.layer-note{font-size:11.5px;color:var(--ink-3);line-height:1.7;margin-top:10px}
+.link-btn{font-size:12.5px;color:var(--clay);text-decoration:none;background:none;padding:0;border:none;cursor:pointer;font-family:inherit}
+.link-btn:hover{text-decoration:underline}
+
+/* 一 · 事实：方格，像一张可逐项核对的表 */
+.fact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}
+.fact{background:var(--card-2);border:1px solid var(--line);border-radius:9px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.fact dt{font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+.fact dd{font-size:14px;color:var(--ink);line-height:1.5;word-break:break-word}
+
+/* 二 · 传统解释：正文叙述 + 依据 chips */
+.rule-line{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:12px;color:var(--ink-3);padding-bottom:14px;margin-bottom:6px;border-bottom:1px dashed var(--line)}
+.layer-trad .reading-head{margin-top:14px}
+.layer-trad .verdict{font-size:20px;margin-bottom:18px}
+.src-block{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+.src-h{font-size:11.5px;letter-spacing:.1em;color:var(--ink-3);margin-bottom:9px}
+.src-row{display:flex;flex-wrap:wrap;gap:6px}
+.src-chip{font-size:11.5px;color:var(--ink-2);background:var(--card-2);border:1px solid var(--line);
+  border-radius:6px;padding:3px 9px;line-height:1.5}
+
+/* 三 · 反思：留白，不逼你回答 */
+.layer-reflect{background:linear-gradient(145deg,var(--card),var(--card-2))}
+.rf-list{display:flex;flex-direction:column;gap:10px}
+.rf-item{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;
+  background:var(--card);border:1px solid var(--line)}
+.rf-item>span{font-size:11.5px;color:var(--ink-3)}
+.rf-item>b{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.6}
+.rf-item.major{border-color:rgba(169,129,59,.4);background:rgba(169,129,59,.07)}
+.rf-q{font-size:13.5px;color:var(--ink-2);line-height:1.75;padding-left:16px;position:relative}
+.rf-q::before{content:"";position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:var(--clay-line)}
+
+/* 问题卡视图 / 编辑 */
+.layer-card-empty{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;
+  padding:11px 14px;border:1px dashed var(--line-2);border-radius:12px;font-size:12px;color:var(--ink-3)}
+.qc-view{display:flex;flex-direction:column}
+.qc-v{display:grid;grid-template-columns:132px 1fr;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.qc-v:last-child{border-bottom:none}
+.qc-v>span{font-size:12px;color:var(--ink-3)}
+.qc-v>b{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.6}
+.qc-edit .qc-row{grid-template-columns:1fr;gap:4px;align-items:start;margin-bottom:12px}
+.qc-edit .qc-row>span{font-size:12px}
+
+/* 判断与行动 */
+.plan-form{display:flex;flex-direction:column;gap:12px}
+.plan-form label{display:flex;flex-direction:column;gap:5px}
+.plan-form label>span{font-size:12px;color:var(--ink-3)}
+.plan-form textarea,.plan-form input{width:100%;border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;font-size:13.5px;line-height:1.6;background:var(--card-2);outline:none;
+  resize:vertical;transition:border-color .15s,background .15s;font-family:inherit;color:inherit}
+.plan-form textarea:focus,.plan-form input:focus{border-color:var(--clay-line);background:var(--card)}
+.plan-form .btn{align-self:flex-start}
+
+/* 案例头 */
+.case-major{display:flex;gap:8px;font-size:12.5px;line-height:1.7;color:var(--ink-2);
+  background:var(--cinnabar-soft);border-radius:12px;padding:11px 14px;margin:-8px 0 18px}
+.case-major b{flex-shrink:0;color:var(--cinnabar);font-weight:700}
+.case-meta .st-done{color:var(--jade)}
+.case-meta .st-wait{color:var(--ink-3)}
+.case-meta .st-due{color:var(--gold)}
+.case-meta .st-late{color:var(--cinnabar)}
+.review-banner.due{background:rgba(169,129,59,.1);border:1px solid rgba(169,129,59,.28);color:var(--ink-2)}
+.rb-note{color:var(--ink-2);font-size:12.5px}
+
+/* 复盘页 */
+.page-h2{font-family:var(--serif);font-size:26px;font-weight:600;margin-bottom:8px}
+.page-sub{font-size:13px;color:var(--ink-3);line-height:1.75;max-width:40em;margin-bottom:24px}
+.stat-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.stat{padding:14px 10px;border-radius:13px;background:var(--card);border:1px solid var(--line);text-align:center}
+.stat b{display:block;font-family:var(--serif);font-size:24px;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat span{font-size:11.5px;color:var(--ink-3)}
+.stat.alert{border-color:rgba(169,129,59,.4);background:rgba(169,129,59,.07)}
+.stat.alert b{color:var(--gold)}
+.hist-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.hist-tools span{font-size:12px;color:var(--ink-3)}
+.hist-group{margin-bottom:26px}
+.hist-group-h{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.hist-group-h h3{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink-2)}
+.hist-group-h span{font-size:11.5px;color:var(--ink-3)}
+.hist-m .m-ok{color:var(--jade)}
+.hist-m .m-warn{color:var(--gold)}
+.review-dot.wait{background:var(--line-2)}
+.review-dot.late{background:var(--cinnabar)}
+
+/* 复盘弹窗 */
+.rv-block{margin-bottom:14px}
+.rv-block label{display:block;font-size:12px;color:var(--ink-3);margin-bottom:5px}
+.rv-block select,.rv-block textarea{width:100%;border:1px solid var(--line-2);border-radius:10px;
+  padding:9px 12px;font-size:13.5px;background:var(--card-2);outline:none;font-family:inherit;color:inherit}
+.rv-block textarea{resize:vertical;line-height:1.6}
+
+/* 合婚：分值降为小号参考值 */
+.hh-score-sm{font-family:var(--serif);font-size:15px;color:var(--ink-2);font-weight:600}
+
+@media(max-width:900px){
+  .home-h1{font-size:24px}
+  .layer{padding:16px 15px;border-radius:14px}
+  .fact-grid{grid-template-columns:minmax(0,1fr)}
+  .qc-row{grid-template-columns:1fr;gap:4px;align-items:start}
+  .qc-v{grid-template-columns:minmax(0,1fr);gap:2px}
+  .stat-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ask-box textarea{font-size:16px}
+  .qc-row input,.plan-form textarea,.plan-form input,.rv-block select,.rv-block textarea{font-size:16px}
+
+  /* 起课区改为纵向三段：问题卡开关 / 类型 chips 整行铺开 / 起课按钮通栏（拇指好按） */
+  .ask-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:9px}
+  .card-toggle{justify-self:start}
+  .q-chips{flex:none}
+  .ask-send{width:100%;justify-content:center;padding:11px 18px;min-height:44px}
+  .chip{padding:6px 11px}
+  .ask-hint{flex-wrap:wrap;gap:8px 12px}
+}
+@media(max-width:480px){
+  .due-banner{padding:11px 12px;gap:10px}
+  .due-n{font-size:22px}
+}
