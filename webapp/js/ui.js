@@ -324,7 +324,9 @@ function readingBlock(name, comp) {
   }
   const p = comp.plain;
   const t = tendOf(p.tendency);
+  // 「倾向」二字是定语，不是判决：这是这套体系的说法，不是对现实的判定
   let h = '<div class="reading-head"><span class="method-title">' + esc(name) + '</span>' +
+    '<span class="tend-k">传统倾向</span>' +
     '<span class="tend ' + t.cls + '">' + esc(t.txt) + '</span></div>';
   h += '<p class="verdict">' + esc(p.state) + '</p>';
   h += '<div class="acts">' +
@@ -1562,7 +1564,7 @@ function renderHehunForm() {
   let h = '<div class="reading-inner" data-view="hehun">';
   h += '<div class="kicker">合婚合盘 · 双人命盘 × 实时盘</div>';
   h += '<h2 class="hh-title">两个人的合盘</h2>';
-  h += '<p class="hh-intro">填双方出生信息，选一个起盘时间与实时法门。先用八字 + 紫微做七维规则评分，再由 AI 结合当下盘面写关系分析与建议。</p>';
+  h += '<p class="hh-intro">填双方出生信息，选一个起盘时间与实时法门。先用八字 + 紫微做七维规则参考，再由 AI 结合当下盘面写关系分析与建议——分值只是加权结果，不是对关系的判定。</p>';
   h += '<div class="hh-people">' + hhPersonCard('A', '甲方（我）', hh.a) + hhPersonCard('B', '乙方（对方）', hh.b) +
     '<datalist id="hhCityList"></datalist></div>';
   h += '<div class="m-panel"><h3>起盘时间与实时法门<span class="sub">看当下时机，不替代长期基础</span></h3>' +

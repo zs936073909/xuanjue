@@ -228,6 +228,7 @@ input,textarea,select{font-family:inherit;color:inherit}
 /* 断语主体 */
 .reading-head{display:flex;align-items:center;gap:14px;margin-bottom:18px}
 .method-title{font-family:var(--serif);font-size:15px;color:var(--ink-3);letter-spacing:.04em}
+.tend-k{font-size:11px;color:var(--ink-3);letter-spacing:.06em;margin-left:2px}
 .tend{font-size:12.5px;padding:3px 13px;border-radius:999px;font-weight:600;white-space:nowrap}
 .tend.good{background:var(--jade-soft);color:var(--jade)}
 .tend.warn{background:var(--cinnabar-soft);color:var(--cinnabar)}
@@ -1720,7 +1721,9 @@ html.boot .amb-compass{animation:bootCompass .92s cubic-bezier(.22,1,.36,1) 1.04
 @media(max-width:900px){
   .home-h1{font-size:24px}
   .layer{padding:16px 15px;border-radius:14px}
-  .fact-grid{grid-template-columns:minmax(0,1fr)}
+  .fact-grid{grid-template-columns:minmax(0,1fr);gap:6px}
+  .fact{padding:8px 11px}
+  .layer-trad .verdict{font-size:18px;line-height:1.65}
   .qc-row{grid-template-columns:1fr;gap:4px;align-items:start}
   .qc-v{grid-template-columns:minmax(0,1fr);gap:2px}
   .stat-row{grid-template-columns:repeat(2,minmax(0,1fr))}
