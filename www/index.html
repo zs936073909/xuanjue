@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="description" content="玄决 · 大六壬个人时课决策台：此刻起课、白话断事、盘面可考，支持八字、六爻、梅花、奇门、塔罗与紫微多术数参考。">
+<meta name="description" content="玄决 —— 以传统术数为文化视角，帮你梳理问题、记录判断、回看决策的个人工具。不预测，不替你做决定。">
 <meta name="theme-color" content="#1F1E1D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>玄决 · 大六壬决策台</title>
+<title>玄决 · 把问题想清楚，把判断留下来</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -22,14 +22,15 @@
   <div id="screen-disclaimer" class="screen">
     <div class="splash">
       <div class="splash-title">玄决</div>
-      <div class="splash-sub">大六壬决策台 · 个人时课助手</div>
+      <div class="splash-sub">传统术数视角的个人梳理工具</div>
     </div>
     <div class="card disclaimer-card">
       <h3>使用须知与免责声明</h3>
       <div class="disclaimer-text">
-        <p>本应用仅供个人文化研究、娱乐参考与自我探索，不构成医疗、法律、投资、婚姻、职业等重大决策依据。</p>
-        <p>术数为参考工具，非确定性预测。应用不做必然性预测、不做恐吓式结论、不做改命消灾化解类营销、不诱导消费。</p>
-        <p>所有数据默认保存在本机，可一键导出与清除，不上传服务器。</p>
+        <p>本工具以传统术数为文化视角，用于自我梳理与记录：帮你把问题说清、留下自己的判断、到期回来看。</p>
+        <p>它不预测现实，也不替你做决定。盘面事实、传统解释与反思提示分层呈现，传统说法不等于对现实的判定。</p>
+        <p>不构成医疗、法律、投资等专业建议。涉及重大事项，请以可核实的现实信息与专业人士意见为准。</p>
+        <p>所有数据默认保存在本机，可导出与清除，不上传服务器。</p>
       </div>
       <label class="check-line"><input type="checkbox" id="agreeCheck"> 我已阅读并同意上述声明</label>
       <button class="btn primary block" id="btnEnter" disabled>进入应用</button>
@@ -42,8 +43,8 @@
   <main id="main" class="hidden">
     <div id="page-container"></div>
     <nav class="tabbar" aria-label="主导航">
-      <div class="tab" data-tab="home" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">⌂</div><div class="tab-txt">首页</div></div>
-      <div class="tab" data-tab="ask" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">问</div><div class="tab-txt">问事</div></div>
+      <div class="tab" data-tab="home" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">问</div><div class="tab-txt">问事</div></div>
+      <div class="tab" data-tab="ask" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">◷</div><div class="tab-txt">复盘</div></div>
       <div class="tab" data-tab="classics" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">书</div><div class="tab-txt">典籍</div></div>
       <div class="tab" data-tab="me" role="button" tabindex="0"><div class="tab-ico" aria-hidden="true">◐</div><div class="tab-txt">我的</div></div>
     </nav>
@@ -64,6 +65,8 @@
 <script defer src="js/hehun.js"></script>
 <script defer src="js/shushu.js"></script>
 <script defer src="js/store.js"></script>
+<!-- 问事档案数据层：v1→v2 迁移、到期判定、本机统计、导出（无 DOM，可单测） -->
+<script defer src="js/decision.js"></script>
 <!-- 云同步须在 Store 之后加载（localPayload/mergeIntoLocal 依赖 Store），app.js 之前 -->
 <script defer src="js/cloud.js"></script>
 <script defer src="js/ai.js"></script>

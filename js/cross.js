@@ -63,7 +63,7 @@
   function analyze(mainName, results){
     results=results||{};
     const names=Object.keys(results);
-    const disclaimer='以上交叉摘要为多术数规则化参考，不构成确定性预测。重大决策请结合实际情况判断。';
+    const disclaimer='以上为多术数的并列对照，依据各不相同，不互相验证，也不构成对现实的预测。请结合实际信息判断。';
 
     if(!names.length){
       return {consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,disclaimer};

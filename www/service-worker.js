@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   './js/cloud.js',
   './js/cross.js',
   './js/daliuren.js',
+  './js/decision.js',
   './js/hehun.js',
   './js/huangli.js',
   './js/iztro.min.js',

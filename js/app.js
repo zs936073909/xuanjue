@@ -329,8 +329,8 @@
       t.onclick=()=>{
         press(false);
         haptic(8);
-        // 点击「问事」Tab 视为发起新问事；之前未保存的草稿会被清空
-        if(t.dataset.tab==='ask'){state.ask=null;}
+        // 点到「问事」Tab 等于回首页重新开始；未保存的草稿自然失效
+        if(t.dataset.tab==='home'){state.ask=null;}
         // 切换 Tab 时清空子页面状态（如复盘统计页），回到案例列表
         state.subPage='';
         // 切换顶级 Tab 时清空返回栈（子屏历史不再适用）
@@ -647,8 +647,10 @@
     if(state.tab==='home'&&state.subPage==='feixing')c.innerHTML=pageFeixing();
     else if(state.tab==='home'&&state.subPage==='voice')c.innerHTML=pageVoice();
     else if(state.tab==='home'&&state.subPage==='hehun')c.innerHTML=pageHehun();
+    else if(state.tab==='home'&&state.subPage==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
     else if(state.tab==='home')c.innerHTML=pageHome();
-    else if(state.tab==='ask'){state.ask=state.ask||newAsk();c.innerHTML=pageAsk();}
+    // 复盘 Tab：直接进档案列表（问事向导改为问事页的子页，不再占一级 Tab）
+    else if(state.tab==='ask')c.innerHTML=pageCaseList();
     else if(state.tab==='classics')c.innerHTML=pageClassics();
     else if(state.tab==='me')c.innerHTML=pageMe();
     bindTab();
@@ -664,8 +666,9 @@
     if(state.tab==='home'&&state.subPage==='feixing')bindFeixing();
     else if(state.tab==='home'&&state.subPage==='voice')bindVoice();
     else if(state.tab==='home'&&state.subPage==='hehun')bindHehun();
+    else if(state.tab==='home'&&state.subPage==='ask')bindAsk();
     else if(state.tab==='home')bindHome();
-    else if(state.tab==='ask')bindAsk();
+    else if(state.tab==='ask')bindCaseList();
     else if(state.tab==='classics')bindClassics();
     else if(state.tab==='me')bindMe();
   }
@@ -758,11 +761,39 @@
 
     let h='';
     // ===== iOS 大标题导航 =====
-    h+=`<div class="phead ios-head"><div><div class="ptitle">玄<em>决</em></div><div class="psub">大六壬决策台</div></div><div class="ih-time"><div class="ih-date">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} · 周${weekCN}</div><div class="ih-clock" id="homeClock">${pad(now.getHours())}:${pad(now.getMinutes())}</div><div class="ih-note">时课 · 实时</div></div></div>`;
+    h+=`<div class="phead ios-head"><div><div class="ptitle">玄<em>决</em></div><div class="psub">传统术数视角的个人梳理工具</div></div><div class="ih-time"><div class="ih-date">${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} · 周${weekCN}</div><div class="ih-clock" id="homeClock">${pad(now.getHours())}:${pad(now.getMinutes())}</div><div class="ih-note">不预测 · 不替你做决定</div></div></div>`;
+
+    // ===== 主行动：问事 =====
+    // 首页第一屏只做一件事：把处境写下来。此刻天时降到下面当背景。
+    const dueCasesHome=cases.filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
+    h+=`<div class="card home-ask rv d1" id="homeAskCard">`;
+    h+=`<div class="ha-kicker">此刻 · 问事</div>`;
+    h+=`<h2 class="ha-title">现在要拿的主意，是什么？</h2>`;
+    h+=`<p class="ha-sub">写下来，先看清选项与期限；起一课，得到一个有出处的传统视角；然后留下你自己的判断，过些天回来对照。</p>`;
+    if(dueCasesHome.length){
+      h+=`<button class="ha-due" id="btnHaDue"><span class="ha-due-n">${dueCasesHome.length}</span><span class="ha-due-t">条问事到了复盘的时候<i>不是查准不准，是看你当时怎么想的</i></span><span class="ha-due-a">→</span></button>`;
+    }
+    h+=`<textarea id="homeAskInput" rows="2" placeholder="一句话说清处境：这个 offer 要不要接，月底前要给答复…"></textarea>`;
+    h+=`<div class="ha-tip hidden" id="haTip"></div>`;
+    h+=`<div class="ha-card hidden" id="haCard">`;
+    h+=`<div class="ha-card-h">帮我想清楚 <span>可选，只存在本机</span></div>`;
+    h+=`<label class="ha-row"><span>在什么之间选择</span><input type="text" data-ha="choice" placeholder="例如：接 offer A / 留在现公司"></label>`;
+    h+=`<label class="ha-row"><span>什么时候要定</span><input type="text" data-ha="deadline" placeholder="例如：本月底前要给答复"></label>`;
+    h+=`<label class="ha-row"><span>你能控制的部分</span><input type="text" data-ha="control" placeholder="例如：准备材料、约人聊一次"></label>`;
+    h+=`<label class="ha-row"><span>现在最担心什么</span><input type="text" data-ha="worry" placeholder="例如：去了不适应"></label>`;
+    h+=`<label class="ha-row"><span>还有哪些没核实</span><input type="text" data-ha="unchecked" placeholder="例如：对方团队稳定性、薪资结构"></label>`;
+    h+=`</div>`;
+    h+=`<div class="ha-bar">`;
+    h+=`<button class="btn ghost sm" id="btnHaCard" aria-expanded="false">＋ 问题卡</button>`;
+    h+=`<button class="btn-link" id="btnAskMore" type="button">细问 · 选时间换法门</button>`;
+    h+=`<button class="btn primary" id="btnHaGo" type="button">起课</button>`;
+    h+=`</div>`;
+    h+=`</div>`;
 
     // ===== 「此刻」黑金音板：干支/农历/时辰/节气/值神/宜忌 一体化 =====
+    h+=`<div class="home-sec-head"><h3>此刻天时</h3><span>背景参考 · 不针对你的问题</span></div>`;
     h+=`<div class="now-card rv d1" id="nowCard">`;
-    h+=`<div class="now-gz"><span class="stem">${bz.year.gz}</span>·<span class="stem">${bz.month.gz}</span>·<span class="stem">${bz.day.gz}</span><span class="stem">${bz.hour.gz}</span></div>`;
+    h+=`<div class="now-gz"><span class="stem">${bz.year.gz}</span><span class="stem">${bz.month.gz}</span><span class="stem">${bz.day.gz}</span><span class="stem">${bz.hour.gz}</span></div>`;
     h+=`<div class="now-grid">`;
     h+=`<div class="now-cell"><span class="k">农历</span><b>${lunarText}</b></div>`;
     h+=`<div class="now-cell"><span class="k">时辰</span><b>${sc.name} ${sc.range}</b></div>`;
@@ -772,100 +803,28 @@
     h+=`<div class="now-yiji"><div class="yj-row"><span class="yj-t yi">宜</span><div class="yj-tags">${hl.yi.slice(0,5).map(y=>`<span>${y}</span>`).join('')}</div></div><div class="yj-row"><span class="yj-t ji">忌</span><div class="yj-tags">${hl.ji.slice(0,5).map(j=>`<span>${j}</span>`).join('')}</div></div></div>`;
     h+=`</div>`;
 
-    // ===== 待复盘直达：到期未复盘的案例置顶，一键跳到复盘表单 =====
-    // 形成「问事 → 复盘」的闭环：用户从首页即可继续上次未完成的事
-    const dueCases=cases.filter(c=>!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue);
-    if(dueCases.length){
-      const d0=dueCases[0];
-      h+='<div class="card review-due-card" id="reviewDueCard">'
-        +'<div class="rd-head"><span class="rd-tag">待复盘</span>'
-        +'<span class="rd-num">'+dueCases.length+' 条到期</span></div>'
-        +'<div class="rd-title">'+esc(d0.title)+'</div>'
-        +'<div class="rd-sub">'+esc(d0.questionType)+' · 起课于 '+fmtDate(new Date(d0.createdAt))+' · 复盘期至 '+fmtDate(new Date(d0.reviewDue))+'</div>'
-        +'<div class="rd-acts">'
-        +'<button class="btn primary sm" id="btnDueReviewNow">立即复盘</button>'
-        +'<button class="btn ghost sm" id="btnDueViewCase">查看案例</button>'
-        +(dueCases.length>1?'<button class="btn ghost sm" id="btnDueMoreRest">其余 '+(dueCases.length-1)+' 条 ›</button>':'')
-        +'</div></div>';
-    }
-
-    // ===== 此刻大六壬时课 =====
+    // ===== 此刻大六壬时课（背景参考，不是给你的答案） =====
     h+=`<div class="card now-ke rv d3">`;
-    h+=`<div class="nk-top"><span class="nk-tag">此刻大六壬</span></div>`;
+    h+=`<div class="nk-top"><span class="nk-tag">此刻大六壬 · 传统倾向</span></div>`;
     h+=`<div class="nk-tend">${p.tendency}</div>`;
     h+=`<div class="nk-line">${p.state}</div>`;
     h+=`<div class="nk-acts"><div class="lab do"><span class="lk">宜</span><span class="lv">${p.doAct.slice(0,2).join(' / ')}</span></div><div class="lab dont"><span class="lk">忌</span><span class="lv">${p.dontAct.slice(0,2).join(' / ')}</span></div></div>`;
     h+=`<div class="shike-cmd nk-cmd"><button class="btn primary block" id="btnViewBoard">查看完整盘面 ›</button></div>`;
     h+=`</div>`;
 
-    // ===== 快签：一句话即刻起课（大六壬 · 当下时课）=====
-    // 首页最短路径：选方向或写一句话，直接出主张，省去逐项填写。
-    h+=`<div class="card quick-sign">`;
-    h+=`<h3>快签 <span class="h-sub">一句话即刻起课</span><span class="rt-live">● 即时</span></h3>`;
-    h+=`<div class="section-note">选一个方向，以此刻时课即时起课并给出主张，无需逐项填写。</div>`;
-    h+=`<div class="qs-chips">`;
-    QUICK_TOPICS.forEach(t=>{h+=`<button class="qs-chip" type="button" data-quick="${escAttr(t)}">${esc(t)}</button>`;});
-    h+=`</div>`;
-    h+=`<div class="qs-custom"><input type="text" id="qsInput" placeholder="或写一句：这份 offer 要不要接" maxlength="40"><button class="btn primary sm" id="qsGo" type="button">起课</button></div>`;
-    h+=`</div>`;
-
-    // ===== 实时起课 · 同刻多法门对比 =====
-    // 大六壬复用上方「此刻大六壬」同一计算结果，保证同刻对比一致
-    state.rtBaseDate=comp.ke.date;
-    const rtResults={};
-    ['大六壬','六爻','梅花易数','小六壬','塔罗','奇门遁甲'].forEach(name=>{
-      const r=computeRtItem(name,comp);
-      if(r)rtResults[name]=r;
-    });
-    state.rtResults=rtResults;
-    h+=`<div class="card rt-methods">`;
-    h+=`<h3>实时起课 <span class="h-sub">同刻多法门对比</span><span class="rt-live">● 此刻</span></h3>`;
-    h+=`<div class="rt-grid">`;
-    Object.keys(rtResults).forEach(name=>{
-      const r=rtResults[name];
-      const v=rtView(r);
-      h+=`<button class="rt-item" type="button" data-rt="${escAttr(name)}">`;
-      h+=`<div class="rt-top"><span class="rt-name">${esc(name)}</span><span class="tend-tag ${v.tendCls}">${v.tend}</span></div>`;
-      h+=`<div class="rt-line">${esc(String(v.stateTxt).slice(0,42))}</div>`;
-      h+=`</button>`;
-    });
-    h+=`</div>`;
-    h+=`<div class="section-note mt8">同一时刻，各法门独立起盘，可横向对比其倾向与建议。点击任意法门查看完整盘面。</div>`;
-    h+=`</div>`;
-
-    // ===== 实时决策顾问（此刻时课问对）=====
-    // 入口卡：主按钮开默认议题对话，快捷 chip 直达六大预设议题
-    // 复用底部抽屉 renderAIChat，threadId 按「月+议题」生成（见 realtimeThreadId）
+    // ===== 此刻问对：解释这一课，不给结论 =====
     const rtTopics=AI.getRealtimeTopics();
     const rtQuick=Object.keys(rtTopics).map(k=>({key:k,label:k}));
     h+=`<div class="card rt-advisor">`;
-    h+=`<h3>实时决策顾问 <span class="h-sub">此刻时课问对</span><span class="rt-live">● 在线</span></h3>`;
-    h+=`<div class="ra-line">以「${p.tendency}」这一课为据，问现在该不该做、选哪个、何时做。</div>`;
+    h+=`<h3>此刻问对 <span class="h-sub">解释术语与依据</span><span class="rt-live">● 在线</span></h3>`;
+    h+=`<div class="ra-line">这一课的传统说法是「${p.tendency}」。你可以问它是什么意思、依据是什么、接下来该核实什么——它不替你下判断。</div>`;
     h+=`<div class="ra-acts"><button class="btn primary block" id="btnRtAsk">问这一课 ›</button></div>`;
     h+=`<div class="adv-quick">`;
     rtQuick.forEach(t=>{
       h+=`<button class="qchip" type="button" data-adv="${escAttr(t.key)}">${esc(t.label)}</button>`;
     });
     h+=`</div>`;
-    h+=`<div class="section-note">AI 内容由云端模型生成，卦象为短期参考（数日至数周），不构成医疗、法律、投资建议。</div>`;
-    h+=`</div>`;
-
-    // ===== 流年飞星 =====
-    const fxCenter=FX_STARS[fxMap(state.fxYear)['中']];
-    h+=`<div class="card">`;
-    h+=`<h3>流年飞星 <span class="h-sub">九宫方位</span></h3>`;
-    h+=`<div class="fx-home">`;
-    h+=`<div class="fx-mini" id="fxMini"></div>`;
-    h+=`<div class="fx-info"><div class="fi-t">${state.fxYear} ${fxYearGanzhi(state.fxYear)}年</div><div class="fi-d">${fxCenter.luck==='吉'?'吉':(fxCenter.luck==='凶'?'凶':'平')}星「${fxCenter.name}」入中宫${fxCenter.luck==='吉'?'，主文思与贵人':fxCenter.luck==='凶'?'，宜静不宜动':''}。查看全年方位吉凶与宜忌布局。</div><button class="btn ghost sm" id="btnFeixing">查看飞星方位 ›</button></div>`;
-    h+=`</div>`;
-    h+=`</div>`;
-
-    // ===== 语音房（静态壳预留，无任何通信依赖） =====
-    h+=`<div class="card">`;
-    h+=`<h3>语音房 <span class="h-sub">同盘共议 · 预留</span></h3>`;
-    h+=`<div class="fx-home">`;
-    h+=`<div class="fx-info"><div class="fi-t">多人语音讨论同一盘面</div><div class="fi-d">功能规划中：当前为静态壳预留，不接入实时通信与后端，所有数据仍仅存本机。</div><button class="btn ghost sm" id="btnVoice">查看语音房 ›</button></div>`;
-    h+=`</div>`;
+    h+=`<div class="section-note">AI 由云端模型生成，只做术语解释与追问整理，不给结论；不构成医疗、法律、投资建议。</div>`;
     h+=`</div>`;
 
     // ===== 我的命盘（八字 / 紫微 / 今日宜忌）=====
@@ -876,7 +835,7 @@
       h+=`<div class="hp-status">${esc(profile.nick||'我的命盘')} · ${profile.gender||'—'} · ${bDate}</div>`;
       h+=`<div class="hp-actions"><button class="btn" id="btnHomeBaZi">八字排盘</button><button class="btn" id="btnHomeZiWei">紫微斗数</button></div>`;
     }else{
-      h+=`<div class="hp-status">填写出生日期后，可排八字 / 紫微命盘，并由玄顾问趋吉避凶。</div>`;
+      h+=`<div class="hp-status">填写出生日期后，可排八字 / 紫微命盘，用传统框架做自我觉察。</div>`;
       h+=`<div class="hp-actions"><button class="btn primary" id="btnEditProfile">填写出生信息</button></div>`;
     }
     h+=`<div class="hp-lite">今日宜忌<span class="pb2"><button id="btnGenDailyYiJi">生成 ›</button></span><span class="pb2"><button id="btnDailyYiJiAsk" class="hidden">追问 ›</button></span></div>`;
@@ -890,22 +849,65 @@
     h+=`<div class="hp-actions"><button class="btn primary" id="btnHehun">开始合婚分析 ›</button></div>`;
     h+=`</div>`;
 
-    // ===== 最近案例 =====
-    h+=`<div class="card"><h3>最近案例</h3>`;
+    // ===== 最近问事 =====
+    h+=`<div class="card"><h3>最近问事<span class="h-sub"><button class="btn-link" id="btnGoArchive" type="button">全部 ›</button></span></h3>`;
     if(recent.length){recent.forEach(c=>{
+      const ds=window.XD?XD.dueState(c):{state:c.reviewed?'done':'wait',label:c.reviewed?'已复盘':'待复盘'};
       h+='<div class="recent-item" data-case="'+escAttr(c.id)+'" data-review="'+(c.reviewed?'1':'0')+'">'
         +'<div class="ri-main">'
         +'<div class="ri-t">'+esc(c.title)+'</div>'
         +'<div class="ri-m">'+esc(c.questionType)+' · '+esc(c.shushu)+' · '+fmtDate(new Date(c.createdAt))+'</div>'
         +'</div>'
-        +'<div class="ri-r '+(c.reviewed?'':'ri-pending')+'">'+(c.reviewed?(esc(c.review.result)||'已复盘'):'待复盘')+'</div>'
+        +'<div class="ri-r '+(c.reviewed?'':'ri-pending')+'">'+esc(ds.label)+'</div>'
         +'</div>';
     });}
-    else h+=`<div class="empty"><div class="empty-ico">◦</div><div class="empty-t">还没有案例</div><div class="empty-d">去「问事」起一课，结果会自动归档到这里，到期提醒你复盘。</div><button class="btn primary sm" id="btnEmptyAsk">开始问事</button></div>`;
+    else h+=`<div class="empty"><div class="empty-ico">◦</div><div class="empty-t">还没有问事</div><div class="empty-d">在上面写下一个真实的处境，一课即成一条可复盘的档案。</div></div>`;
     h+=`</div>`;
     return h;
   }
   function bindHome(){
+    // ===== 主行动：一句话 → 直接起课；问题卡是可选脚手架 =====
+    const haInput=$('#homeAskInput'),haTip=$('#haTip'),haCard=$('#haCard'),haToggle=$('#btnHaCard');
+    const haCollect=()=>{
+      const card=XD.blankCard();
+      if(haCard&&!haCard.classList.contains('hidden'))document.querySelectorAll('[data-ha]').forEach(i=>{card[i.dataset.ha]=String(i.value||'').trim();});
+      return card;
+    };
+    const haShowTip=()=>{
+      const t=(haInput&&haInput.value||'').trim();
+      if(!haTip)return;
+      if(!t){haTip.classList.add('hidden');haTip.innerHTML='';return;}
+      const major=XD.topicHint(t),vague=XD.vagueReason(t);
+      let html='';
+      if(major)html+=`<div class="ha-tip-major"><b>${esc(major.tag)}</b>${esc(major.text)}</div>`;
+      if(vague)html+=`<div class="ha-tip-rewrite">${esc(vague)}</div>`;
+      haTip.innerHTML=html;haTip.classList.toggle('hidden',!html);
+    };
+    const haGo=()=>{
+      const t=(haInput&&haInput.value||'').trim();
+      if(!t){toast('先写一句你想问的事','err');if(haInput)haInput.focus();return;}
+      quickCast(t,'其他',haCollect());
+    };
+    if(haInput){
+      haInput.addEventListener('input',()=>{haInput.style.height='auto';haInput.style.height=Math.min(haInput.scrollHeight,150)+'px';haShowTip();});
+      haInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();haGo();}});
+    }
+    if(haToggle)haToggle.onclick=()=>{
+      const open=haCard.classList.contains('hidden');
+      haCard.classList.toggle('hidden',!open);
+      haToggle.setAttribute('aria-expanded',String(open));
+      haToggle.textContent=open?'－ 收起问题卡':'＋ 问题卡';
+      if(open){const f=haCard.querySelector('input');if(f)f.focus();}
+    };
+    const haGoBtn=$('#btnHaGo');if(haGoBtn)haGoBtn.onclick=haGo;
+    const askMore=$('#btnAskMore');
+    if(askMore)askMore.onclick=()=>{
+      state.ask=newAsk();state.ask.step=1;state.tab='home';state.subPage='ask';renderTab();
+      navEnter(()=>{state.subPage='';renderTab();},'askWizard');
+    };
+    const goArch=$('#btnGoArchive');if(goArch)goArch.onclick=()=>{state.tab='ask';state.subPage='';renderTab();};
+    const haDue=$('#btnHaDue');if(haDue)haDue.onclick=()=>{state.tab='ask';state.subPage='';renderTab();};
+
     // 首页实时时钟：首次入场从 00:00 滚动到当前时刻，之后每秒刷新
     const homeClock=$('#homeClock');
     if(homeClock){
@@ -974,12 +976,12 @@
       }
     });
     document.querySelectorAll('.qa-item').forEach(e=>e.onclick=()=>{
-      state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='ask';renderTab();
+      state.ask=newAsk();state.ask.bg.questionType=e.dataset.type;state.ask.step=2;state.tab='home';state.subPage='ask';renderTab();
     });
     // 空态引导按钮：直接跳到问事第一步
     const btnEmptyAsk=$('#btnEmptyAsk');
     if(btnEmptyAsk)btnEmptyAsk.onclick=()=>{
-      state.ask=newAsk();state.ask.step=1;state.tab='ask';navReset();renderTab();
+      state.ask=newAsk();state.ask.step=1;state.tab='home';state.subPage='ask';navReset();renderTab();
     };
     // 命理排盘快捷入口
     const btnHomeBaZi=$('#btnHomeBaZi'),btnHomeZiWei=$('#btnHomeZiWei');
@@ -1093,11 +1095,13 @@
   function recShuFor(type){return TYPE_SHU_MAP[type]||['大六壬'];}
   // 快签：由首页直接以「此刻时课」起大六壬并落到结果页，跳过向导逐项填写。
   // 标记 _quick 让结果页的返回键回到首页、重新起课按当前时间重算。
-  function quickCast(title,type){
+  function quickCast(title,type,card){
     haptic(12);
     const a=newAsk();
     a.bg.questionType=type||'其他';
     a.bg.title=String(title||'').trim()||type||'此刻问事';
+    a.bg.desc=String(title||'').trim();
+    a.card=card||XD.blankCard();
     a.shushu=['大六壬'];
     a.method='auto';
     a._quick=true;
@@ -1105,9 +1109,10 @@
     a.step=5;
     state.currentKe=a.computed.comp;
     state.ask=a;
-    state.tab='ask';
+    // 结果作为「问事」Tab 的子页呈现，返回即回首页
+    state.tab='home';state.subPage='ask';
     renderTab();
-    navEnter(()=>{state.ask=null;state.tab='home';state.subPage='';renderTab();},'quickCast');
+    navEnter(()=>{state.ask=null;state.subPage='';renderTab();},'quickCast');
   }
 
   function pageAsk(){
@@ -1128,7 +1133,7 @@
     if(s===5||isPlaceholder){
       const isQuick=!!a._quick;
       const backLabel=isPlaceholder?'返回盘面':(isQuick?'返回首页':'返回问事');
-      const titleText=isPlaceholder?(state.ask._boardTitle||'盘面'):(isQuick?'快签 · 结果':'问事 · 结果');
+      const titleText=isPlaceholder?(state.ask._boardTitle||'盘面'):'问事 · 结果';
       topbar=`<div class="dl-topbar">
         <button class="dl-back" id="btnDlBack">‹ ${backLabel}</button>
         <div class="dl-title">${titleText}</div>
@@ -1985,6 +1990,85 @@
     });
     return{date,comp,shushu:a.shushu,shushuResults,extra:a.extra};
   }
+  /* ---------------- 结果页三层：事实 / 传统解释 / 反思 ----------------
+     拆开的原因：用户最容易把「算法算出什么」和「这套体系怎么解释」揉成一句结论。
+     事实层可逐项核对，传统解释层标明依据，反思层只提问、不逼答。 */
+  function resultFacts(c,mainName){
+    const out=[];
+    const d=c&&c.date?new Date(c.date):new Date();
+    out.push(['起课',fmtDateTime(d)]);
+    try{const bz=Lunar.getBaZi(d);out.push(['四柱',bz.year.gz+' '+bz.month.gz+' '+bz.day.gz+' '+bz.hour.gz]);}catch(e){}
+    if(c&&c.comp&&c.comp.ke){
+      const ke=c.comp.ke;
+      if(ke.yueJiang)out.push(['月将',ke.yueJiang.zhi+'（'+ke.yueJiang.wx+'）']);
+      if(c.comp.sc)out.push(['占时',c.comp.sc.name+' '+c.comp.sc.range]);
+      if(ke.guiRen)out.push(['贵人',ke.guiRen.label+' · '+ke.guiRen.zhi]);
+      if(ke.kongWang&&typeof Lunar!=='undefined')out.push(['空亡',Lunar.ZHI[ke.kongWang[0]]+Lunar.ZHI[ke.kongWang[1]]]);
+      if(ke.sanChuan)out.push(['三传',ke.sanChuan.chu.zhi+' → '+ke.sanChuan.zhong.zhi+' → '+ke.sanChuan.mo.zhi]);
+      if(ke.sanChuan&&ke.sanChuan.method)out.push(['发用',ke.sanChuan.method]);
+      if(ke.geju&&ke.geju.length)out.push(['课体',ke.geju.join('、')]);
+      return out.filter(x=>x[1]);
+    }
+    const r=c&&c.shushuResults&&c.shushuResults[mainName]&&c.shushuResults[mainName].result;
+    if(r){
+      if(r.guaName){
+        out.push(['本卦',r.guaName]);
+        if(r.bianGua)out.push(['变卦',r.bianGua.name||r.bianGua]);
+        if(r.dongLine)out.push(['动爻','第 '+r.dongLine+' 爻']);
+      }else if(r.benGua){
+        out.push(['本卦',r.benGua]);
+        if(r.bianGua)out.push(['变卦',r.bianGua]);
+        if(r.dongPositions)out.push(['动爻',r.dongPositions.length?r.dongPositions.join('、'):'无']);
+      }else if(Array.isArray(r.cards)){
+        r.cards.forEach((cd,i)=>{
+          const nm=cd.card&&(cd.card.name&&(cd.card.name.zh||cd.card.name.en)||cd.card.name);
+          out.push(['第 '+(i+1)+' 张',(nm||'—')+(cd.reverse?'（逆）':'（正）')]);
+        });
+      }else if(Array.isArray(r.positions)){
+        r.positions.forEach(p=>out.push([p.k+'宫',p.v]));
+      }
+    }
+    return out.filter(x=>x[1]);
+  }
+  function layerCap(n,title,sub){
+    return `<div class="layer-cap"><span class="lc-n">${n}</span><div><b>${title}</b><i>${sub}</i></div></div>`;
+  }
+  function qcardResultHTML(a){
+    const card=a.card||{};
+    const rows=[['choice','在什么之间选择'],['deadline','什么时候要定'],['control','你能控制的'],['worry','最担心的'],['unchecked','还没核实']].filter(([k])=>card[k]);
+    if(!rows.length)return '';
+    return `<div class="card qcard-view"><div class="qv-h">问题卡<i>起课时你写下的处境</i></div>`+
+      rows.map(([k,l])=>`<div class="qv-row"><span>${l}</span><b>${esc(card[k])}</b></div>`).join('')+`</div>`;
+  }
+  function reflectCard(a){
+    const card=a.card||{};
+    const fixed=[
+      '这套说法里，哪一条和你已经观察到的现实对得上？哪一条对不上？',
+      '如果盘面的倾向和你的直觉相反，你直觉的依据是什么？',
+      '起课之前，你其实更想选哪个？盘面有没有改变它？'
+    ];
+    let items='';
+    if(card.unchecked)items+=`<div class="rf-item major"><span>先核实这些</span><b>${esc(card.unchecked)}</b></div>`;
+    if(card.worry)items+=`<div class="rf-item"><span>你最担心的</span><b>${esc(card.worry)}</b></div>`;
+    if(card.control)items+=`<div class="rf-item"><span>你能动的</span><b>${esc(card.control)}</b></div>`;
+    items+=fixed.map(q=>`<div class="rf-q">${esc(q)}</div>`).join('');
+    return layerCap('三','留给你自己判断','盘面提供视角，不提供答案')+
+      `<div class="card reflect-card">${items}</div>`;
+  }
+  function planCardHTML(a){
+    const p=a.plan||{};
+    const days=(a.computed&&a.computed.comp&&a.computed.comp.plain&&a.computed.comp.plain.reviewDays)||7;
+    const defDate=new Date(Date.now()+days*86400000).toISOString().slice(0,10);
+    return layerCap('判','我的判断与行动','这一层不来自盘面，只来自你')+
+      `<div class="card plan-card">`+
+      `<label class="plan-field"><span>当时我的判断</span><textarea id="fMyJudge" rows="2" placeholder="我倾向……，因为……">${esc(p.judgment||'')}</textarea></label>`+
+      `<label class="plan-field"><span>我打算采取的行动</span><textarea id="fPlanAction" rows="2" placeholder="我会先做哪一步，什么时候做">${esc(p.action||'')}</textarea></label>`+
+      `<label class="plan-field"><span>我预期会看到什么信号</span><textarea id="fPlanSignal" rows="2" placeholder="如果判断对，接下来应该出现……">${esc(p.signals||'')}</textarea></label>`+
+      `<label class="plan-field"><span>计划回来复盘的日期</span><input type="date" id="fPlanDate" value="${escAttr(p.reviewAt||defDate)}"></label>`+
+      `<button class="btn primary block mt8" id="btnSavePlan" type="button">${p.judgment?'更新记录':'留下我的判断'}</button>`+
+      `<div class="section-note">只存在本机。写下来是为了几周后还能对照，不是给自己打分。</div></div>`;
+  }
+
   function renderResult(a){
     const c=a.computed;
     const sensitive=AI.detectSensitive(a.bg.title+' '+a.bg.desc);
@@ -1992,9 +2076,22 @@
     if(sensitive){
       h+=`<div class="card"><div class="warn-text">检测到敏感关键词「${esc(sensitive.keyword)}」。</div><div class="section-note">${sensitiveHint(sensitive.cat)}</div></div>`;
     }
+    // 主盘名：决定事实层抽哪些字段
+    let mainName=null;
+    if(c.comp)mainName='大六壬';
+    else if(c.shushu&&typeof c.shushu==='object'&&c.shushu.name)mainName=c.shushu.name;
+    else if(c.shushuResults)mainName=a.shushu.find(s=>c.shushuResults[s])||Object.keys(c.shushuResults)[0];
+    h+=qcardResultHTML(a);
+    h+=layerCap('一','盘面事实','算法算出来的，可逐项核对');
+    h+=`<div class="card facts-card"><div class="facts-grid">`+
+      resultFacts(c,mainName).map(([k,v])=>`<div class="fact"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')+
+      `</div><div class="section-note">以上为算法结果，不依赖 AI，可复算。</div></div>`;
+    h+=layerCap('二','传统解释','这套体系为什么这么看');
     // 单一术数结果对象（兼容旧数据结构）
     if(c.shushu && typeof c.shushu==='object' && !Array.isArray(c.shushu) && c.shushu.name && !c.comp){
       h+=renderShuShuResult(c.shushu);
+      h+=reflectCard(a);
+      h+=planCardHTML(a);
       h+=`<div class="card"><h3>操作</h3>`;
       h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
       h+=`<button class="btn ghost block mt8 share-result-btn" id="btnShareResult">生成分享卡片</button>`;
@@ -2015,7 +2112,6 @@
       }
     }else if(c.shushuResults){
       // 无主盘，取第一个有结果的术数做主盘
-      const mainName=a.shushu.find(s=>c.shushuResults[s]);
       if(mainName){
         mainPlain=c.shushuResults[mainName].plain;
         h+=renderShuShuResult(c.shushuResults[mainName]);
@@ -2033,7 +2129,6 @@
     {
       const sr=c.shushuResults||{};
       if(Object.keys(sr).length>=2 || (c&&c.comp&&Object.keys(sr).length>=1)){
-        const mainName = c&&c.comp?'大六壬':Object.keys(sr)[0];
         const allResults = {};
         if(c&&c.comp) allResults['大六壬']={name:'大六壬',result:c.comp.ke,plain:c.comp.plain};
         Object.keys(sr).forEach(k=>{allResults[k]=sr[k];});
@@ -2041,6 +2136,8 @@
         h += renderCrossSummary(cross);
       }
     }
+    h+=reflectCard(a);
+    h+=planCardHTML(a);
     h+=`<div class="card"><h3>操作</h3>`;
     h+=`<button class="btn primary block mt8" id="btnSaveCase">保存为案例</button>`;
     h+=`<button class="btn ghost block mt8 share-result-btn" id="btnShareResult">生成分享卡片</button>`;
@@ -2555,8 +2652,8 @@
     // 一致性分析
     const tendVals=Object.values(tends);
     const allSame=tendVals.every(t=>t===tendVals[0]);
-    h+=`<div class="plain-card"><div class="pc-t">${allSame?'一致点':'综合点'}</div><div class="pc-c">${allSame?'各盘倾向一致「'+p.tendency+'」，信号较强，可较为参考。':'主盘倾向「'+p.tendency+'」为本次主要参考方向，辅盘存在差异时以主盘为主并结合现实判断。'}</div></div>`;
-    h+=`<div class="plain-card"><div class="pc-t">提示</div><div class="pc-c">多术数交叉仅用于个人参考校准，不可作为唯一决策依据。</div></div>`;
+    h+=`<div class="plain-card"><div class="pc-t">${allSame?'说法相近':'说法有差异'}</div><div class="pc-c">${allSame?'几门术数这次说法相近（「'+p.tendency+'」）。它们依据不同，说法一致不等于多份证据，也不比单看一门更"准"。':'主盘倾向「'+p.tendency+'」，辅盘有差异属正常——取法不同，结论本就会不同。并列看看，别急着调和。'}</div></div>`;
+    h+=`<div class="plain-card"><div class="pc-t">提示</div><div class="pc-c">多术数只做并列参考，不投票、不互证；它不能作为决策的唯一依据。</div></div>`;
     h+=`<div class="disclaimer-inline">${AI.DISCLAIMER}</div>`;
     return h;
   }
@@ -2567,15 +2664,13 @@
   // T3 多盘交叉摘要卡片渲染
   function renderCrossSummary(cross){
     if(!cross)cross={consistent:[],conflict:[],advice:[],signals:[],reviewDays:21,consensusScore:0,tendency:'宜观察',disclaimer:''};
-    const score=cross.consensusScore||0;
-    const scoreCls=score>=70?'good':(score>=40?'calm':'warn');
-    let h=`<div class="card"><h3>多盘交叉摘要</h3>`;
+    // 不再计算/展示"共识度"：多门术数依据不同，说法相近不等于多份独立证据。
+    let h=`<div class="card"><h3>并列对照 <span class="h-sub">不同方法，不互相验证</span></h3>`;
     h+=`<div class="cross-header">`;
-    h+=`<div class="cross-tendency"><span class="tend-tag ${cross.tendency==='宜主动'?'good':(cross.tendency==='宜谨慎'?'warn':'calm')}">${esc(cross.tendency||'宜观察')}</span></div>`;
-    h+=`<div class="cross-score"><span class="score-label">共识度</span><span class="score-val ${scoreCls}">${score}%</span></div>`;
+    h+=`<div class="cross-tendency"><span class="tend-tag ${cross.tendency==='宜主动'?'good':(cross.tendency==='宜谨慎'?'warn':'calm')}">主盘倾向 ${esc(cross.tendency||'宜观察')}</span></div>`;
     h+=`</div>`;
-    // 一致点
-    h+=`<div class="cross-sec"><div class="cross-sec-title">一致点</div>`;
+    // 相同倾向
+    h+=`<div class="cross-sec"><div class="cross-sec-title">说法相近的地方</div>`;
     if(cross.consistent&&cross.consistent.length){
       cross.consistent.forEach(item=>{
         h+=`<div class="cross-item cross-consistent"><span class="cross-desc">${item.desc||''}</span>`;
@@ -2589,7 +2684,7 @@
     }
     h+=`</div>`;
     // 冲突点
-    h+=`<div class="cross-sec"><div class="cross-sec-title">冲突点</div>`;
+    h+=`<div class="cross-sec"><div class="cross-sec-title">说法不同的地方</div>`;
     if(cross.conflict&&cross.conflict.length){
       cross.conflict.forEach(item=>{
         h+=`<div class="cross-item cross-conflict"><span class="cross-desc">${item.desc||''}</span>`;
@@ -2603,7 +2698,7 @@
     }
     h+=`</div>`;
     // 综合建议
-    h+=`<div class="cross-sec"><div class="cross-sec-title">综合建议</div>`;
+    h+=`<div class="cross-sec"><div class="cross-sec-title">可以怎么用</div>`;
     if(cross.advice&&cross.advice.length){
       cross.advice.forEach(a=>{h+=`<div class="cross-item">${a}</div>`;});
     }else{
@@ -2680,6 +2775,24 @@
       }
     });
     const btnSave=$('#btnSaveCase');if(btnSave)btnSave.onclick=()=>saveCurrentAsCase(a);
+    // 判断与行动：先留在当前 a 上；若已建档则同步写回案例
+    const btnPlan=$('#btnSavePlan');
+    if(btnPlan)btnPlan.onclick=()=>{
+      const g=id=>{const e=$('#'+id);return e?String(e.value||'').trim():'';};
+      a.plan={judgment:g('fMyJudge'),action:g('fPlanAction'),signals:g('fPlanSignal'),reviewAt:g('fPlanDate')};
+      if(a.savedCaseId){
+        const cc=Store.getCase(a.savedCaseId);
+        if(cc){
+          cc.myJudge=a.plan.judgment;
+          cc.actions=a.plan.action?[a.plan.action]:[];
+          cc.signals=XD.splitList(a.plan.signals);
+          if(a.plan.reviewAt){const t=new Date(a.plan.reviewAt+'T00:00:00');if(!isNaN(t))cc.reviewDue=t.getTime();}
+          cc.plan=a.plan;
+          Store.saveCase(cc);
+        }
+      }
+      haptic(12);toast('已记下你的判断','ok');
+    };
     // 结果页即时分享：不落库，直接用当前盘面构造分享卡
     document.querySelectorAll('.share-result-btn').forEach(b=>b.onclick=()=>{haptic(10);shareCase(casePayload(a));});
     // 依据来源折叠
@@ -4059,8 +4172,17 @@
       board:c.comp?serializeKe(c.comp):null,
       shushuBoard:isLegacyShu?serializeShu(c.shushu):(c.shushuResults?serializeShuResults(c.shushuResults):null),
       plain,
-      myJudge:'',actions:[],signals:plain.signals,
-      reviewDue:Date.now()+plain.reviewDays*86400000,
+      // 问题卡与判断：v2 档案的核心，复盘时靠它还原「当时怎么想」
+      card:a.card||null,
+      plan:a.plan||null,
+      myJudge:(a.plan&&a.plan.judgment)||'',
+      actions:(a.plan&&a.plan.action)?[a.plan.action]:[],
+      signals:(a.plan&&a.plan.signals)?XD.splitList(a.plan.signals):plain.signals,
+      reviewDue:(function(){
+        const p=a.plan&&a.plan.reviewAt;
+        if(p){const t=new Date(p+'T00:00:00');if(!isNaN(t))return t.getTime();}
+        return Date.now()+plain.reviewDays*86400000;
+      })(),
       result:'',verified:'',unhit:'',reflect:'',tags:[],favor:false,
       aiReading:a.aiReading||'',
       // 关联的 AI 追问线程 id（若保存前已生成过深度解读）；
@@ -4249,9 +4371,9 @@
   // P1 术数盘面展示（复用 ask 渠道）
   function showShuShuBoard(res){
     state.ask={bg:{questionType:'其他'},computed:{shushuResults:{[res.name]:res},shushu:[res.name]},step:5,shushu:[res.name],_placeholder:true,_shushuOnly:true,_boardTitle:res.name};
-    state.tab='ask';renderTab();
+    state.tab='home';state.subPage='ask';renderTab();
     setTimeout(()=>bindResult(state.ask),30);
-    navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'shushuBoard');
+    navEnter(()=>{state.ask=null;state.subPage='';renderTab();},'shushuBoard');
   }
   // ================= 九宫飞星（紫白飞星 · 流年方位） =================
   // 洛书九宫定宫（行×列 → 宫名）；固定，不可旋转
@@ -4648,11 +4770,11 @@
     // 用一个临时 ask bg（标记 _placeholder 以便用户主动点「问事」Tab 时重置）
     state.ask={bg:{questionType:'其他'},computed:{comp},step:5,shushu:['大六壬'],_placeholder:true};
     state.boardMode='pro';
-    state.tab='ask';renderTab();
+    state.tab='home';state.subPage='ask';renderTab();
     // 「查看完整盘面」固定展示专业全貌
     setTimeout(()=>bindResult(state.ask),30);
-    // 注册返回动作：硬件返回键 / 应用内返回按钮均回到盘面 Tab（重新起课时原地替换，不累加历史）
-    navEnter(()=>{state.ask=null;state.tab='ask';renderTab();},'boardResult');
+    // 注册返回动作：硬件返回键 / 应用内返回按钮均回到首页
+    navEnter(()=>{state.ask=null;state.subPage='';renderTab();},'boardResult');
   }
 
   // ================= 案例 =================
@@ -4672,11 +4794,24 @@
     const typeOpts=Array.from(new Set(cases.map(c=>c.questionType).filter(Boolean)));
     // 标签下拉项：预定义 + 自定义
     const tagOpts=getAllReviewTags();
-    let h=`<div class="phead"><div><div class="ptitle">案例库</div><div class="psub">共 ${cases.length} 条</div></div><button class="btn ghost sm" id="backMe">返回</button></div>`;
+    let h=`<div class="phead"><div><div class="ptitle">你的问事档案</div><div class="psub">共 ${cases.length} 条 · 不做命中率，只看有没有回来</div></div>${state.tab==='me'?'<button class="btn ghost sm" id="backMe">返回</button>':''}</div>`;
     // 统计入口
-    h+=`<div class="card"><div class="review-stat" id="miniStat"></div><button class="btn block" id="btnStat">复盘统计</button></div>`;
-    // 筛选栏
-    h+=`<div class="card filter-bar">`;
+    h+=`<div class="card"><div class="review-stat" id="miniStat"></div><button class="btn block" id="btnStat">档案统计</button></div>`;
+    // 该回头看了：把到期的问事顶到最前，这是复盘 Tab 的第一诉求
+    const dueCases=cases.filter(c=>{
+      const s=window.XD?XD.dueState(XD.migrate(c)).state:(c.reviewed?'done':'wait');
+      return s==='due'||s==='late';
+    });
+    if(dueCases.length){
+      h+=`<div class="card due-block"><h3>该回头看了<span class="h-sub">${dueCases.length} 条 · 不是查准不准</span></h3>`;
+      dueCases.slice(0,3).forEach(c=>{
+        h+=`<div class="recent-item" data-due="${escAttr(c.id)}"><div><div class="ri-t">${esc(c.title)}</div><div class="ri-m">${esc(c.questionType||'其他')} · ${fmtDate(new Date(c.createdAt))}</div></div><div class="ri-r ri-pending">去回看</div></div>`;
+      });
+      h+=`</div>`;
+    }
+    // 筛选栏：默认收起，先看档案
+    h+=`<button class="btn ghost block" id="btnFilterToggle" type="button">筛选与搜索</button>`;
+    h+=`<div class="card filter-bar hidden" id="filterCard">`;
     h+=`<div class="filter-row"><label>关键词</label><input type="text" class="filter-select" id="fKeyword" placeholder="搜索标题 / 描述 / 术数…"></div>`;
     h+=`<div class="filter-row"><label>术数</label><select class="filter-select" id="fShu"><option value="全部">全部</option>${REVIEW_SHU_OPTS.map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>`;
     h+=`<div class="filter-row"><label>问题类型</label><select class="filter-select" id="fType"><option value="全部">全部</option>${typeOpts.map(t=>`<option value="${escAttr(t)}">${esc(t)}</option>`).join('')}</select></div>`;
@@ -4728,9 +4863,13 @@
       }).join('');
       body.querySelectorAll('[data-case]').forEach(e=>e.onclick=()=>openCaseDetail(e.dataset.case));
     }
-    // mini stat：基于全局统计
+    // mini stat：只看用起来没，不做命中率
     const ms=$('#miniStat');
-    if(ms){const st=Store.reviewStats();ms.innerHTML=`<div class="stat-box"><div class="sb-n">${st.total}</div><div class="sb-l">总案例</div></div><div class="stat-box"><div class="sb-n">${st.reviewedCount}</div><div class="sb-l">已复盘</div></div><div class="stat-box"><div class="sb-n">${Math.round(st.reviewRate*100)}%</div><div class="sb-l">复盘率</div></div>`;}
+    if(ms){
+      const all=Store.listCases();
+      const st=window.XD?XD.stats(all.map(c=>XD.migrate(c))):{total:all.length,planRate:0,reviewRate:0};
+      ms.innerHTML=`<div class="stat-box"><div class="sb-n">${st.total}</div><div class="sb-l">条问事</div></div><div class="stat-box"><div class="sb-n">${st.planRate}%</div><div class="sb-l">留下判断</div></div><div class="stat-box"><div class="sb-n">${st.reviewRate}%</div><div class="sb-l">回来复盘</div></div>`;
+    }
   }
   function bindCaseList(){
     // 子页面：复盘统计独立页绑定
@@ -4747,6 +4886,9 @@
       renderCaseListBody();
     };
     const bs=$('#btnStat');if(bs)bs.onclick=()=>openStats();
+    const ft=$('#btnFilterToggle');
+    if(ft)ft.onclick=()=>{const card=$('#filterCard');if(!card)return;const hidden=card.classList.toggle('hidden');ft.textContent=hidden?'筛选与搜索':'收起筛选';};
+    document.querySelectorAll('[data-due]').forEach(e=>e.onclick=()=>{state.viewCaseId=e.dataset.due;openCaseDetail(e.dataset.due);});
   }
   // 「当时问 → 现在回看」时间线：把 问事起课 / AI 解读 / 我的追问 / 复盘 串成一条线
   // 让用户在复盘时能一眼看到「当初问的是什么、当时怎么判的、后来实际怎样」，
@@ -4802,8 +4944,9 @@
     if(id===undefined)id=state.viewCaseId;
     const c=Store.getCase(id);if(!c){toast('案例不存在');return;}
     state.viewCaseId=id;
-    // 注册返回动作：硬件返回键 / 应用内返回均回到案例列表
-    navEnter(()=>{state.viewCaseId=null;state.tab='me';state.subPage='case';renderTab();},'caseDetail');
+    // 注册返回动作：从哪个 Tab 进来就回哪里（复盘 Tab 进来不该被甩到「我的」）
+    const backTab=state.tab,backSub=state.subPage;
+    navEnter(()=>{state.viewCaseId=null;state.tab=backTab;state.subPage=backSub;renderTab();},'caseDetail');
     const container=$('#page-container');
     // 到期未复盘提示条
     const dueNow=!c.reviewed&&c.reviewDue&&Date.now()>c.reviewDue;
@@ -4819,6 +4962,15 @@
     h+=`<div class="detail-row"><span class="dk">术数</span><span>${esc(c.shushu)}</span></div>`;
     h+=`<div class="detail-row"><span class="dk">起课</span><span>${fmtDateTime(new Date(c.qikeTime))}</span></div>`;
     h+=`</div>`;
+    // 问题卡：复盘时先看「当时在纠结什么」
+    if(c.card){
+      const rows=[['choice','在什么之间选择'],['deadline','什么时候要定'],['control','能控制的'],['worry','最担心'],['unchecked','还没核实']].filter(([k])=>c.card[k]);
+      if(rows.length){
+        h+=`<div class="card detail-sec"><h4>问题卡</h4>`;
+        rows.forEach(([k,l])=>{h+=`<div class="detail-row"><span class="dk">${l}</span><span class="dv-r">${esc(c.card[k])}</span></div>`;});
+        h+=`</div>`;
+      }
+    }
     // 盘面
     if(c.board){
       h+=`<div class="card detail-sec"><h4>盘面 · 大六壬（${c.board.geju.join('、')}）</h4>`;
@@ -4844,16 +4996,21 @@
       if(p.risks.length)h+=`<div class="plain-card"><div class="pc-t">风险</div><div class="pc-c">${p.risks.map(x=>esc(x)).join('；')}</div></div>`;
       h+=`</div>`;
     }
-    // 我的判断
+    // 我的判断与行动：这一层不来自盘面，复盘时靠它还原「当时怎么想」
     h+=`<div class="card detail-sec"><h4>我的判断与行动</h4>`;
     h+=`<div class="field"><label>我的判断</label><textarea id="myJudge">${esc(c.myJudge)}</textarea></div>`;
-    h+=`</div>`;
+    h+=`<div class="field"><label>我打算采取的行动</label><textarea id="myAction">${esc((c.actions&&c.actions[0])||'')}</textarea></div>`;
+    h+=`<div class="field"><label>预期会看到什么信号</label><textarea id="mySignals">${esc((c.signals||[]).join('；'))}</textarea></div>`;
+    h+=`<div class="field"><label>计划回来复盘的日期</label><input type="date" id="myReviewDate" value="${c.reviewDue?new Date(c.reviewDue).toISOString().slice(0,10):''}"></div>`;
+    h+=`<div class="section-note">只存在本机。几周后回来对照，不是给自己打分。</div></div>`;
     // 复盘
     h+=`<div class="card detail-sec"><h4>复盘</h4>`;
     if(c.reviewed){
       const r=c.review||{};
       h+=`<div class="detail-row"><span class="dk">实际结果</span><span class="dv-r">${esc(r.actual)||'—'}</span></div>`;
       h+=`<div class="detail-row"><span class="dk">应验程度</span><span>${esc(r.result)||'—'}</span></div>`;
+      if(r.basis)h+=`<div class="detail-row"><span class="dk">依据是否有用</span><span>${esc(r.basis)}</span></div>`;
+      if(r.action)h+=`<div class="detail-row"><span class="dk">是否行动</span><span>${esc(r.action)}</span></div>`;
       // 准确度评分（星显示）
       if(r.score!=null&&Number(r.score)>=1&&Number(r.score)<=5){
         h+=`<div class="detail-row"><span class="dk">评分</span><span>${renderStars(Number(r.score))}</span></div>`;
@@ -4877,6 +5034,15 @@
     container.innerHTML=h;
     $('#backList').onclick=()=>{navBack();};
     $('#myJudge').oninput=ev=>{c.myJudge=ev.target.value;Store.saveCase(c);};
+    const myAction=$('#myAction');
+    if(myAction)myAction.oninput=ev=>{const v=ev.target.value.trim();c.actions=v?[v]:[];Store.saveCase(c);};
+    const mySignals=$('#mySignals');
+    if(mySignals)mySignals.oninput=ev=>{c.signals=XD.splitList(ev.target.value);Store.saveCase(c);};
+    const myDate=$('#myReviewDate');
+    if(myDate)myDate.onchange=ev=>{
+      const t=new Date(ev.target.value+'T00:00:00');
+      if(!isNaN(t)){c.reviewDue=t.getTime();Store.saveCase(c);toast('复盘日期已更新','ok');}
+    };
     if($('#btnReview'))$('#btnReview').onclick=()=>openReview(id);
     if($('#btnReviewAgain'))$('#btnReviewAgain').onclick=()=>openReview(id);
     $('#btnToggleFavor').onclick=()=>{c.favor=!c.favor;Store.saveCase(c);openCaseDetail(id);toast(c.favor?'已收藏':'已取消收藏');};
@@ -4887,80 +5053,42 @@
   }
   function openReview(id){
     const c=Store.getCase(id);if(!c)return;
+    // 复盘不是查「准不准」，而是看三件事：结果是否发生、依据是否帮上忙、你有没有行动。
+    // 保留 应验/部分应验/未应验/无法判断 作为「结果是否发生」的取值，兼容旧档案筛选。
     const results=['应验','部分应验','未应验','无法判断'];
-    const initScore=(c.review&&Number(c.review.score))||0;
-    const initTags=Array.isArray(c.review&&c.review.tags)?c.review.tags.slice():[];
-    let body=`<div class="field"><label>实际结果</label><textarea id="rActual">${c.review&&c.review.actual||''}</textarea></div>`;
-    body+=`<div class="field"><label>应验程度</label><div class="chips" id="rResChips">${results.map(r=>`<span class="chip ${(c.review&&c.review.result===r)?'on':''}" data-res="${r}">${r}</span>`).join('')}</div></div>`;
-    body+=`<div class="field"><label>未应验点</label><textarea id="rUnhit">${c.review&&c.review.unhit||''}</textarea></div>`;
-    body+=`<div class="field"><label>我的反思</label><textarea id="rReflect">${c.review&&c.review.reflect||''}</textarea></div>`;
-    // 准确度评分（1-5 星）
-    body+=`<div class="field"><label>准确度评分</label><div class="star-rating" id="rStars">${[1,2,3,4,5].map(i=>`<span class="star ${i<=initScore?'active':''}" data-star="${i}">★</span>`).join('')}</div></div>`;
-    // 复盘标签：预定义 + 自定义输入
-    const allTags=getAllReviewTags();
-    body+=`<div class="field"><label>复盘标签</label><div class="review-tags" id="rTags">${allTags.map(t=>`<span class="review-tag ${initTags.includes(t)?'on':''}" data-tag="${t}">${t}</span>`).join('')}</div>`;
-    body+=`<div class="review-tag-input"><input type="text" id="rTagInput" placeholder="自定义标签（最多 20 字）" maxlength="20"><button class="btn mini" id="rTagAdd" type="button">添加</button></div></div>`;
-    let chosen=c.review&&c.review.result||'';
-    let chosenScore=initScore;
-    let chosenTags=initTags.slice();
-    modal('复盘',body,(m)=>{
-      const actual=$('#rActual').value,unhit=$('#rUnhit').value,reflect=$('#rReflect').value;
-      if(!chosen){toast('请选择应验程度','err');return;}
+    const basisOpts=['帮上了','部分有用','没帮上','没想起来看'];
+    const actOpts=['行动了','部分行动','没有行动','时机还没到'];
+    const r0=c.review||{};
+    let body=`<div class="field"><label>结果是否发生</label><div class="chips" id="rResChips">${results.map(r=>`<span class="chip ${r0.result===r?'on':''}" data-res="${r}">${r}</span>`).join('')}</div></div>`;
+    body+=`<div class="field"><label>当时的依据帮上忙了吗</label><div class="chips" id="rBasisChips">${basisOpts.map(x=>`<span class="chip ${r0.basis===x?'on':''}" data-basis="${x}">${x}</span>`).join('')}</div></div>`;
+    body+=`<div class="field"><label>你按当时的判断行动了吗</label><div class="chips" id="rActChips">${actOpts.map(x=>`<span class="chip ${r0.action===x?'on':''}" data-act="${x}">${x}</span>`).join('')}</div></div>`;
+    body+=`<div class="field"><label>实际结果</label><textarea id="rActual" placeholder="实际发生了什么，留几句只给你自己">${r0.actual||''}</textarea></div>`;
+    body+=`<div class="field"><label>我的反思</label><textarea id="rReflect">${r0.reflect||''}</textarea></div>`;
+    let chosen=r0.result||'';
+    let chosenBasis=r0.basis||'';
+    let chosenAct=r0.action||'';
+    modal('复盘 · 不是查准不准',body,(m)=>{
+      const actual=$('#rActual').value,reflect=$('#rReflect').value;
+      if(!chosen){toast('请选择结果是否发生','err');return;}
       Store.addReview(id,{
-        actual,unhit,reflect,result:chosen,
-        score:chosenScore||null,
-        tags:chosenTags,
+        actual,reflect,result:chosen,
+        basis:chosenBasis,action:chosenAct,
         reviewTime:fmtDate(new Date())
       });
       closeModal();haptic(14);toast('复盘已保存','ok');openCaseDetail(id);
     },true,'保存复盘');
     setTimeout(()=>{
-      // 应验程度 chips
-      document.querySelectorAll('#rResChips .chip').forEach(e=>e.onclick=()=>{chosen=e.dataset.res;document.querySelectorAll('#rResChips .chip').forEach(x=>x.classList.remove('on'));e.classList.add('on');});
-      // 星评分：点击第 n 颗星即设为 n 分；再次点击当前分清零
-      document.querySelectorAll('#rStars .star').forEach(e=>e.onclick=()=>{
-        const n=parseInt(e.dataset.star,10);
-        chosenScore=(n===chosenScore)?0:n;
-        document.querySelectorAll('#rStars .star').forEach((x,i)=>{
-          x.classList.toggle('active',(i+1)<=chosenScore);
+      const bind=(sel,key)=>{
+        document.querySelectorAll(sel+' .chip').forEach(e=>e.onclick=()=>{
+          const v=e.dataset[key];
+          if(key==='res')chosen=v;else if(key==='basis')chosenBasis=v;else chosenAct=v;
+          document.querySelectorAll(sel+' .chip').forEach(x=>x.classList.remove('on'));
+          e.classList.add('on');
         });
-      });
-      // 标签 chips：预定义 + 自定义均可切换
-      document.querySelectorAll('#rTags .review-tag').forEach(e=>e.onclick=()=>{
-        const t=e.dataset.tag;
-        const i=chosenTags.indexOf(t);
-        if(i>=0){chosenTags.splice(i,1);e.classList.remove('on');}
-        else{chosenTags.push(t);e.classList.add('on');}
-      });
-      // 添加自定义标签：写入 localStorage
-      const input=$('#rTagInput');
-      const addBtn=$('#rTagAdd');
-      if(addBtn)addBtn.onclick=()=>{
-        const v=(input&&input.value||'').trim();
-        if(!v){toast('请输入标签','err');return;}
-        if(v.length>20){toast('标签过长');return;}
-        const custom=getCustomReviewTags();
-        if(!custom.includes(v)){custom.push(v);saveCustomReviewTags(custom);}
-        // 重新渲染标签 chips（仅追加新增项）
-        const tagsEl=$('#rTags');
-        if(tagsEl){
-          const existing=Array.from(tagsEl.querySelectorAll('.review-tag')).map(x=>x.dataset.tag);
-          if(!existing.includes(v)){
-            const span=document.createElement('span');
-            span.className='review-tag'+(chosenTags.includes(v)?' on':'');
-            span.dataset.tag=v;
-            span.textContent=v;
-            span.onclick=()=>{
-              const i2=chosenTags.indexOf(v);
-              if(i2>=0){chosenTags.splice(i2,1);span.classList.remove('on');}
-              else{chosenTags.push(v);span.classList.add('on');}
-            };
-            tagsEl.appendChild(span);
-          }
-        }
-        if(chosenTags.indexOf(v)<0)chosenTags.push(v);
-        if(input)input.value='';
       };
+      bind('#rResChips','res');
+      bind('#rBasisChips','basis');
+      bind('#rActChips','act');
     },30);
   }
   // 渲染只读星评分（详情/统计页用）
@@ -4978,116 +5106,43 @@
     navEnter(()=>{state.subPage='';state.tab='me';state.subPage='case';renderTab();},'stats');
   }
   function pageStats(){
-    const st=Store.reviewStats();
-    let h=`<div class="phead"><div class="ptitle">复盘统计</div><button class="btn ghost sm" id="btnStatsBack" type="button">返回</button></div>`;
-    h+=`<div class="stats-page">`;
-    // 顶部 4 个大数字卡片
-    h+=`<div class="stat-big-cards">`;
-    h+=`<div class="stat-big-card"><div class="sbc-n">${st.total}</div><div class="sbc-l">总案例</div></div>`;
-    h+=`<div class="stat-big-card"><div class="sbc-n">${st.reviewedCount}</div><div class="sbc-l">已复盘</div></div>`;
-    h+=`<div class="stat-big-card"><div class="sbc-n">${Math.round(st.strictAcc*100)}%</div><div class="sbc-l">严格应验率</div></div>`;
-    h+=`<div class="stat-big-card"><div class="sbc-n">${Math.round(st.looseAcc*100)}%</div><div class="sbc-l">宽松应验率</div></div>`;
-    h+=`</div>`;
-    // 复盘率进度条
-    const ratePct=Math.round(st.reviewRate*100);
-    h+=`<div class="card"><div class="flex-between"><span>复盘率</span><span class="num-val">${ratePct}%</span></div>`;
-    h+=`<div class="stat-bar"><div class="stat-bar-fill" style="--fill:${(ratePct/100).toFixed(3)}"></div></div></div>`;
-    // 平均评分
-    const avgStr=st.avgScore>0?st.avgScore.toFixed(1):'—';
-    h+=`<div class="card"><div class="flex-between"><span>平均评分</span><span>${renderStars(st.avgScore||0)}<span class="num-val">${avgStr}</span></span></div></div>`;
-    // 分组卡片
-    // 1. 按应验程度
-    h+=renderStatGroup('按应验程度',['应验','部分应验','未应验','无法判断'].map(k=>({
-      name:k,count:st.byResult[k]||0,pct:st.reviewedCount?Math.round((st.byResult[k]||0)/st.reviewedCount*100):0
-    })));
-    // 2. 按术数（数量+应验率）：从案例原始数据聚合
-    const cases=Store.listCases();
-    const shuStats={};
-    cases.forEach(c=>{
-      if(!c.reviewed)return;
-      if(!c.shushu)return;
-      const shus=String(c.shushu).split('、').filter(Boolean);
-      const r=(c.review&&c.review.result)||'无法判断';
-      shus.forEach(s=>{
-        if(!shuStats[s])shuStats[s]={count:0,hit:0,na:0};
-        shuStats[s].count++;
-        if(r==='应验'||r==='部分应验')shuStats[s].hit++;
-        if(r==='无法判断')shuStats[s].na++;
-      });
+    // 行为统计：只看「有没有用起来」，不看「算得准不准」。
+    // 单个用户的主观回忆汇总成命中率，既不构成证据，也会把注意力从判断本身带走。
+    const raw=Store.listCases();
+    const cases=window.XD?raw.map(c=>XD.migrate(c)):raw;
+    const st=window.XD?XD.stats(cases):{total:cases.length,planRate:0,reviewRate:0};
+    const due=cases.filter(c=>{
+      const s=window.XD?XD.dueState(c):{state:c.reviewed?'done':'wait'};
+      return s.state==='due'||s.state==='late';
     });
-    h+=renderStatGroup('按术数',Object.keys(shuStats).map(k=>{
-      const s=shuStats[k];
-      const judgeable=s.count-s.na;
-      const acc=judgeable>0?Math.round(s.hit/judgeable*100):0;
-      return {name:k,count:s.count,pct:acc,accLabel:'应验率'};
-    }));
-    // 3. 按问题类型
-    h+=renderStatGroup('按问题类型',Object.keys(st.byType).map(k=>({
-      name:k,count:st.byType[k],pct:st.reviewedCount?Math.round(st.byType[k]/st.reviewedCount*100):0
-    })));
-    // 4. 按倾向标签
-    const tendKeys=Object.keys(st.byTendency);
-    h+=renderStatGroup('按倾向标签',tendKeys.length?tendKeys.map(k=>({
-      name:k,count:st.byTendency[k],pct:st.reviewedCount?Math.round(st.byTendency[k]/st.reviewedCount*100):0
-    })):[]);
-    // 5. 按准确度评分分布（5→1）
-    h+=renderStatGroup('按准确度评分',[5,4,3,2,1].map(s=>({
-      name:'★'.repeat(s),count:st.byScore[s]||0,pct:st.reviewedCount?Math.round((st.byScore[s]||0)/st.reviewedCount*100):0
-    })));
-    // 6. 时间趋势（简易 CSS 柱状图）
-    if(st.trend&&st.trend.length){
-      h+=`<div class="stat-group"><div class="sg-t">时间趋势</div>`;
-      h+=`<div class="trend-chart">`;
-      const maxTotal=Math.max(...st.trend.map(x=>x.total),1);
-      st.trend.forEach(t=>{
-        const h1=Math.round((t.total/maxTotal)*80);
-        h+=`<div class="trend-col">`;
-        h+=`<div class="trend-bars"><div class="trend-bar trend-bar-acc" style="height:${Math.round(t.acc*0.8)}%" title="应验率 ${t.acc}%"></div><div class="trend-bar trend-bar-total" style="height:${h1}%" title="案例 ${t.total}"></div></div>`;
-        h+=`<div class="trend-label">${t.month.slice(5)}</div>`;
-        h+=`</div>`;
+    let h=`<div class="phead"><div class="ptitle">档案统计</div><button class="btn ghost sm" id="btnStatsBack" type="button">返回</button></div>`;
+    h+=`<div class="stats-page">`;
+    h+=`<div class="stat-big-cards">`;
+    h+=`<div class="stat-big-card"><div class="sbc-n">${st.total}</div><div class="sbc-l">条问事</div></div>`;
+    h+=`<div class="stat-big-card"><div class="sbc-n">${st.planRate}%</div><div class="sbc-l">留下判断</div></div>`;
+    h+=`<div class="stat-big-card"><div class="sbc-n">${st.reviewRate}%</div><div class="sbc-l">回来复盘</div></div>`;
+    h+=`<div class="stat-big-card${due.length?' alert':''}"><div class="sbc-n">${due.length}</div><div class="sbc-l">待你回看</div></div>`;
+    h+=`</div>`;
+    h+=`<div class="card"><div class="section-note" style="margin:0">这里不做命中率统计。单个案例的主观回忆汇总成百分比，不能证明术数有效；它只帮你看清自己的判断习惯。</div></div>`;
+    h+=`<button class="btn block" id="btnStatsExport" type="button">导出全部档案（JSON）</button>`;
+    if(due.length){
+      h+=`<div class="stat-group"><div class="sg-t">该回头看了</div>`;
+      due.slice(0,5).forEach(c=>{
+        h+=`<div class="sg-item"><span class="sg-name">${esc(c.title)}</span><span class="sg-stats">${esc(c.questionType||'其他')} · ${fmtDate(new Date(c.createdAt))}</span></div>`;
       });
       h+=`</div>`;
-      h+=`<div class="trend-legend"><span class="trend-dot total"></span>案例数 <span class="trend-dot acc"></span>应验率</div>`;
-      h+=`</div>`;
     }
-    // 7. 个人决策画像
-    const pf=st.profile||{};
-    h+=`<div class="stat-group"><div class="sg-t">决策画像</div>`;
-    h+=`<div class="profile-grid">`;
-    h+=`<div class="profile-item"><div class="profile-label">最常问</div><div class="profile-val">${esc(pf.topQuestionType||'—')}</div></div>`;
-    h+=`<div class="profile-item"><div class="profile-label">最常用术数</div><div class="profile-val">${esc(pf.topShu||'—')}</div></div>`;
-    h+=`<div class="profile-item"><div class="profile-label">主导倾向</div><div class="profile-val">${esc(pf.dominantTendency||'—')}</div></div>`;
-    if(pf.bestShu){
-      h+=`<div class="profile-item"><div class="profile-label">最准术数</div><div class="profile-val">${esc(pf.bestShu.name)} <span class="profile-sub">${pf.bestShu.acc}% (${pf.bestShu.judgeable}条)</span></div></div>`;
-    }
-    if(pf.worstShu&&pf.worstShu.name!==(pf.bestShu&&pf.bestShu.name)){
-      h+=`<div class="profile-item"><div class="profile-label">待校准术数</div><div class="profile-val">${esc(pf.worstShu.name)} <span class="profile-sub">${pf.worstShu.acc}% (${pf.worstShu.judgeable}条)</span></div></div>`;
-    }
-    h+=`</div>`;
-    h+=`</div>`;
-    h+=`<div class="section-note">统计仅用于个人校准，不对外展示。</div>`;
+    h+=`<div class="section-note">统计只在本机计算，不上传。</div>`;
     h+=`</div>`;
     return h;
   }
   function bindStats(){
     const back=$('#btnStatsBack');
     if(back)back.onclick=()=>{navBack();};
+    const ex=$('#btnStatsExport');
+    if(ex)ex.onclick=()=>doExport();
   }
-  // 渲染单个分组卡片：items=[{name,count,pct,accLabel?}]
-  function renderStatGroup(title,items){
-    let h=`<div class="stat-group"><div class="sg-t">${title}</div>`;
-    if(!items||!items.length){h+=`<div class="empty">暂无数据</div></div>`;return h;}
-    items.forEach(it=>{
-      h+=`<div class="sg-item">`;
-      h+=`<span class="sg-name">${it.name}</span>`;
-      h+=`<div class="sg-bar-wrap"><div class="sg-bar" style="--fill:${(Math.min(100,Math.max(0,it.pct||0))/100).toFixed(3)}"></div></div>`;
-      h+=`<span class="sg-stats">${it.count}${it.accLabel?' · '+it.accLabel+it.pct+'%':''}</span>`;
-      h+=`<span class="sg-pct">${it.pct||0}%</span>`;
-      h+=`</div>`;
-    });
-    h+=`</div>`;
-    return h;
-  }
+
   // ---------- 盘面分享卡片：canvas 绘制 1080×1620 竖版图，含免责角标 ----------
   // 小工具容器内禁文件下载，仅提供「保存到相册」的等价路径说明
   const SHARE_W=1080,SHARE_H=1620,SHARE_PAD=72;
@@ -5147,7 +5202,7 @@
     ctx.fillText('玄决',SHARE_PAD,y);
     ctx.font='400 26px -apple-system,"PingFang SC",sans-serif';
     ctx.fillStyle='rgba(240,230,210,.55)';
-    ctx.fillText('大六壬决策台',SHARE_PAD,y+42);
+    ctx.fillText('传统术数视角的个人梳理工具',SHARE_PAD,y+42);
     // 日期
     ctx.textAlign='right';
     ctx.fillStyle='rgba(240,230,210,.4)';
@@ -5263,7 +5318,7 @@
     ctx.textAlign='right';
     ctx.fillStyle='rgba(217,119,87,.6)';
     ctx.font='400 22px -apple-system,"PingFang SC",sans-serif';
-    ctx.fillText('玄决 · 大六壬决策台',SHARE_W-SHARE_PAD,SHARE_H-142);
+    ctx.fillText('玄决 · 不预测，不替你做决定',SHARE_W-SHARE_PAD,SHARE_H-142);
     return cv;
   }
   function shareCase(c){
@@ -5299,7 +5354,7 @@
             try{
               const file=new File([blob],'xuanjue-share.png',{type:'image/png'});
               if(!navigator.canShare({files:[file]})){toast('当前环境不支持分享图片');return;}
-              await navigator.share({files:[file],title:'玄决 · 大六壬决策台'});
+              await navigator.share({files:[file],title:'玄决 · 把问题想清楚，把判断留下来'});
             }catch(e2){}
           });
         }catch(e3){toast('当前环境不支持分享图片');}
@@ -5430,7 +5485,7 @@
 
     // ---- 版本信息 ----
     h+=`<div class="gp-card mt12">`;
-    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t dim">玄决 V1.5.0 · 大六壬决策台</div></div><span class="gp-val tiny">本地优先 · 离线可用</span></div>`;
+    h+=`<div class="gp-row disabled"><div class="gp-main"><div class="gp-t dim">玄决 V1.5.0 · 传统术数视角的个人梳理工具</div></div><span class="gp-val tiny">本地优先 · 离线可用</span></div>`;
     h+=`</div>`;
     return h;
   }
@@ -5970,8 +6025,8 @@
       const idx=ClassicLibrary.loadIndex&&ClassicLibrary.loadIndex();
       if(idx&&idx.books&&idx.books.length){bookCount=idx.books.length;passCount=idx.books.reduce((s,b)=>s+(b.passage_count||0),0);}
     }catch(_e){}
-    return `<p>玄决 · 大六壬决策台 <span class="num-val">V1.5.0</span></p>
-    <p>个人术数决策辅助工具。核心理念：辅助决策而非预测命运；规则排盘 + 玄学解读 + 个人复盘。</p>
+    return `<p>玄决 <span class="num-val">V1.5.0</span> · 传统术数视角的个人梳理工具</p>
+    <p>用传统术数帮你把问题说清、留下自己的判断、到期回来复盘。不预测现实，也不替你做决定；盘面事实、传统解释与反思提示分层呈现。</p>
     <p class="mt12"><span class="gold-text">术数模块</span>：大六壬（九法三传）、六爻（纳甲六亲世应用神）、八字（大运流年流月藏干）、梅花易数、小六壬、塔罗（四牌阵）、紫微斗数（真太阳时校正 + 1119 行格局库）、奇门遁甲（时家九宫星门神）</p>
     <p><span class="gold-text">古籍库</span>：${bookCount} 本 / ${passCount} 段（RAG 盘面特征加权检索）</p>
     <p><span class="gold-text">紫微参考</span>：紫微斗数全书、紫微斗数全集、骨髓赋、倪海厦《天纪》讲义（仅天纪，不含人纪医学内容）</p>

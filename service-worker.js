@@ -30,6 +30,7 @@ const STATIC_ASSETS = [
   './js/ziwei-patterns.js',
   './js/startup.js',
   './js/store.js',
+  './js/decision.js',
   './js/vendor-loader.js',
   './js/vendor/iching-shifa.min.js',
   './js/vendor/qimendunjia-standalone.min.js',

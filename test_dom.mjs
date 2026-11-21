@@ -65,19 +65,9 @@ ok('进入后主界面显示', !d.getElementById('main').classList.contains('hid
 const pc=d.getElementById('page-container');
 ok('首页标题玄决', pc.textContent.includes('玄决'));
 ok('首页含此刻大六壬', pc.textContent.includes('此刻大六壬'));
-ok('首页含流年飞星', pc.textContent.includes('流年飞星')||pc.textContent.includes('九宫'));
 ok('首页含命盘', pc.textContent.includes('命盘')||pc.textContent.includes('八字排盘'));
 ok('首页含干支或时辰', pc.textContent.includes('干支')||pc.textContent.includes('时辰'));
-
-// 2.1 语音房静态壳（预留，无通信依赖）
-ok('首页含语音房入口', pc.textContent.includes('语音房'));
-d.getElementById('btnVoice').click();
-await sleep(40);
-ok('语音房壳页含敬请期待', pc.textContent.includes('敬请期待'));
-ok('语音房壳页含静态占位', pc.textContent.includes('静态占位')||pc.textContent.includes('房间预览'));
-d.getElementById('backVoice').click();
-await sleep(40);
-ok('语音房返回首页', pc.textContent.includes('此刻大六壬'));
+ok('首页此刻天时降为背景', pc.textContent.includes('背景参考'));
 
 // 3. 查看完整盘面（首页按钮直接进入大六壬详细盘面）
 d.getElementById('btnViewBoard').click();
@@ -103,25 +93,26 @@ proBtn.click();
 await sleep(40);
 ok('专业模式恢复含天地盘', pc.textContent.includes('天地盘'));
 
-// 4. 问事向导
-d.querySelector('.tab[data-tab="ask"]').click();
+// 4. 问事：首页一句话 + 可选问题卡 → 直接起课
+d.querySelector('.tab[data-tab="home"]').click();
 await sleep(40);
-ok('问事步骤1显示类型', pc.textContent.includes('感情关系'));
-const typeChip=[...d.querySelectorAll('.chip')].find(c=>c.textContent.trim()==='感情关系');
-typeChip.click();
+ok('首页含问事主行动', !!d.getElementById('homeAskInput'));
+ok('首页含问题卡入口', !!d.getElementById('btnHaCard'));
+const haIn=d.getElementById('homeAskInput');
+haIn.value='这段关系要不要继续，月底前要有答复';
+haIn.dispatchEvent(new w.Event('input'));
 await sleep(30);
-d.getElementById('nextStep').click();
+ok('起课按钮可用（提示不阻断）', !!d.getElementById('btnHaGo')&&!d.getElementById('btnHaGo').disabled);
+d.getElementById('btnHaGo').click();
+await sleep(120);
+ok('直接起课进入结果', pc.textContent.includes('大六壬盘面'));
+ok('结果含三层结构', pc.textContent.includes('盘面事实')&&pc.textContent.includes('传统解释')&&pc.textContent.includes('留给你自己判断'));
+ok('结果含判断与行动', !!d.getElementById('btnSavePlan'));
+// 填判断与行动
+d.getElementById('fMyJudge').value='我倾向继续，但想先确认对方的真实打算';
+d.getElementById('btnSavePlan').click();
 await sleep(30);
-ok('问事步骤2背景填写', d.querySelector('#fTitle')!==null);
-d.getElementById('fTitle').value='这段关系要不要继续';
-d.getElementById('fTitle').dispatchEvent(new w.Event('input'));
-d.getElementById('nextStep').click();
-await sleep(30);
-ok('问事步骤3术数选择', pc.textContent.includes('实时起课')||pc.textContent.includes('大六壬'));
-// 默认仅大六壬，无需信息补充，直接进入结果
-d.getElementById('nextStep').click();
-await sleep(60);
-ok('问事步骤5结果生成', pc.textContent.includes('大六壬盘面'));
+ok('判断已记下', d.getElementById('toast').textContent.includes('已记下'));
 
 // 5. 保存案例
 d.getElementById('btnSaveCase').click();
@@ -199,7 +190,9 @@ if(lockModal)lockModal.querySelector('.btn.ghost').click();
 await sleep(30);
 
 // 11. 验证禁止词在 AI 解读中不出现（敏感问题）
-d.querySelector('.tab[data-tab="ask"]').click();
+d.querySelector('.tab[data-tab="home"]').click();
+await sleep(40);
+d.getElementById('btnAskMore').click();
 await sleep(40);
 const t2=[...d.querySelectorAll('.chip')].find(c=>c.textContent.trim()==='财务决策');
 t2.click();await sleep(30);
@@ -223,7 +216,7 @@ const injectCase={
 };
 w.eval('Store.saveCase('+JSON.stringify(injectCase)+')');
 d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
-ok('首页最近案例含待复盘标记', pc.textContent.includes('待复盘'));
+ok('首页最近问事含到期标记', pc.textContent.includes('复盘期已到')||pc.textContent.includes('待复盘'));
 ok('首页显示到期案例标题', pc.textContent.includes('DOM到期测试案例'));
 
 // 清理注入的测试数据
@@ -265,13 +258,8 @@ ok('toast 无类型时回到中性', !toastEl.classList.contains('ok')&&!toastEl
 // 13.4 空态行动点：清空案例后首页出现「开始问事」引导
 w.eval('Store.clearAll()');
 d.querySelector('.tab[data-tab="home"]').click();await sleep(60);
-ok('空态含说明文案', pc.textContent.includes('结果会自动归档'));
-const btnEmpty=d.getElementById('btnEmptyAsk');
-ok('空态含行动按钮', !!btnEmpty);
-if(btnEmpty){
-  btnEmpty.click();await sleep(50);
-  ok('空态按钮跳到问事', d.querySelector('.tab[data-tab="ask"]').classList.contains('active'));
-}
+ok('空态含说明文案', pc.textContent.includes('一课即成一条可复盘的档案'));
+ok('空态仍有问事入口', !!d.getElementById('homeAskInput')&&!!d.getElementById('btnHaGo'));
 // 13.5 涟漪元素：按下 .btn 时插入 .ripple（无报错即通过）
 d.querySelector('.tab[data-tab="home"]').click();await sleep(40);
 const vb=d.querySelector('.btn');
