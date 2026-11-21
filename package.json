@@ -1,7 +1,7 @@
 {
   "name": "xuanjue",
   "version": "1.5.3",
-  "description": "玄决 · 大六壬决策台（个人时课助手）",
+  "description": "玄决 · 以传统术数为文化视角的个人梳理工具（不预测，不替你做决定）",
   "private": true,
   "main": "index.html",
   "scripts": {

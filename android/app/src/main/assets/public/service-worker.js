@@ -1,5 +1,5 @@
 // service-worker.js — 玄决 PWA 离线缓存与通知支持
-const CACHE_VERSION = 'v1.5.2';
+const CACHE_VERSION = 'v1.5.4';
 const STATIC_CACHE = 'xuanjue-static-' + CACHE_VERSION;
 const DATA_CACHE = 'xuanjue-data-' + CACHE_VERSION;
 
@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   './js/cloud.js',
   './js/cross.js',
   './js/daliuren.js',
+  './js/decision.js',
   './js/hehun.js',
   './js/huangli.js',
   './js/iztro.min.js',
