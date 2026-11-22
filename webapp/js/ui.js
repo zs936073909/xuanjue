@@ -656,6 +656,19 @@ function renderHome() {
     '</div></div>';
   h += '<div class="ask-hint"><span><kbd>Enter</kbd> 起课</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span><span><kbd>/</kbd> 快速聚焦</span></div>';
 
+  // 最近问事：让「问 → 复盘」的连续性在首屏可见
+  if (cases.length) {
+    h += '<section class="home-recent"><div class="hr-head"><h3>最近问事</h3>' +
+      '<a class="link-btn" href="#/history">全部 ›</a></div>';
+    cases.slice(0, 3).forEach(c => {
+      const ds = XD.dueState(c);
+      h += '<a class="hr-item" href="#/case/' + esc(c.id) + '">' +
+        '<span class="hr-t">' + esc(c.title) + '</span>' +
+        '<span class="hr-s st-' + ds.state + '">' + esc(ds.label) + '</span></a>';
+    });
+    h += '</section>';
+  }
+
   // 此刻天时：保留它的美，但明确降为背景，不针对用户的问题
   h += '<section class="now-sec"><div class="now-head"><h3>此刻天时</h3><span>背景参考 · 不针对你的问题</span></div>';
   h += '<div class="now-meta"><div class="now-gz">' +
@@ -2370,8 +2383,8 @@ function renderHistory() {
 
   // 本机行为统计：看的是"有没有用起来"，不是"算得准不准"
   h += '<div class="stat-row">' +
-    '<div class="stat"><b>' + st.total + '</b><span>条记录</span></div>' +
-    '<div class="stat"><b>' + st.planRate + '%</b><span>留下了判断</span></div>' +
+    '<div class="stat"><b>' + st.total + '</b><span>条问事</span></div>' +
+    '<div class="stat"><b>' + st.planRate + '%</b><span>留下判断</span></div>' +
     '<div class="stat"><b>' + st.reviewRate + '%</b><span>回来复盘</span></div>' +
     '<div class="stat' + (st.due ? ' alert' : '') + '"><b>' + st.due + '</b><span>待你回看</span></div>' +
     '</div>';
