@@ -11,7 +11,7 @@ ctx.window=ctx;ctx.global=ctx;ctx.self=ctx;
 // classics.js 需要 require 支持（用于 Node 环境读取数据文件）
 ctx.require=require;ctx.__filename=require('path').resolve('js/classics.js');ctx.__dirname=require('path').resolve('js');
 vm.createContext(ctx);
-['js/lunar.js','js/huangli.js','js/daliuren.js','js/iztro.min.js','js/vendor/iching-shifa.min.js','js/vendor/tarot-kit.min.js','js/vendor/qimendunjia-standalone.min.js','js/shushu.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
+['js/vendor/lunar-javascript.min.js','js/lunar.js','js/huangli.js','js/daliuren.js','js/liuyao.js','js/iztro.min.js','js/vendor/tarot-kit.min.js','js/vendor/qimendunjia-standalone.min.js','js/shushu.js','js/hehun.js','js/classics.js','js/cross.js','js/store.js','js/ai.js'].forEach(f=>{
   vm.runInContext(fs.readFileSync(f,'utf8'),ctx);
 });
 const {Lunar,DaLiuRen,Huangli,ShuShu}=ctx.window;
@@ -155,10 +155,9 @@ eq('六爻每爻 val 6-9',ly.result.yaos.every(y=>y.val>=6&&y.val<=9),true);
 console.log('六爻:',ly.result.benGua,'→',ly.result.bianGua,'动',ly.result.dongCount);
 eq('六爻六神每爻存在',ly.result.yaos.every(y=>y.liuShou),true);
 eq('六爻纳音每爻存在',ly.result.yaos.every(y=>y.naYin),true);
-eq('六爻星宿每爻存在',ly.result.yaos.every(y=>y.xingXiu),true);
+eq('六爻世应各一',ly.result.yaos.filter(y=>y.isShi).length===1&&ly.result.yaos.filter(y=>y.isYing).length===1,true);
 eq('六爻伏神数组存在',Array.isArray(ly.result.fuShen),true);
 eq('六爻互卦存在',ly.result.huGua&&ly.result.huGua.length>0,true);
-eq('六爻卦辞存在',ly.result.guaCi&&ly.result.guaCi.length>0,true);
 
 // 塔罗
 const tr=ShuShu.tarot(p1Date);
@@ -188,6 +187,19 @@ console.log('八字:',bz.result.pillars.map(p=>p.gz).join(' '),'日主',bz.resul
 // 统一入口
 eq('compute 入口-小六壬',ShuShu.compute("小六壬",p1Date).name,'小六壬');
 eq('compute 入口-未知返回 null',ShuShu.compute("不存在",p1Date),null);
+
+// ===== 合婚（《三命通会》法）=====
+const {HeHun}=ctx.window;
+const hhA=ShuShu.baZiByBirth({date:new Date(1990,4,15,12,0),gender:'男'});
+const hhB=ShuShu.baZiByBirth({date:new Date(1992,8,20,9,30),gender:'女'});
+const hh=HeHun.analyze({a:{gender:'男',bazi:hhA.result},b:{gender:'女',bazi:hhB.result},realtime:[],testTime:'2026-11-22 20:00'});
+eq('合婚 method=三命通会',hh.method,'sanmingtonghui');
+eq('合婚五维',hh.dimensions.map(d=>d.key).join(','),'nayin,shengxiao,rizhu,fugong,fuxing');
+eq('合婚权重合计 100',hh.dimensions.reduce((s,d)=>s+d.weight,0),100);
+eq('合婚分数 0-100',hh.score>=0&&hh.score<=100,true);
+eq('合婚年命纳音可读',/A 年命.+× B 年命/.test(hh.dimensions[0].detail),true);
+eq('合婚不含命中率类断言',!/必然|一定|注定/.test(hh.summaryText),true);
+console.log('合婚:',hh.score,hh.level,'|',hh.dimensions.map(d=>d.label+'='+d.score).join(' '));
 
 // ===== T0 整改测试 =====
 console.log('\n--- T0 整改验证 ---');

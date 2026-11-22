@@ -13,6 +13,7 @@ function runSrc(src){
   const fn = new Function('window','Lunar','console','Date','Math','parseInt','parseFloat','isNaN','Array','Object','String','Number','Boolean','RegExp','JSON','Map','Set', src);
   fn.call(sandbox, sandbox, sandbox.Lunar, sandbox.console, sandbox.Date, sandbox.Math, sandbox.parseInt, sandbox.parseFloat, sandbox.isNaN, sandbox.Array, sandbox.Object, sandbox.String, sandbox.Number, sandbox.Boolean, sandbox.RegExp, sandbox.JSON, sandbox.Map, sandbox.Set);
 }
+runSrc(loadFile('js/vendor/lunar-javascript.min.js'));
 runSrc(loadFile('js/lunar.js'));
 sandbox.Lunar = sandbox.window.Lunar;
 runSrc(loadFile('js/daliuren.js'));

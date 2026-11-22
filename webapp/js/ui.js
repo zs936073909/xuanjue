@@ -19,12 +19,12 @@ function uid() { return 'c' + Date.now().toString(36) + Math.random().toString(3
 const QTYPES = ['感情关系', '事业合作', '财务决策', '签约交易', '出行移动', '健康倾向', '其他'];
 const METHODS = ['大六壬', '梅花易数', '小六壬', '六爻', '塔罗', '奇门遁甲'];
 const VENDOR_SRC = {
-  iching: 'js/engines/vendor/iching-shifa.min.js',
   tarot: 'js/engines/vendor/tarot-kit.min.js',
   qimen: 'js/engines/vendor/qimendunjia-standalone.min.js',
   iztro: 'js/engines/iztro.min.js'
 };
-const METHOD_VENDOR = { '六爻': 'iching', '塔罗': 'tarot', '奇门遁甲': 'qimen', '紫微斗数': 'iztro' };
+// 六爻已改自研 js/engines/liuyao.js（随主包加载），不再视为按需库
+const METHOD_VENDOR = { '塔罗': 'tarot', '奇门遁甲': 'qimen', '紫微斗数': 'iztro' };
 const _vendorPromise = {};
 function ensureVendor(method) {
   const key = METHOD_VENDOR[method];
@@ -1575,16 +1575,16 @@ function renderHehun() {
 function renderHehunForm() {
   const hh = loadHehun();
   let h = '<div class="reading-inner" data-view="hehun">';
-  h += '<div class="kicker">合婚合盘 · 双人命盘 × 实时盘</div>';
+  h += '<div class="kicker">合婚合盘 · 《三命通会》法</div>';
   h += '<h2 class="hh-title">两个人的合盘</h2>';
-  h += '<p class="hh-intro">填双方出生信息，选一个起盘时间与实时法门。先用八字 + 紫微做七维规则参考，再由 AI 结合当下盘面写关系分析与建议——分值只是加权结果，不是对关系的判定。</p>';
+  h += '<p class="hh-intro">填双方出生信息，按《三命通会》的合婚法看五项：年命纳音、年支生肖、日主十神、夫妻宫、夫星/妻星得地。再由 AI 结合当下盘面写关系分析与建议——分值只是加权结果，不是对关系的判定。</p>';
   h += '<div class="hh-people">' + hhPersonCard('A', '甲方（我）', hh.a) + hhPersonCard('B', '乙方（对方）', hh.b) +
     '<datalist id="hhCityList"></datalist></div>';
   h += '<div class="m-panel"><h3>起盘时间与实时法门<span class="sub">看当下时机，不替代长期基础</span></h3>' +
     '<div class="m-field" style="margin-top:0"><label>起盘时间（默认此刻）</label><input type="datetime-local" id="hhTestTime" value="' + esc(hh.testTime) + '"></div>' +
     '<div class="m-field"><label>叠加实时盘（可多选）</label><div class="chips">' +
     HEHUN_METHODS.map(m => '<button type="button" class="chip ' + (hh.methods.indexOf(m) >= 0 ? 'on' : '') + '" data-hh-m="' + m + '">' + m + '</button>').join('') +
-    '</div><p class="hh-note">实时盘反映「当下关系热度与时机」，权重 10%；长期基础仍以双方八字与紫微为主。</p></div>' +
+    '</div><p class="hh-note">实时盘只用于「当下时机」一段的参考，不计入五项评分；长期基础以年命、日柱与夫妻宫为主。</p></div>' +
     '<div class="hh-run"><button class="btn primary" id="hhRun">生成合婚分析<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>' +
     '<p class="m-note-line">合婚为传统术数文化参考，不构成婚姻决策依据；评分不决定你们能不能在一起。</p></div>';
   h += '</div>';
@@ -1729,13 +1729,13 @@ function buildHehunContext() {
 }
 function hehunSystemPrompt() {
   return [
-    '你是「玄决」的传统文化解释助手。基于下方双方八字、紫微命盘与起盘时间的实时盘，帮用户理解两人在传统框架里的关系基础与互动模式——这是视角，不是判决。',
+    '你是「玄决」的传统文化解释助手。基于下方双方八字（年命纳音、日主、夫妻宫、夫妻星）与起盘时间的实时盘，帮用户理解两人在《三命通会》合婚框架里的关系基础与互动模式——这是视角，不是判决。',
     '硬性要求：',
     '0. 开篇不要复述分数，也不要把分值当结论；分值只是规则加权的参考数字；',
     '1. 只依据给定的盘面数据，不编造未提供的星曜、神煞或事件；',
     '2. 不说"必然/一定/注定/克夫克妻/命中无缘"等绝对化与恐吓式断语，改用"倾向、容易、在…情形下"；',
     '3. 双向视角：同时讲"你给对方什么"和"对方给你什么"，不做单方评判；',
-    '4. 区分「长期基础」（八字与紫微）与「当下时机」（实时盘），不要把一次起盘当成终身结论；',
+    '4. 区分「长期基础」（年命纳音与日柱）与「当下时机」（实时盘），不要把一次起盘当成终身结论；',
     '5. 建议必须可执行：落到沟通方式、边界、节奏、共同活动，而不是空泛祝福；',
     '6. 不替用户做结婚/分手决定，不涉及医疗、法律、投资结论；',
     '7. 结尾必须有一句免责：合婚为传统文化参考，最终以现实互动与双方意愿为准。',
@@ -1757,7 +1757,7 @@ function renderHehunResult() {
     '<div class="hh-tip">' + esc(r.levelTip) + '</div>' +
     '<div class="hh-conf">规则加权参考分 <b class="hh-score-sm">' + r.score + '</b>/100 · 数据置信度 ' +
     esc(conf.level) + ' · ' + conf.score + '/100 · ' + esc(conf.note) + '</div></div></div>';
-  h += '<div class="m-panel"><h3>七维参考<span class="sub">各维度独立看，不合成结论</span></h3><div class="hh-dims">';
+  h += '<div class="m-panel"><h3>三命通会·五维参考<span class="sub">各维度独立看，不合成结论</span></h3><div class="hh-dims">';
   r.dimensions.forEach(d => {
     h += '<div class="hh-dim"><div class="hh-dim-h"><span class="hh-dim-l">' + esc(d.label) + '<i>' + d.weight + '%</i></span>' +
       '<span class="hh-dim-v">' + d.score + '</span></div>' +

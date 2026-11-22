@@ -14,7 +14,7 @@ window.prompt=window.prompt||function(){return null;};
 if(!window.navigator)window.navigator={serviceWorker:{register:()=>Promise.resolve()}};
 else window.navigator.serviceWorker={register:()=>Promise.resolve()};
 
-const files=['js/lunar.js','js/huangli.js','js/daliuren.js','js/iztro.min.js','js/shushu.js','js/store.js','js/ai.js','js/classics.js','js/cross.js','js/app.js'];
+const files=['js/vendor/lunar-javascript.min.js','js/lunar.js','js/huangli.js','js/daliuren.js','js/liuyao.js','js/iztro.min.js','js/shushu.js','js/store.js','js/ai.js','js/classics.js','js/cross.js','js/app.js'];
 files.forEach(f=>{
   const src=fs.readFileSync(path.join(__dirname,f),'utf8');
   const s=window.document.createElement('script');
@@ -114,7 +114,11 @@ function wait(ms){return new Promise(r=>setTimeout(r,ms));}
   // ============ 5. 日期选择器年份快速调节 ============
   console.log('\n=== 5. 日期选择器年份快速调节（长按加速+直接输入）===');
   // 进入问事向导 → 类型 → 下一步 → 术数选择 → 勾选八字 → 下一步 → 出生信息页
-  fire($$('.tab[data-tab="ask"]')[0],'click');await wait(20);
+  // B 方案移植后 ask tab 改为复盘页，问事向导入口移至首页「细问」按钮；旧路径保留兜底
+  const btnAskMore=$('#btnAskMore');
+  if(btnAskMore){fire(btnAskMore,'click');}
+  else{fire($$('.tab[data-tab="ask"]')[0],'click');}
+  await wait(30);
   // step1: 选择问题类型（健康倾向→自动预选八字）
   const typeChip=$$('.chip[data-type]').find(c=>c.textContent.includes('健康倾向'))||$$('.chip[data-type]')[0];
   if(typeChip)fire(typeChip,'click');

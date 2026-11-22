@@ -30,12 +30,24 @@ const STATIC_FILES = ['index.html', 'manifest.json', 'icon-192.png', 'icon-512.p
 const PRECACHE_SKIP_PREFIX = ['data/', 'service-worker.js'];
 
 // vendor 大库：npm 包 → window.X 全局（见 build/*-entry.js）
+// notice 会写在产物首行，标明来源、版本与许可证，避免打包后无法追溯（供应链透明度）。
 const VENDOR_BUILDS = [
-  { entry: 'build/iching-entry.js', out: 'js/vendor/iching-shifa.min.js' },
-  { entry: 'build/qimen-entry.js', out: 'js/vendor/qimendunjia-standalone.min.js' },
-  { entry: 'build/tarot-entry.js', out: 'js/vendor/tarot-kit.min.js' }
+  { entry: 'build/lunar-entry.js', out: 'js/vendor/lunar-javascript.min.js',
+    notice: 'lunar-javascript v1.7.8 | MIT | https://github.com/6tail/lunar-javascript' },
+  { entry: 'build/qimen-entry.js', out: 'js/vendor/qimendunjia-standalone.min.js',
+    notice: 'qimendunjia-standalone v0.1.0 | MIT | npm qimendunjia-standalone' },
+  { entry: 'build/tarot-entry.js', out: 'js/vendor/tarot-kit.min.js',
+    notice: 'tarot-kit (npm @cometpisces/tarot-kit v0.2.0) | MIT | 含 tarot-card-meanings 数据' }
 ];
-const VENDOR_COPY = [{ from: 'node_modules/iztro/dist/iztro.min.js', out: 'js/iztro.min.js' }];
+const VENDOR_COPY = [{ from: 'node_modules/iztro/dist/iztro.min.js', out: 'js/iztro.min.js',
+  notice: 'iztro v2.5.8 | MIT | https://github.com/SylarLong/iztro' }];
+
+function withNotice(file, notice) {
+  if (!notice) return;
+  const code = fs.readFileSync(file, 'utf8');
+  if (code.startsWith('/*! ' + notice)) return;
+  fs.writeFileSync(file, '/*! ' + notice + ' */\n' + code);
+}
 
 function log(...a) { console.log(...a); }
 function rmrf(p) { fs.rmSync(p, { recursive: true, force: true }); }
@@ -61,12 +73,14 @@ async function buildVendor() {
       bundle: true, minify: true, format: 'iife', target: ['es2019'],
       charset: 'utf8', legalComments: 'inline', logLevel: 'warning'
     });
+    withNotice(path.join(ROOT, v.out), v.notice);
     log('  ✓', v.out, kb(fs.statSync(path.join(ROOT, v.out)).size));
   }
   for (const c of VENDOR_COPY) {
     const fromAbs = path.join(ROOT, c.from);
     if (!fs.existsSync(fromAbs)) { log('  ! 缺少', c.from, '（请先 npm install）跳过'); continue; }
     copyFile(fromAbs, path.join(ROOT, c.out));
+    withNotice(path.join(ROOT, c.out), c.notice);
     log('  ✓', c.out, '(copy)', kb(fs.statSync(path.join(ROOT, c.out)).size));
   }
   log('[vendor] 完成');

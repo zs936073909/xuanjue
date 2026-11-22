@@ -338,7 +338,7 @@
     });
     return{sanHe:san,liuHe:liu};
   }
-  // 将 iching-shifa 爻对象转换为应用内部格式
+  // 将六爻排盘模块的爻对象转换为应用内部格式
   function mapIchingYaoList(list){
     return list.map((y,idx)=>{
       const gz=y.naJia||'—';
@@ -376,13 +376,14 @@
       const val=(typeof y==='object'&&y!==null)?y.val:Number(y);
       return val;
     }).join('');
-    const I=(typeof window!=='undefined'&&window.IchingShifa)?window.IchingShifa:(typeof global!=='undefined'&&global.IchingShifa?global.IchingShifa:{});
+    // 六爻排盘模块（自研 MIT，见 js/liuyao.js）：原 iching-shifa 为 GPL-3.0，与分发版存在许可冲突，已替换
+    const I=(typeof window!=='undefined'&&window.LiuYao)?window.LiuYao:(typeof global!=='undefined'&&global.LiuYao?global.LiuYao:{});
     const dayGz=baZi.day.gz;
-    // 本卦排盘（纳甲、六亲、六神、世应、星宿、锁泊、纳音、伏神）
+    // 本卦排盘（纳甲、六亲、世应、纳音、伏神）
     const benPan=I.decodeGua?I.decodeGua(yaoString,dayGz):null;
     if(!benPan||!benPan.yaoList||!benPan.yaoList.length){
       // 库未加载时给出基础提示，不阻塞渲染
-      return{name:'六爻',result:{error:'六爻排盘库未加载',yaoString,dayGz},plain:{state:'六爻排盘库未加载',tendency:'不可用',opps:['请检查 js/vendor/iching-shifa.min.js 是否加载'],risks:[],doAct:[],dontAct:[],signals:['库缺失'],env:'',reviewDays:0,sources:[{type:'rule',desc:'需要 iching-shifa 排盘库'}]}};
+      return{name:'六爻',result:{error:'六爻排盘模块未加载',yaoString,dayGz},plain:{state:'六爻排盘模块未加载',tendency:'不可用',opps:['请检查 js/liuyao.js 是否加载'],risks:[],doAct:[],dontAct:[],signals:['模块缺失'],env:'',reviewDays:0,sources:[{type:'rule',desc:'需要 liuyao.js 六爻排盘模块'}]}};
     }
     // 变卦、互卦
     const bianString=I.getZhiGua?I.getZhiGua(yaoString):yaoString.replace(/9/g,'8').replace(/6/g,'7');
@@ -662,8 +663,10 @@
   const WX_I_SHENG={'金':'水','水':'木','木':'火','火':'土','土':'金'}; // 我生=食伤
   const WX_I_KE={'金':'木','木':'土','土':'水','水':'火','火':'金'};    // 我克=财
   const WX_KE_ME={'金':'火','木':'金','土':'木','水':'土','火':'水'};    // 克我=官杀
-  // 真太阳时简化实现：根据出生地经度粗略修正平太阳时
-  // 中国标准时间为 120°E（UTC+8），每偏东 1° 早 4 分钟
+  // 真太阳时：出生地经度修正 + 均时差（equation of time）
+  // 中国标准时间为 120°E（UTC+8），每偏东 1° 早 4 分钟；
+  // 均时差是一年内真太阳时与平太阳时的偏差（约 ±16 分钟），由 ziwei-solar.js 的 NOAA 近似式给出。
+  // 两者都算上才是「真太阳时」；只做经度修正得到的是「地方平太阳时」。
   function parseLongitude(place){
     if(!place)return null;
     const cityMap={
@@ -687,8 +690,20 @@
     const lng=parseLongitude(place);
     if(lng==null)return{date,offsetMin:0,note:'未能从地点解析经度，按平太阳时计算'};
     const offsetMin=(lng-120)*4; // 每度 4 分钟
-    const adjusted=new Date(date.getTime()+offsetMin*60000);
-    return{date:adjusted,offsetMin,note:`已按真太阳时校正：经度 ${lng.toFixed(1)}°E，${offsetMin>=0?'+'+offsetMin:offsetMin} 分钟`};
+    // 均时差：以标准时读数计算（未修正前的钟面），单位分钟
+    let eot=0;
+    if(global.ZiweiSolar&&typeof global.ZiweiSolar.equationOfTimeMinutes==='function'){
+      try{
+        eot=global.ZiweiSolar.equationOfTimeMinutes(
+          date.getFullYear(),date.getMonth()+1,date.getDate(),date.getHours(),date.getMinutes()
+        );
+      }catch(e){eot=0;}
+    }
+    const totalMin=offsetMin+eot;
+    const adjusted=new Date(date.getTime()+totalMin*60000);
+    const sgn=v=>(v>=0?'+':'')+Math.round(v);
+    return{date:adjusted,offsetMin,totalMin,eot,
+      note:`已按真太阳时校正：经度 ${lng.toFixed(1)}°E，经度修正 ${sgn(offsetMin)} 分，均时差 ${sgn(eot)} 分`};
   }
 
   function baZiByBirth(birthInfo){

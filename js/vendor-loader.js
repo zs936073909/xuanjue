@@ -1,16 +1,14 @@
 // vendor-loader.js — 术数大库按需加载
-// 首屏不加载 iching/tarot/qimen/iztro 等大库（合计约 4MB），点用时即时注入；
+// 首屏不加载 tarot/qimen/iztro 等大库，点用时即时注入；
 // 空闲时后台预载，离线场景由 Service Worker 缓存兜底。
 (function(global){
   const MAP={
-    iching:{src:'js/vendor/iching-shifa.min.js',test:function(){return !!global.IchingShifa;}},
     tarot:{src:'js/vendor/tarot-kit.min.js',test:function(){return !!global.TarotKit;}},
     qimen:{src:'js/vendor/qimendunjia-standalone.min.js',test:function(){return !!global.QimenDunJia;}},
     iztro:{src:'js/iztro.min.js',test:function(){return !!global.iztro;}}
   };
-  // 术数名 → 依赖库（无依赖的术数不在此列：大六壬/梅花/小六壬/八字为内置实现）
+  // 术数名 → 依赖库（六爻已改自研 js/liuyao.js，随主包同步加载；大六壬/梅花/小六壬/八字亦为内置实现）
   const METHOD_DEPS={
-    '六爻':['iching'],
     '塔罗':['tarot'],
     '奇门遁甲':['qimen'],
     '紫微斗数':['iztro']

@@ -188,9 +188,12 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- 核心引擎：与 APK 端同源同算，纯计算不碰 DOM。大库（六爻/奇门/塔罗/紫微）按需懒加载 -->
+<!-- 历法底座：6tail/lunar-javascript（MIT）提供农历/节气/八字，lunar.js 为兼容适配层 -->
+<script src="js/engines/vendor/lunar-javascript.min.js"></script>
 <script src="js/engines/lunar.js"></script>
 <script src="js/engines/huangli.js"></script>
 <script src="js/engines/daliuren.js"></script>
+<script src="js/engines/liuyao.js"></script>
 <script src="js/engines/ziwei-solar.js"></script>
 <script src="js/engines/ziwei-patterns.js"></script>
 <script src="js/engines/shushu.js"></script>

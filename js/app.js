@@ -4515,9 +4515,9 @@
   }
   function pageHehun(){
     const hh=state.hehun||(state.hehun=newHehunState());
-    let h=`<div class="phead"><div><div class="ptitle">合婚合盘</div><div class="psub">双人命盘 · 实时盘校验</div></div><button class="btn ghost sm" id="backHehun">返回</button></div>`;
+    let h=`<div class="phead"><div><div class="ptitle">合婚合盘</div><div class="psub">《三命通会》法 · 双人命盘</div></div><button class="btn ghost sm" id="backHehun">返回</button></div>`;
     if(hh.computed)return h+renderHehunResult(hh);
-    h+=`<div class="card"><h3>怎么用</h3><div class="dc-desc">填双方出生信息，选测试时间与实时盘。系统先用八字+紫微做六维合婚评分，再让 AI 结合当下盘面写关系分析。</div></div>`;
+    h+=`<div class="card"><h3>怎么用</h3><div class="dc-desc">填双方出生信息，选测试时间与实时盘。系统按《三命通会》合婚法做五项评分（年命纳音、年支生肖、日主十神、夫妻宫、夫星/妻星得地），再让 AI 结合当下盘面写关系分析。</div></div>`;
     h+=hhPersonCard('A','甲方（我）',hh.a);
     h+=hhPersonCard('B','乙方（对方）',hh.b);
     h+=`<div class="card"><h3>测试时间与实时盘</h3>`;
@@ -4535,7 +4535,7 @@
     let h=`<div class="phead"><div><div class="ptitle">合婚结果</div><div class="psub">起盘 ${esc(hh.computed.testTimeLabel)}</div></div><button class="btn ghost sm" id="backHehun">返回</button></div>`;
     const conf=r.confidence||{level:'—',score:0,note:''};
     h+=`<div class="card hh-hero"><div class="hh-score"><b>${r.score}</b><span>/100</span></div><div class="hh-hero-r"><div class="hh-level">${esc(r.level)}</div><div class="hh-tip">${esc(r.levelTip)}</div><div class="hh-conf">数据置信度 ${esc(conf.level)} · ${conf.score}/100</div></div></div>`;
-    h+=`<div class="card"><h3>七维评分 <span class="h-sub">日主/五行/夫妻宫/年支/紫微/纳音/实时</span></h3><div class="hh-dims">`;
+    h+=`<div class="card"><h3>三命通会·五维评分 <span class="h-sub">年命纳音 / 生肖 / 日主 / 夫妻宫 / 夫妻星</span></h3><div class="hh-dims">`;
     r.dimensions.forEach(d=>{
       h+=`<div class="hh-dim"><div class="hh-dim-h"><span class="hh-dim-l">${esc(d.label)}<i>${d.weight}%</i></span><span class="hh-dim-v">${d.score}</span></div><div class="hh-bar"><i style="width:${d.score}%"></i></div><div class="hh-dim-d">${esc(d.detail)}</div></div>`;
     });
@@ -4710,7 +4710,7 @@
     const ctx=buildHehunContext(hh);
     const threadId='hehun_'+String(hh.a.date+hh.a.hour+hh.b.date+hh.b.hour+hh.computed.testTimeLabel).replace(/[^0-9]/g,'');
     hh.threadId=threadId;
-    const sys='你是「玄决」的合婚盘面分析师。基于双方八字、紫微斗数与测试时间的实时盘，输出克制、双向、可操作的关系分析。\n'
+    const sys='你是「玄决」的合婚盘面分析师。按《三命通会》合婚法（年命纳音、年支生肖、日主十神、夫妻宫、夫星/妻星得地）结合测试时间的实时盘，输出克制、双向、可操作的关系分析。\n'
       +'硬性要求：\n'
       +'1) 不做婚姻决定、不预测「一定成/一定散」，不使用绝对化措辞；\n'
       +'2) 必须同时看到双方的立场与难处，不把问题单方面归给某一人；\n'
